@@ -1,57 +1,35 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HPMPBar } from '../../components/HPMPBar';
 import { CardList } from '../../components/CardList';
+import { ToolboxGrid } from '../../components/ToolboxSheet';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { useCardStore } from '../../lib/store';
+import { calculateHP, calculateMP } from '../../lib/hpmp';
 
 export default function LifeScreen() {
-  const fetchAll = useCardStore((s) => s.fetchAll);
-  const error = useCardStore((s) => s.error);
+  const { cards, actions, lastCompletions, error, fetchAll } = useCardStore();
   const [toolboxOpen, setToolboxOpen] = useState(false);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
+  const hp = useMemo(() => calculateHP(cards, actions, lastCompletions), [cards, actions, lastCompletions]);
+  const mp = useMemo(() => calculateMP(cards, actions, lastCompletions), [cards, actions, lastCompletions]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <HPMPBar hp={72} mp={55} onToolboxPress={() => setToolboxOpen((v) => !v)} />
+      <HPMPBar hp={hp} mp={mp} onToolboxPress={() => setToolboxOpen((v) => !v)} />
       {error && <Text style={styles.error}>{error}</Text>}
-      {toolboxOpen && <Toolbox onClose={() => setToolboxOpen(false)} />}
+      {toolboxOpen && <ToolboxGrid onClose={() => setToolboxOpen(false)} />}
       <CardList onNewCardPress={() => router.push('/card/new')} />
       <Pressable style={styles.fab} onPress={() => router.push('/card/new')}>
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
     </SafeAreaView>
-  );
-}
-
-function Toolbox({ onClose }: { onClose: () => void }) {
-  const items = [
-    { emoji: '⚖️', label: '体重' },
-    { emoji: '🩸', label: '生理期' },
-    { emoji: '💪', label: '运动' },
-    { emoji: '⏱', label: '计时器' },
-  ];
-  return (
-    <View style={styles.toolboxSheet}>
-      {items.map((item) => (
-        <Pressable
-          key={item.label}
-          style={styles.toolboxItem}
-          onPress={() => {
-            Alert.alert('还没做', `「${item.label}」功能第二版加，敬请期待`);
-            onClose();
-          }}
-        >
-          <Text style={styles.toolboxEmoji}>{item.emoji}</Text>
-          <Text style={styles.toolboxLabel}>{item.label}</Text>
-        </Pressable>
-      ))}
-    </View>
   );
 }
 
@@ -79,22 +57,4 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { color: '#fff', fontSize: 26, fontWeight: '300', marginTop: -2 },
-  toolboxSheet: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: colors.card,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    borderRadius: radius.card,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  toolboxItem: { alignItems: 'center', justifyContent: 'center', width: 64 },
-  toolboxEmoji: { fontSize: 22, lineHeight: 26, marginBottom: 4, includeFontPadding: false },
-  toolboxLabel: {
-    fontSize: fontSize.tiny,
-    lineHeight: fontSize.tiny + 2,
-    color: colors.textSecondary,
-    includeFontPadding: false,
-  },
 });

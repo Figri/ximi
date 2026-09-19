@@ -60,3 +60,22 @@ export async function scheduleDecayNotification(
 export async function cancelActionNotification(actionId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(notificationIdKey(actionId)).catch(() => {});
 }
+
+/** 工具箱计时器用：N 秒后本地提醒一次，返回 identifier 方便中途取消 */
+export async function scheduleTimerNotification(label: string, seconds: number): Promise<string> {
+  const identifier = `ximi-timer-${Date.now()}`;
+  await Notifications.scheduleNotificationAsync({
+    identifier,
+    content: { title: '计时到了', body: label },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds,
+      repeats: false,
+    },
+  });
+  return identifier;
+}
+
+export async function cancelTimerNotification(identifier: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+}
