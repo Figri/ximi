@@ -54,6 +54,7 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
     <View style={styles.container}>
       <TagFilter tags={allTags} selected={selectedTag} onSelect={setSelectedTag} onAddPress={onNewCardPress} />
       <FlatList
+        style={styles.list}
         data={rows}
         keyExtractor={(r) => r.card.id}
         contentContainerStyle={styles.listContent}
@@ -77,6 +78,7 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  list: { flex: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: spacing.xl * 3 },
   empty: {
     textAlign: 'center',

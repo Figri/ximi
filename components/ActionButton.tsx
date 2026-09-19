@@ -18,15 +18,17 @@ export function ActionButton({ label, status, onPress, onUndo }: ActionButtonPro
 
   const handlePress = () => {
     onPress();
-    setShowUndo(true);
     scale.setValue(0.6);
     opacity.setValue(1);
+    // 先让 ✓ 动效播完（弹出+缩放+渐隐），再切换成"撤销"按钮，
+    // 不然之前是动效一开始就立刻换成撤销按钮，动效根本没机会被看到。
     Animated.parallel([
       Animated.spring(scale, { toValue: 1.1, useNativeDriver: true, speed: 20 }),
       Animated.timing(opacity, { toValue: 0, duration: 150, delay: 250, useNativeDriver: true }),
-    ]).start();
-
-    setTimeout(() => setShowUndo(false), 4000);
+    ]).start(() => {
+      setShowUndo(true);
+      setTimeout(() => setShowUndo(false), 4000);
+    });
   };
 
   if (showUndo && onUndo) {

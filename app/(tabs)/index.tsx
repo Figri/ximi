@@ -132,6 +132,7 @@ export default function ChatScreen() {
 
       <FlatList
         ref={listRef}
+        style={styles.list}
         data={messages}
         keyExtractor={(m) => m.id}
         renderItem={({ item, index }) => {
@@ -217,6 +218,7 @@ const styles = StyleSheet.create({
   headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
   menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
+  list: { flex: 1 },
   listContent: { paddingVertical: spacing.md },
   inputBar: {
     flexDirection: 'row',
