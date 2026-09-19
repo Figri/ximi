@@ -68,13 +68,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
+    alignSelf: 'stretch',
     overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: 64,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
   },
   dot: {
     width: 8,
@@ -87,11 +88,15 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: fontSize.cardName,
+    lineHeight: fontSize.cardName + 4,
+    includeFontPadding: false,
     color: colors.textPrimary,
     fontWeight: '500',
   },
   timeLeft: {
     fontSize: fontSize.secondary,
+    lineHeight: fontSize.secondary + 4,
+    includeFontPadding: false,
     marginTop: 2,
   },
   expanded: {

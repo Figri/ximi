@@ -40,7 +40,9 @@ export function ActionButton({ label, status, onPress, onUndo }: ActionButtonPro
         }}
         style={[styles.button, styles.undoButton]}
       >
-        <Text style={styles.undoText}>˟ 撤销</Text>
+        <Text style={styles.label} numberOfLines={1}>
+          ˟ 撤销
+        </Text>
       </Pressable>
     );
   }
@@ -50,7 +52,9 @@ export function ActionButton({ label, status, onPress, onUndo }: ActionButtonPro
 
   return (
     <Pressable onPress={handlePress} style={[styles.button, { backgroundColor: bg }]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
       <Animated.Text
         style={[styles.checkmark, { transform: [{ scale }], opacity }]}
         pointerEvents="none"
@@ -63,10 +67,9 @@ export function ActionButton({ label, status, onPress, onUndo }: ActionButtonPro
 
 const styles = StyleSheet.create({
   button: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    width: 76,
+    height: 32,
     borderRadius: radius.button,
-    minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -82,10 +85,5 @@ const styles = StyleSheet.create({
   },
   undoButton: {
     backgroundColor: colors.textMuted,
-  },
-  undoText: {
-    color: '#FFFFFF',
-    fontSize: fontSize.secondary,
-    fontWeight: '600',
   },
 });
