@@ -53,20 +53,27 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
   return (
     <View style={styles.container}>
       <TagFilter tags={allTags} selected={selectedTag} onSelect={setSelectedTag} onAddPress={onNewCardPress} />
+      <Text style={styles.debug}>
+        诊断：cards={cards.length} actions={actions.length} rows={rows.length}
+      </Text>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
         {rows.length === 0 ? (
           <Text style={styles.empty}>这个标签下还没有卡片，点右上角 ＋ 新建一个吧</Text>
         ) : (
-          rows.map((item) => (
-            <Card
-              key={item.card.id}
-              card={item.card}
-              primaryAction={item.primaryAction}
-              secondaryActions={item.secondaryActions}
-              decay={item.decay}
-              onComplete={(action) => item.primaryAction && doComplete(action, item.card)}
-              onUndo={(action) => doUndo(action.id)}
-            />
+          rows.map((item, index) => (
+            <View key={item.card.id} style={styles.debugRow}>
+              <Text style={styles.debugIndex}>
+                #{index} {item.card.name} status={item.decay.status}
+              </Text>
+              <Card
+                card={item.card}
+                primaryAction={item.primaryAction}
+                secondaryActions={item.secondaryActions}
+                decay={item.decay}
+                onComplete={(action) => item.primaryAction && doComplete(action, item.card)}
+                onUndo={(action) => doUndo(action.id)}
+              />
+            </View>
           ))
         )}
       </ScrollView>
@@ -75,13 +82,30 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  list: { flex: 1 },
+  container: { flex: 1, borderWidth: 2, borderColor: 'blue' },
+  list: { flex: 1, borderWidth: 2, borderColor: 'orange' },
   listContent: { paddingTop: spacing.sm, paddingBottom: spacing.xl * 3 },
   empty: {
     textAlign: 'center',
     color: colors.textMuted,
     fontSize: fontSize.body,
     marginTop: spacing.xl,
+  },
+  debug: {
+    fontSize: 10,
+    color: '#fff',
+    backgroundColor: 'red',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  debugRow: {
+    borderWidth: 1,
+    borderColor: 'lime',
+  },
+  debugIndex: {
+    fontSize: 9,
+    color: '#fff',
+    backgroundColor: 'purple',
+    paddingHorizontal: 4,
   },
 });
