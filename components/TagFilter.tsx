@@ -1,4 +1,4 @@
-import { ScrollView, Pressable, Text, StyleSheet } from 'react-native';
+import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
 import { colors, radius, spacing, fontSize } from '../constants/theme';
 
 interface TagFilterProps {
@@ -10,17 +10,19 @@ interface TagFilterProps {
 
 export function TagFilter({ tags, selected, onSelect, onAddPress }: TagFilterProps) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-    >
-      <Chip label="全部" active={selected === null} onPress={() => onSelect(null)} />
-      {tags.map((tag) => (
-        <Chip key={tag} label={tag} active={selected === tag} onPress={() => onSelect(tag)} />
-      ))}
-      {onAddPress && <Chip label="＋" active={false} onPress={onAddPress} />}
-    </ScrollView>
+    <View style={styles.wrap}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+      >
+        <Chip label="全部" active={selected === null} onPress={() => onSelect(null)} />
+        {tags.map((tag) => (
+          <Chip key={tag} label={tag} active={selected === tag} onPress={() => onSelect(tag)} />
+        ))}
+        {onAddPress && <Chip label="＋" active={false} onPress={onAddPress} />}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -36,6 +38,9 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    height: 48,
+  },
   container: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

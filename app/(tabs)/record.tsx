@@ -26,18 +26,20 @@ export default function RecordScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.body}>
-        <ScrollView style={styles.sidebar} contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
-          {SIDEBAR_ITEMS.map((item) => (
-            <Pressable
-              key={item.key}
-              style={[styles.sidebarItem, selected === item.key && styles.sidebarItemActive]}
-              onPress={() => setSelected(item.key)}
-            >
-              <Text style={styles.sidebarEmoji}>{item.emoji}</Text>
-              <Text style={styles.sidebarLabel}>{item.key}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <View style={styles.sidebarWrap}>
+          <ScrollView style={styles.sidebar} contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
+            {SIDEBAR_ITEMS.map((item) => (
+              <Pressable
+                key={item.key}
+                style={[styles.sidebarItem, selected === item.key && styles.sidebarItemActive]}
+                onPress={() => setSelected(item.key)}
+              >
+                <Text style={styles.sidebarEmoji}>{item.emoji}</Text>
+                <Text style={styles.sidebarLabel}>{item.key}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
 
         <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
           {selected === '今日' && <TodayView refreshKey={refreshKey} />}
@@ -70,7 +72,8 @@ export default function RecordScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   body: { flex: 1, flexDirection: 'row' },
-  sidebar: { width: 64 },
+  sidebarWrap: { width: 64 },
+  sidebar: { flex: 1 },
   sidebarContent: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
   sidebarItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm },
   sidebarItemActive: { backgroundColor: colors.purpleLight, borderRadius: radius.widget },
