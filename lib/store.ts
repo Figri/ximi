@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { Action, Card } from '../types';
-import { completeAction, fetchActions, fetchCards, fetchLastCompletions, undoCompletion } from './cards';
+import type { Action, Card, Cat } from '../types';
+import { completeAction, fetchActions, fetchCards, fetchCats, fetchLastCompletions, undoCompletion } from './cards';
 
 interface CardStoreState {
   cards: Card[];
   actions: Action[];
+  cats: Cat[];
   lastCompletions: Record<string, string>; // action_id -> completed_at
   loading: boolean;
   error: string | null;
@@ -18,6 +19,7 @@ interface CardStoreState {
 export const useCardStore = create<CardStoreState>((set, get) => ({
   cards: [],
   actions: [],
+  cats: [],
   lastCompletions: {},
   lastCompletionIds: {},
   loading: false,
@@ -26,12 +28,13 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
   fetchAll: async () => {
     set({ loading: true, error: null });
     try {
-      const [cards, actions, lastCompletions] = await Promise.all([
+      const [cards, actions, cats, lastCompletions] = await Promise.all([
         fetchCards(),
         fetchActions(),
+        fetchCats(),
         fetchLastCompletions(),
       ]);
-      set({ cards, actions, lastCompletions, loading: false });
+      set({ cards, actions, cats, lastCompletions, loading: false });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err), loading: false });
     }

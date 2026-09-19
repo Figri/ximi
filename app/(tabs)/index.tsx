@@ -18,17 +18,29 @@ import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
 import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
+import { buildCardContextSummary, resolveInstruction } from '../../lib/chatInstructions';
+import { useCardStore } from '../../lib/store';
 import type { ChatMessage } from '../../types';
+
+interface Confirmation {
+  actionId: string;
+  cardName: string;
+  actionName: string;
+}
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [model, setModel] = useState<AIModel>('claude-sonnet');
+  const [confirmations, setConfirmations] = useState<Record<string, Confirmation[]>>({});
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  const { cards, actions, cats, lastCompletions, fetchAll, doComplete, doUndo } = useCardStore();
 
   useEffect(() => {
     loadHistory();
+    if (cards.length === 0) fetchAll();
   }, []);
 
   // 每次回到聊天页都重新读一下选中的模型（比如刚从设置页切换回来）
@@ -79,7 +91,8 @@ export default function ChatScreen() {
 
       const apiKey = await getApiKey(model);
       const history = [...messages, savedUser ?? userMessage].slice(-20);
-      const reply = await sendChatMessage(history, buildContextSummary(), model, apiKey);
+      const contextSummary = buildContextSummary();
+      const reply = await sendChatMessage(history, contextSummary, model, apiKey);
 
       const { data: savedAssistant } = await supabase
         .from('messages')
@@ -87,17 +100,31 @@ export default function ChatScreen() {
         .select()
         .single();
 
+      const assistantMessage: ChatMessage = savedAssistant ?? {
+        id: `local-${Date.now()}-a`,
+        role: 'assistant',
+        content: reply.text,
+        model,
+        created_at: new Date().toISOString(),
+      };
+
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== userMessage.id),
         savedUser ?? userMessage,
-        savedAssistant ?? {
-          id: `local-${Date.now()}-a`,
-          role: 'assistant',
-          content: reply.text,
-          model,
-          created_at: new Date().toISOString(),
-        },
+        assistantMessage,
       ]);
+
+      // 执行 AI 回复里携带的指令（比如"完成了 铲屎 的 铲了"），并记下确认行给这条消息展示
+      const results: Confirmation[] = [];
+      for (const instruction of reply.instructions ?? []) {
+        const resolved = resolveInstruction(instruction, cards, actions);
+        if (!resolved) continue;
+        await doComplete(resolved.action, resolved.card, { notes: instruction.notes });
+        results.push({ actionId: resolved.action.id, cardName: resolved.card.name, actionName: resolved.action.name });
+      }
+      if (results.length) {
+        setConfirmations((prev) => ({ ...prev, [assistantMessage.id]: results }));
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -113,6 +140,28 @@ export default function ChatScreen() {
       setSending(false);
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     }
+  }
+
+  function buildContextSummary(): string {
+    const now = new Date();
+    const formatted = now.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return `现在是 ${formatted}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions)}`;
+  }
+
+  function handleUndoConfirmation(messageId: string, actionId: string) {
+    doUndo(actionId);
+    setConfirmations((prev) => ({
+      ...prev,
+      [messageId]: (prev[messageId] ?? []).filter((c) => c.actionId !== actionId),
+    }));
   }
 
   return (
@@ -139,7 +188,22 @@ export default function ChatScreen() {
           const prev = index > 0 ? messages[index - 1] : null;
           const showDateDivider =
             !prev || new Date(prev.created_at).toDateString() !== new Date(item.created_at).toDateString();
-          return <ChatBubble message={item} showDateDivider={showDateDivider} />;
+          const itemConfirmations = confirmations[item.id];
+          return (
+            <View>
+              <ChatBubble message={item} showDateDivider={showDateDivider} />
+              {itemConfirmations?.map((c) => (
+                <View key={c.actionId} style={styles.confirmRow}>
+                  <Text style={styles.confirmText}>
+                    ✓ {c.cardName} 已更新（{c.actionName}）
+                  </Text>
+                  <Pressable onPress={() => handleUndoConfirmation(item.id, c.actionId)}>
+                    <Text style={styles.confirmUndo}>˟ 撤销</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          );
         }}
         contentContainerStyle={styles.listContent}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
@@ -176,20 +240,6 @@ export default function ChatScreen() {
   );
 }
 
-function buildContextSummary(): string {
-  const now = new Date();
-  const formatted = now.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return `现在是 ${formatted}。（v1 暂不注入卡片上下文，先做纯聊天）`;
-}
-
 function nextModel(current: AIModel): AIModel {
   const idx = AI_MODELS.findIndex((m) => m.id === current);
   return AI_MODELS[(idx + 1) % AI_MODELS.length].id;
@@ -220,6 +270,20 @@ const styles = StyleSheet.create({
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
   list: { flex: 1 },
   listContent: { paddingVertical: spacing.md },
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.lg,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.greenDark + '1A',
+    borderRadius: radius.widget,
+  },
+  confirmText: { fontSize: fontSize.secondary, color: colors.greenDark, flexShrink: 1 },
+  confirmUndo: { fontSize: fontSize.secondary, color: colors.textMuted, marginLeft: spacing.sm },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

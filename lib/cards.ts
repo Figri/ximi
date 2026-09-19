@@ -1,5 +1,11 @@
 import { supabase } from './supabase';
-import type { Action, Card, Completion } from '../types';
+import type { Action, Card, Cat, Completion } from '../types';
+
+export async function fetchCats(): Promise<Cat[]> {
+  const { data, error } = await supabase.from('cats').select('*').order('created_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
 
 export async function fetchCards(): Promise<Card[]> {
   const { data, error } = await supabase
