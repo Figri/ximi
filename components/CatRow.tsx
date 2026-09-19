@@ -7,22 +7,27 @@ export function CatRow({ cats }: { cats: Cat[] }) {
   if (cats.length === 0) return null;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.container}>
-      {cats.map((cat) => (
-        <Pressable key={cat.id} style={styles.item} onPress={() => router.push(`/cat/${cat.id}`)}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{cat.name.slice(0, 1)}</Text>
-          </View>
-          <Text style={styles.name} numberOfLines={1}>
-            {cat.name}
-          </Text>
-        </Pressable>
-      ))}
-    </ScrollView>
+    <View style={styles.wrap}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.container}>
+        {cats.map((cat) => (
+          <Pressable key={cat.id} style={styles.item} onPress={() => router.push(`/cat/${cat.id}`)}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{cat.name.slice(0, 1)}</Text>
+            </View>
+            <Text style={styles.name} numberOfLines={1}>
+              {cat.name}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    height: 84,
+  },
   container: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,

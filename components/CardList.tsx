@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from './Card';
 import { TagFilter } from './TagFilter';
 import { useCardStore } from '../lib/store';
@@ -14,9 +14,18 @@ interface Row {
   decay: DecayResult;
 }
 
-export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
+interface CardListProps {
+  onNewCardPress?: () => void;
+  onTagChange?: (tag: string | null) => void;
+}
+
+export function CardList({ onNewCardPress, onTagChange }: CardListProps) {
   const { cards, actions, lastCompletions, doComplete, doUndo } = useCardStore();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  useEffect(() => {
+    onTagChange?.(selectedTag);
+  }, [selectedTag, onTagChange]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();

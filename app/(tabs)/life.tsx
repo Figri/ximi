@@ -10,9 +10,12 @@ import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { useCardStore } from '../../lib/store';
 import { calculateHP, calculateMP } from '../../lib/hpmp';
 
+const CAT_TAG = '🐱猫';
+
 export default function LifeScreen() {
   const { cards, actions, cats, lastCompletions, error, fetchAll } = useCardStore();
   const [toolboxOpen, setToolboxOpen] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAll();
@@ -24,10 +27,10 @@ export default function LifeScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <HPMPBar hp={hp} mp={mp} onToolboxPress={() => setToolboxOpen((v) => !v)} />
-      <CatRow cats={cats} />
+      {selectedTag === CAT_TAG && <CatRow cats={cats} />}
       {error && <Text style={styles.error}>{error}</Text>}
       {toolboxOpen && <ToolboxGrid onClose={() => setToolboxOpen(false)} />}
-      <CardList onNewCardPress={() => router.push('/card/new')} />
+      <CardList onNewCardPress={() => router.push('/card/new')} onTagChange={setSelectedTag} />
       <Pressable style={styles.fab} onPress={() => router.push('/card/new')}>
         <Text style={styles.fabText}>＋</Text>
       </Pressable>
