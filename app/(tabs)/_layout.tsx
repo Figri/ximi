@@ -4,7 +4,7 @@ import { BlurView } from 'expo-blur';
 import { colors } from '../../constants/theme';
 
 const TAB_ICONS: Record<string, string> = {
-  chat: '💬',
+  index: '💬',
   life: '📌',
   record: '📋',
   data: '📊',
@@ -30,7 +30,7 @@ export default function TabsLayout() {
         tabBarIcon: () => <Text style={{ fontSize: 18 }}>{TAB_ICONS[route.name]}</Text>,
       })}
     >
-      <Tabs.Screen name="chat" options={{ title: '聊天' }} />
+      <Tabs.Screen name="index" options={{ title: '聊天' }} />
       <Tabs.Screen name="life" options={{ title: '生活' }} />
       <Tabs.Screen name="record" options={{ title: '记录' }} />
       <Tabs.Screen name="data" options={{ title: '数据' }} />
