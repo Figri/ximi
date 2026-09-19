@@ -19,6 +19,7 @@ import { supabase } from '../../lib/supabase';
 import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
 import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
 import { buildCardContextSummary, resolveInstruction } from '../../lib/chatInstructions';
+import { pickImage, uploadChatImage } from '../../lib/chatImages';
 import { useCardStore } from '../../lib/store';
 import type { ChatMessage } from '../../types';
 
@@ -32,6 +33,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendingImage, setSendingImage] = useState(false);
   const [model, setModel] = useState<AIModel>('claude-sonnet');
   const [confirmations, setConfirmations] = useState<Record<string, Confirmation[]>>({});
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -156,6 +158,38 @@ export default function ChatScreen() {
     return `现在是 ${formatted}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions)}`;
   }
 
+  async function handleSendImage(source: 'camera' | 'library') {
+    if (sendingImage) return;
+    setSendingImage(true);
+    try {
+      const localUri = await pickImage(source);
+      if (!localUri) return; // 取消了，或者没给权限
+
+      const imageUrl = await uploadChatImage(localUri);
+
+      const { data: saved } = await supabase
+        .from('messages')
+        .insert({ role: 'user', content: '', image_url: imageUrl })
+        .select()
+        .single();
+
+      const message: ChatMessage = saved ?? {
+        id: `local-${Date.now()}`,
+        role: 'user',
+        content: '',
+        model: null,
+        image_url: imageUrl,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, message]);
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    } catch (err) {
+      Alert.alert('发图片失败', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSendingImage(false);
+    }
+  }
+
   function handleUndoConfirmation(messageId: string, actionId: string) {
     doUndo(actionId);
     setConfirmations((prev) => ({
@@ -182,6 +216,7 @@ export default function ChatScreen() {
       <FlatList
         ref={listRef}
         style={styles.list}
+        removeClippedSubviews={false}
         data={messages}
         keyExtractor={(m) => m.id}
         renderItem={({ item, index }) => {
@@ -211,10 +246,10 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.inputBar}>
-          <Pressable style={styles.iconButton} onPress={() => Alert.alert('还没做', '拍照发消息在第二版加，先用文字跟灵说吧')}>
-            <Text style={styles.icon}>📷</Text>
+          <Pressable style={styles.iconButton} onPress={() => handleSendImage('camera')} disabled={sendingImage}>
+            {sendingImage ? <ActivityIndicator size="small" color={colors.textSecondary} /> : <Text style={styles.icon}>📷</Text>}
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => Alert.alert('还没做', '发图片在第二版加，先用文字跟灵说吧')}>
+          <Pressable style={styles.iconButton} onPress={() => handleSendImage('library')} disabled={sendingImage}>
             <Text style={styles.icon}>🖼</Text>
           </Pressable>
           <TextInput

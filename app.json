@@ -48,6 +48,13 @@
           "icon": "./assets/icon.png",
           "color": "#8E73B3"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "西米OS 需要访问相册才能在聊天里发图片。",
+          "cameraPermission": "西米OS 需要用相机才能在聊天里拍照发送。"
+        }
       ]
     ],
     "experiments": {

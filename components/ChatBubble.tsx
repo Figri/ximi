@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
 import type { ChatMessage } from '../types';
 
@@ -31,9 +31,12 @@ export function ChatBubble({ message, showDateDivider }: ChatBubbleProps) {
       )}
       <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
         <View style={isUser ? styles.columnUser : styles.columnAssistant}>
-          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
-            <Text style={[styles.text, isUser && styles.textUser]}>{message.content}</Text>
-          </View>
+          {message.image_url && <Image source={{ uri: message.image_url }} style={styles.image} />}
+          {!!message.content && (
+            <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+              <Text style={[styles.text, isUser && styles.textUser]}>{message.content}</Text>
+            </View>
+          )}
           <Text style={[styles.time, isUser ? styles.timeUser : styles.timeAssistant]}>
             {formatTime(message.created_at)}
           </Text>
@@ -65,6 +68,12 @@ const styles = StyleSheet.create({
   rowAssistant: { justifyContent: 'flex-start' },
   columnUser: { maxWidth: '80%', alignItems: 'flex-end' },
   columnAssistant: { maxWidth: '80%', alignItems: 'flex-start' },
+  image: {
+    width: 180,
+    height: 180,
+    borderRadius: radius.card,
+    marginBottom: 4,
+  },
   bubble: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

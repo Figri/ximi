@@ -58,6 +58,7 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
         data={rows}
         keyExtractor={(r) => r.card.id}
         contentContainerStyle={styles.listContent}
+        removeClippedSubviews={false}
         renderItem={({ item }) => (
           <Card
             card={item.card}

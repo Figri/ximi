@@ -150,6 +150,7 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   model: string | null;
+  image_url?: string | null;
   created_at: string;
 }
 
