@@ -1,4 +1,4 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import { Card } from './Card';
 import { TagFilter } from './TagFilter';
@@ -53,26 +53,23 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
   return (
     <View style={styles.container}>
       <TagFilter tags={allTags} selected={selectedTag} onSelect={setSelectedTag} onAddPress={onNewCardPress} />
-      <FlatList
-        style={styles.list}
-        data={rows}
-        keyExtractor={(r) => r.card.id}
-        contentContainerStyle={styles.listContent}
-        removeClippedSubviews={false}
-        renderItem={({ item }) => (
-          <Card
-            card={item.card}
-            primaryAction={item.primaryAction}
-            secondaryActions={item.secondaryActions}
-            decay={item.decay}
-            onComplete={(action) => item.primaryAction && doComplete(action, item.card)}
-            onUndo={(action) => doUndo(action.id)}
-          />
-        )}
-        ListEmptyComponent={
+      <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+        {rows.length === 0 ? (
           <Text style={styles.empty}>这个标签下还没有卡片，点右上角 ＋ 新建一个吧</Text>
-        }
-      />
+        ) : (
+          rows.map((item) => (
+            <Card
+              key={item.card.id}
+              card={item.card}
+              primaryAction={item.primaryAction}
+              secondaryActions={item.secondaryActions}
+              decay={item.decay}
+              onComplete={(action) => item.primaryAction && doComplete(action, item.card)}
+              onUndo={(action) => doUndo(action.id)}
+            />
+          ))
+        )}
+      </ScrollView>
     </View>
   );
 }
