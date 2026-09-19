@@ -1,17 +1,14 @@
 import type { AIInstruction, AIReply, ChatMessage } from '../types';
 
-// 支持的模型（可在聊天页切换）
-export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-flash';
+// 支持的模型（可在聊天页 ⋯ 设置里切换、填各家的 key）
+export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-flash' | 'deepseek-chat';
 
-export const AI_MODELS: { id: AIModel; label: string }[] = [
-  { id: 'claude-sonnet', label: 'Claude' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'gemini-flash', label: 'Gemini' },
+export const AI_MODELS: { id: AIModel; label: string; keyHint: string }[] = [
+  { id: 'claude-sonnet', label: 'Claude', keyHint: 'sk-ant-...（console.anthropic.com）' },
+  { id: 'gpt-4o', label: 'GPT-4o', keyHint: 'sk-...（platform.openai.com）' },
+  { id: 'gemini-flash', label: 'Gemini', keyHint: 'AIza...（aistudio.google.com/apikey）' },
+  { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）' },
 ];
-
-// 注意：这是单用户个人 APP，为了简化直接在客户端持有 API Key（EXPO_PUBLIC_AI_API_KEY）。
-// 如果以后要给别人用，务必换成经过后端代理的调用方式，不要把 key 打进 APP 包里。
-const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY ?? '';
 
 const SYSTEM_PROMPT_PREFIX = `你是"灵"，西米的私人生活助手，住在她的西米OS APP里。
 你的语气温暖、亲近，像认识很久的朋友，不是冷冰冰的工具。
@@ -44,12 +41,12 @@ function parseInstructions(raw: string): { text: string; instructions: AIInstruc
   }
 }
 
-async function callAnthropic(messages: ChatMessage[], system: string): Promise<string> {
+async function callAnthropic(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': AI_API_KEY,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
@@ -64,26 +61,34 @@ async function callAnthropic(messages: ChatMessage[], system: string): Promise<s
   return data.content?.[0]?.text ?? '';
 }
 
-async function callOpenAI(messages: ChatMessage[], system: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+/** OpenAI 和 DeepSeek 用的都是 chat/completions 这套格式，公用一个实现 */
+async function callOpenAICompatible(
+  baseUrl: string,
+  model: string,
+  messages: ChatMessage[],
+  system: string,
+  apiKey: string,
+  errorLabel: string
+): Promise<string> {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${AI_API_KEY}`,
+      authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model,
       messages: [{ role: 'system', content: system }, ...messages.map((m) => ({ role: m.role, content: m.content }))],
     }),
   });
-  if (!res.ok) throw new Error(`OpenAI API 错误: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`${errorLabel} API 错误: ${res.status} ${await res.text()}`);
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? '';
 }
 
-async function callGemini(messages: ChatMessage[], system: string): Promise<string> {
+async function callGemini(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -104,21 +109,37 @@ async function callGemini(messages: ChatMessage[], system: string): Promise<stri
 export async function sendChatMessage(
   messages: ChatMessage[],
   contextSummary: string,
-  model: AIModel = 'claude-sonnet'
+  model: AIModel,
+  apiKey: string | null
 ): Promise<AIReply> {
+  if (!apiKey) {
+    const label = AI_MODELS.find((m) => m.id === model)?.label ?? model;
+    throw new Error(`还没有设置 ${label} 的 API Key，去聊天页右上角 ⋯ → 设置里填一下`);
+  }
+
   const system = buildSystemPrompt(contextSummary);
 
   let raw: string;
   switch (model) {
     case 'gpt-4o':
-      raw = await callOpenAI(messages, system);
+      raw = await callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI');
+      break;
+    case 'deepseek-chat':
+      raw = await callOpenAICompatible(
+        'https://api.deepseek.com',
+        'deepseek-chat',
+        messages,
+        system,
+        apiKey,
+        'DeepSeek'
+      );
       break;
     case 'gemini-flash':
-      raw = await callGemini(messages, system);
+      raw = await callGemini(messages, system, apiKey);
       break;
     case 'claude-sonnet':
     default:
-      raw = await callAnthropic(messages, system);
+      raw = await callAnthropic(messages, system, apiKey);
       break;
   }
 

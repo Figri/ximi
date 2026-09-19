@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,10 +11,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useFocusEffect } from 'expo-router';
 import { ChatBubble } from '../../components/ChatBubble';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
+import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
 import type { ChatMessage } from '../../types';
 
 export default function ChatScreen() {
@@ -28,6 +30,15 @@ export default function ChatScreen() {
     loadHistory();
   }, []);
 
+  // 每次回到聊天页都重新读一下选中的模型（比如刚从设置页切换回来）
+  useFocusEffect(
+    useCallback(() => {
+      getSelectedModel().then((m) => {
+        if (m) setModel(m);
+      });
+    }, [])
+  );
+
   async function loadHistory() {
     const { data } = await supabase
       .from('messages')
@@ -35,6 +46,12 @@ export default function ChatScreen() {
       .order('created_at', { ascending: true })
       .limit(200);
     if (data) setMessages(data);
+  }
+
+  async function handleModelCycle() {
+    const next = nextModel(model);
+    setModel(next);
+    await setSelectedModel(next);
   }
 
   async function handleSend() {
@@ -59,8 +76,9 @@ export default function ChatScreen() {
         .select()
         .single();
 
+      const apiKey = await getApiKey(model);
       const history = [...messages, savedUser ?? userMessage].slice(-20);
-      const reply = await sendChatMessage(history, '（v1 暂不注入卡片上下文，先做纯聊天）', model);
+      const reply = await sendChatMessage(history, '（v1 暂不注入卡片上下文，先做纯聊天）', model, apiKey);
 
       const { data: savedAssistant } = await supabase
         .from('messages')
@@ -102,10 +120,13 @@ export default function ChatScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>灵</Text>
         </View>
-        <View>
+        <View style={styles.headerNameBlock}>
           <Text style={styles.headerName}>灵</Text>
           <Text style={styles.headerStatus}>在线</Text>
         </View>
+        <Pressable style={styles.menuButton} onPress={() => router.push('/settings')}>
+          <Text style={styles.menuButtonText}>⋯</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -133,10 +154,7 @@ export default function ChatScreen() {
             placeholderTextColor={colors.textMuted}
             multiline
           />
-          <Pressable
-            onPress={() => setModel(nextModel(model))}
-            style={styles.modelTag}
-          >
+          <Pressable onPress={handleModelCycle} style={styles.modelTag}>
             <Text style={styles.modelTagText}>{AI_MODELS.find((m) => m.id === model)?.label}</Text>
           </Pressable>
           <Pressable onPress={handleSend} style={styles.sendButton} disabled={sending}>
@@ -171,8 +189,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: fontSize.body, color: colors.textPrimary, fontWeight: '600' },
+  headerNameBlock: { flex: 1 },
   headerName: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '600' },
   headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
+  menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
   listContent: { paddingVertical: spacing.md, paddingBottom: 100 },
   inputBar: {
     flexDirection: 'row',

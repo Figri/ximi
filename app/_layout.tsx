@@ -29,6 +29,16 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
+          <Stack.Screen
+            name="settings"
+            options={{
+              headerShown: true,
+              title: '设置',
+              presentation: 'modal',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.textPrimary,
+            }}
+          />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
