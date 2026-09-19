@@ -93,6 +93,12 @@ export type TimelineCategory =
   | 'play'
   | 'cat'
   | 'exercise'
+  | 'body'
+  | 'emotion'
+  | 'plan'
+  | 'dream'
+  | 'intimate'
+  | 'diary'
   | 'other';
 export type TimelineSource = 'manual' | 'chat' | 'screen_time';
 

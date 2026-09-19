@@ -109,6 +109,25 @@ async function callGemini(messages: ChatMessage[], system: string, apiKey: strin
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
+async function callModel(
+  model: AIModel,
+  messages: ChatMessage[],
+  system: string,
+  apiKey: string
+): Promise<string> {
+  switch (model) {
+    case 'gpt-4o':
+      return callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI');
+    case 'deepseek-chat':
+      return callOpenAICompatible('https://api.deepseek.com', 'deepseek-chat', messages, system, apiKey, 'DeepSeek');
+    case 'gemini-flash':
+      return callGemini(messages, system, apiKey);
+    case 'claude-sonnet':
+    default:
+      return callAnthropic(messages, system, apiKey);
+  }
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
   contextSummary: string,
@@ -121,31 +140,31 @@ export async function sendChatMessage(
   }
 
   const system = buildSystemPrompt(contextSummary);
-
-  let raw: string;
-  switch (model) {
-    case 'gpt-4o':
-      raw = await callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI');
-      break;
-    case 'deepseek-chat':
-      raw = await callOpenAICompatible(
-        'https://api.deepseek.com',
-        'deepseek-chat',
-        messages,
-        system,
-        apiKey,
-        'DeepSeek'
-      );
-      break;
-    case 'gemini-flash':
-      raw = await callGemini(messages, system, apiKey);
-      break;
-    case 'claude-sonnet':
-    default:
-      raw = await callAnthropic(messages, system, apiKey);
-      break;
-  }
-
+  const raw = await callModel(model, messages, system, apiKey);
   const { text, instructions } = parseInstructions(raw);
   return { text, instructions };
+}
+
+/**
+ * 通用的一次性 AI 调用：给一段系统提示 + 一段用户内容，拿纯文本回复。
+ * 给"每日总结"这种不是聊天、但也要调用 AI 的场景用。
+ */
+export async function callAIOnce(
+  systemPrompt: string,
+  userPrompt: string,
+  model: AIModel,
+  apiKey: string | null
+): Promise<string> {
+  if (!apiKey) {
+    const label = AI_MODELS.find((m) => m.id === model)?.label ?? model;
+    throw new Error(`还没有设置 ${label} 的 API Key`);
+  }
+  const fakeMessage: ChatMessage = {
+    id: 'once',
+    role: 'user',
+    content: userPrompt,
+    model: null,
+    created_at: new Date().toISOString(),
+  };
+  return callModel(model, [fakeMessage], systemPrompt, apiKey);
 }
