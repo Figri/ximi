@@ -33,6 +33,7 @@ types/index.ts       # 和数据库表一一对应的 TS 类型
 supabase/
   schema.sql        # 建表 SQL
   seed.sql          # 预设数据（猫、卡片、标签）
+  split/            # schema.sql / seed.sql 按 <100 行拆好的分段版本
 ```
 
 ## 第一次跑起来
@@ -40,7 +41,9 @@ supabase/
 ### 1. 建 Supabase 项目
 
 1. 去 [supabase.com](https://supabase.com) 建一个新项目
-2. 打开 SQL Editor，依次运行 `supabase/schema.sql` 和 `supabase/seed.sql`
+2. 打开 SQL Editor，运行 `supabase/schema.sql`，再运行 `supabase/seed.sql`
+   - 如果复制粘贴的地方（比如 GitHub 网页、某些剪贴板工具）一次只能拿到 100 行左右，改用 `supabase/split/` 目录下拆好的分段文件，按文件名顺序（`schema_1_of_3.sql` → `schema_2_of_3.sql` → `schema_3_of_3.sql`，然后 `seed_1_of_2.sql` → `seed_2_of_2.sql`）一段段跑，已经在本地 Postgres 里验证过整个流程没问题
+   - 更省心的办法是用 `psql "你的连接串" -f supabase/schema.sql` 直接跑文件，完全不用复制粘贴
 3. 项目设置里拿到 `Project URL` 和 `anon public key`
 
 ### 2. 配环境变量
