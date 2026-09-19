@@ -49,8 +49,11 @@ jobs:
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
+          # workflow_dispatch 手动触发时 github.event.head_commit 不存在，
+          # COMMIT_MESSAGE 会是空字符串，这时候退回读本地最新一条 commit message。
+          MESSAGE="${COMMIT_MESSAGE:-$(git log -1 --pretty=%s)}"
           eas update \
             --branch "${{ steps.channel.outputs.name }}" \
-            --message "$COMMIT_MESSAGE" \
+            --message "$MESSAGE" \
             --platform android \
             --non-interactive
