@@ -1,0 +1,38 @@
+name: EAS 构建 APK
+
+# 手动触发：跑完先去 eas-setup.yml 那个（只用跑一次）。
+# 产出一个能装到安卓手机上的 APK 下载链接（在这次运行的日志里，或者去 expo.dev 项目页看）。
+# 以后日常改代码不用跑这个，只有涉及原生模块的改动（比如加新的原生权限）才需要重新构建。
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: '用 eas.json 里的哪个 build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 装依赖
+        run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: eas build（云端构建，等它跑完）
+        run: eas build -p android --profile ${{ inputs.profile }} --non-interactive

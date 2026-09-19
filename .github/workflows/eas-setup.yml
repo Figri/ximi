@@ -1,0 +1,45 @@
+name: EAS 一次性初始化
+
+# 手动触发一次就行：把这个仓库跟你 expo.dev 账号下的 EAS 项目关联起来，
+# 顺手把 app.json 里的 updates.url 从占位符换成真的项目地址，再自动提交回这个分支。
+# 跑完这个之后，eas-build.yml 和 eas-update.yml 才有意义。
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 装依赖
+        run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: eas init（创建/关联 EAS 项目，会自动改 app.json 的 extra.eas.projectId）
+        run: eas init --non-interactive --force
+
+      - name: eas update:configure（把 updates.url 配成真的项目地址）
+        run: eas update:configure --non-interactive
+
+      - name: 把改动提交回这个分支
+        run: |
+          git config user.name "eas-setup-bot"
+          git config user.email "actions@github.com"
+          if git diff --quiet; then
+            echo "app.json 没有变化，可能已经配置过了"
+          else
+            git add app.json
+            git commit -m "eas init: 关联 EAS 项目、配置 updates.url"
+            git push
+          fi

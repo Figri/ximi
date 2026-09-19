@@ -1,0 +1,54 @@
+name: EAS 自动发布更新
+
+# 每次往这个分支推代码，自动发一次 OTA 更新，装了 APP 的手机下次打开自动拉到最新。
+# 只更新 JS/资源，不涉及原生代码改动（加新原生模块还是要走 eas-build.yml 重新装一次）。
+on:
+  push:
+    branches:
+      - claude/clever-einstein-4j55to
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '.github/workflows/**'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 装依赖
+        run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 分支 -> channel（main 走 production，其它都走 preview）
+        id: channel
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "name=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=preview" >> "$GITHUB_OUTPUT"
+          fi
+
+      # eas update 是在这台 CI 机器上本地打包 JS 的（不像 eas build 在 EAS 云端跑），
+      # 所以 EXPO_PUBLIC_SUPABASE_URL 这些要打进包里的变量，得先从 EAS 的
+      # Environment Variables 拉下来，不然打出来的更新包连不上 Supabase。
+      - name: 拉取这个 environment 的环境变量
+        run: eas env:pull --environment "${{ steps.channel.outputs.name }}"
+
+      - name: eas update（发布 OTA）
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          eas update \
+            --branch "${{ steps.channel.outputs.name }}" \
+            --message "$COMMIT_MESSAGE" \
+            --non-interactive
