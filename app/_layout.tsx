@@ -30,6 +30,16 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="cat/[id]"
+            options={{
+              headerShown: true,
+              title: '',
+              presentation: 'card',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.textPrimary,
+            }}
+          />
+          <Stack.Screen
             name="settings"
             options={{
               headerShown: true,

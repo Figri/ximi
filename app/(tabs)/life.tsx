@@ -4,13 +4,14 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HPMPBar } from '../../components/HPMPBar';
 import { CardList } from '../../components/CardList';
+import { CatRow } from '../../components/CatRow';
 import { ToolboxGrid } from '../../components/ToolboxSheet';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { useCardStore } from '../../lib/store';
 import { calculateHP, calculateMP } from '../../lib/hpmp';
 
 export default function LifeScreen() {
-  const { cards, actions, lastCompletions, error, fetchAll } = useCardStore();
+  const { cards, actions, cats, lastCompletions, error, fetchAll } = useCardStore();
   const [toolboxOpen, setToolboxOpen] = useState(false);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function LifeScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <HPMPBar hp={hp} mp={mp} onToolboxPress={() => setToolboxOpen((v) => !v)} />
+      <CatRow cats={cats} />
       {error && <Text style={styles.error}>{error}</Text>}
       {toolboxOpen && <ToolboxGrid onClose={() => setToolboxOpen(false)} />}
       <CardList onNewCardPress={() => router.push('/card/new')} />
