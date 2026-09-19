@@ -31,8 +31,6 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "NOTIFICATIONS",
-        "PACKAGE_USAGE_STATS",
-        "NOTIFICATIONS",
         "PACKAGE_USAGE_STATS"
       ]
     },
