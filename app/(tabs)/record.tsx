@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 
@@ -17,6 +18,8 @@ const CATEGORIES = [
 ];
 
 export default function RecordScreen() {
+  const [selected, setSelected] = useState('今日');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.body}>
@@ -25,16 +28,20 @@ export default function RecordScreen() {
           contentContainerStyle={styles.sidebarContent}
           showsVerticalScrollIndicator={false}
         >
-          {CATEGORIES.map((c, i) => (
-            <View key={c.label} style={[styles.sidebarItem, i === 0 && styles.sidebarItemActive]}>
+          {CATEGORIES.map((c) => (
+            <Pressable
+              key={c.label}
+              style={[styles.sidebarItem, selected === c.label && styles.sidebarItemActive]}
+              onPress={() => setSelected(c.label)}
+            >
               <Text style={styles.sidebarEmoji}>{c.emoji}</Text>
               <Text style={styles.sidebarLabel}>{c.label}</Text>
-            </View>
+            </Pressable>
           ))}
         </ScrollView>
         <View style={styles.content}>
           <Text style={styles.placeholderEmoji}>📋</Text>
-          <Text style={styles.placeholderTitle}>记录 · 施工中</Text>
+          <Text style={styles.placeholderTitle}>{selected} · 施工中</Text>
           <Text style={styles.placeholderText}>
             24h 时间轴、AI每日总结、收藏、烦恼、日记会在第二/三版加上。{'\n'}
             现在可以先在 📌 生活 里把日常打卡跑起来。
@@ -52,8 +59,14 @@ const styles = StyleSheet.create({
   sidebarContent: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
   sidebarItem: { alignItems: 'center', paddingVertical: spacing.sm },
   sidebarItemActive: { backgroundColor: colors.purpleLight, borderRadius: radius.widget },
-  sidebarEmoji: { fontSize: 18 },
-  sidebarLabel: { fontSize: fontSize.tiny, color: colors.textSecondary, marginTop: 2 },
+  sidebarEmoji: { fontSize: 18, lineHeight: 22, includeFontPadding: false },
+  sidebarLabel: {
+    fontSize: fontSize.tiny,
+    lineHeight: fontSize.tiny + 2,
+    color: colors.textSecondary,
+    marginTop: 2,
+    includeFontPadding: false,
+  },
   content: {
     flex: 1,
     backgroundColor: colors.card,

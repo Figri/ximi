@@ -40,6 +40,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+    alignItems: 'center',
   },
   chip: {
     paddingHorizontal: spacing.md,
@@ -47,13 +48,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.button,
     backgroundColor: colors.card,
     marginRight: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipActive: {
     backgroundColor: colors.purple,
   },
   chipText: {
     fontSize: fontSize.body,
+    lineHeight: fontSize.body + 2,
     color: colors.textSecondary,
+    includeFontPadding: false,
   },
   chipTextActive: {
     color: colors.textPrimary,

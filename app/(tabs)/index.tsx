@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -78,7 +79,7 @@ export default function ChatScreen() {
 
       const apiKey = await getApiKey(model);
       const history = [...messages, savedUser ?? userMessage].slice(-20);
-      const reply = await sendChatMessage(history, '（v1 暂不注入卡片上下文，先做纯聊天）', model, apiKey);
+      const reply = await sendChatMessage(history, buildContextSummary(), model, apiKey);
 
       const { data: savedAssistant } = await supabase
         .from('messages')
@@ -133,17 +134,22 @@ export default function ChatScreen() {
         ref={listRef}
         data={messages}
         keyExtractor={(m) => m.id}
-        renderItem={({ item }) => <ChatBubble message={item} />}
+        renderItem={({ item, index }) => {
+          const prev = index > 0 ? messages[index - 1] : null;
+          const showDateDivider =
+            !prev || new Date(prev.created_at).toDateString() !== new Date(item.created_at).toDateString();
+          return <ChatBubble message={item} showDateDivider={showDateDivider} />;
+        }}
         contentContainerStyle={styles.listContent}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.inputBar}>
-          <Pressable style={styles.iconButton}>
+          <Pressable style={styles.iconButton} onPress={() => Alert.alert('还没做', '拍照发消息在第二版加，先用文字跟灵说吧')}>
             <Text style={styles.icon}>📷</Text>
           </Pressable>
-          <Pressable style={styles.iconButton}>
+          <Pressable style={styles.iconButton} onPress={() => Alert.alert('还没做', '发图片在第二版加，先用文字跟灵说吧')}>
             <Text style={styles.icon}>🖼</Text>
           </Pressable>
           <TextInput
@@ -153,6 +159,9 @@ export default function ChatScreen() {
             placeholder="跟灵说点什么…"
             placeholderTextColor={colors.textMuted}
             multiline
+            textAlignVertical="top"
+            cursorColor={colors.purpleDark}
+            selectionColor={colors.purple}
           />
           <Pressable onPress={handleModelCycle} style={styles.modelTag}>
             <Text style={styles.modelTagText}>{AI_MODELS.find((m) => m.id === model)?.label}</Text>
@@ -164,6 +173,20 @@ export default function ChatScreen() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function buildContextSummary(): string {
+  const now = new Date();
+  const formatted = now.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `现在是 ${formatted}。（v1 暂不注入卡片上下文，先做纯聊天）`;
 }
 
 function nextModel(current: AIModel): AIModel {
@@ -211,10 +234,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: fontSize.body,
+    lineHeight: fontSize.body + 6,
     color: colors.textPrimary,
+    minHeight: 36,
     maxHeight: 100,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
+    includeFontPadding: false,
   },
   modelTag: {
     paddingHorizontal: spacing.xs,

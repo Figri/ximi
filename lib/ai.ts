@@ -21,7 +21,10 @@ const SYSTEM_PROMPT_PREFIX = `你是"灵"，西米的私人生活助手，住在
 {"instructions":[{"action":"complete","card":"卡片名","actionName":"动作名"}]}
 \`\`\`
 
-下面是西米当前的卡片/猫咪状态，供你参考：
+下面第一行会告诉你现在的真实日期和时间，回复的时候如果涉及"现在几点""今天""晚安"之类的话，
+按这个时间来说，不要凭感觉瞎猜时间。
+
+下面是当前时间和卡片/猫咪状态，供你参考：
 `;
 
 function buildSystemPrompt(contextSummary: string): string {

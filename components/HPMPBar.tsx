@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  meterEmoji: { fontSize: 14 },
+  meterEmoji: { fontSize: 14, lineHeight: 18, includeFontPadding: false },
   track: {
     flex: 1,
     height: 6,
@@ -69,5 +69,5 @@ const styles = StyleSheet.create({
   toolbox: {
     padding: spacing.xs,
   },
-  toolboxEmoji: { fontSize: 18 },
+  toolboxEmoji: { fontSize: 18, lineHeight: 22, includeFontPadding: false },
 });

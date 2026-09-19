@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HPMPBar } from '../../components/HPMPBar';
@@ -39,7 +39,14 @@ function Toolbox({ onClose }: { onClose: () => void }) {
   return (
     <View style={styles.toolboxSheet}>
       {items.map((item) => (
-        <Pressable key={item.label} style={styles.toolboxItem} onPress={onClose}>
+        <Pressable
+          key={item.label}
+          style={styles.toolboxItem}
+          onPress={() => {
+            Alert.alert('还没做', `「${item.label}」功能第二版加，敬请期待`);
+            onClose();
+          }}
+        >
           <Text style={styles.toolboxEmoji}>{item.emoji}</Text>
           <Text style={styles.toolboxLabel}>{item.label}</Text>
         </Pressable>
@@ -82,7 +89,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  toolboxItem: { alignItems: 'center', width: 64 },
-  toolboxEmoji: { fontSize: 22, marginBottom: 4 },
-  toolboxLabel: { fontSize: fontSize.tiny, color: colors.textSecondary },
+  toolboxItem: { alignItems: 'center', justifyContent: 'center', width: 64 },
+  toolboxEmoji: { fontSize: 22, lineHeight: 26, marginBottom: 4, includeFontPadding: false },
+  toolboxLabel: {
+    fontSize: fontSize.tiny,
+    lineHeight: fontSize.tiny + 2,
+    color: colors.textSecondary,
+    includeFontPadding: false,
+  },
 });
