@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { colors } from '../../constants/theme';
 
 const TAB_ICONS: Record<string, string> = {
@@ -19,14 +18,10 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontSize: 11 },
         tabBarStyle: {
-          backgroundColor: 'transparent',
+          backgroundColor: colors.card,
           borderTopWidth: 0,
-          position: 'absolute',
-          elevation: 0,
+          elevation: 8,
         },
-        tabBarBackground: () => (
-          <BlurView intensity={60} tint="light" style={{ flex: 1 }} />
-        ),
         tabBarIcon: () => <Text style={{ fontSize: 18 }}>{TAB_ICONS[route.name]}</Text>,
       })}
     >

@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
   menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
-  listContent: { paddingVertical: spacing.md, paddingBottom: 100 },
+  listContent: { paddingVertical: spacing.md },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

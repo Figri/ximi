@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: spacing.lg,
-    bottom: spacing.xl + 60,
+    bottom: spacing.lg,
     width: 52,
     height: 52,
     borderRadius: radius.avatar,

@@ -77,7 +77,7 @@ export function CardList({ onNewCardPress }: { onNewCardPress?: () => void }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: spacing.xl * 3 },
   empty: {
     textAlign: 'center',
     color: colors.textMuted,
