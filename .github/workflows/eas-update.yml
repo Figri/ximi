@@ -51,4 +51,5 @@ jobs:
           eas update \
             --branch "${{ steps.channel.outputs.name }}" \
             --message "$COMMIT_MESSAGE" \
+            --platform android \
             --non-interactive
