@@ -1,15 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Updates from 'expo-updates';
 import { AI_MODELS, type AIModel } from '../lib/ai';
 import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } from '../lib/aiSettings';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
+
+function shortId(id: string | null) {
+  if (!id) return '无（当前是安装包自带版本）';
+  return id.slice(0, 8);
+}
+
+function formatTime(date: Date | null) {
+  if (!date) return '未知';
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
 
 export default function SettingsScreen() {
   const [selected, setSelected] = useState<AIModel>('claude-sonnet');
   const [savedKeys, setSavedKeys] = useState<Partial<Record<AIModel, string>>>({});
   const [drafts, setDrafts] = useState<Partial<Record<AIModel, string>>>({});
   const [expanded, setExpanded] = useState<AIModel | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     load();
@@ -36,6 +48,27 @@ export default function SettingsScreen() {
     await load();
     setExpanded(null);
     setDrafts((prev) => ({ ...prev, [model]: '' }));
+  }
+
+  async function handleCheckUpdate() {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (!result.isAvailable) {
+        Alert.alert('已是最新版本', '没有可用的新更新');
+        return;
+      }
+      await Updates.fetchUpdateAsync();
+      Alert.alert('更新已下载', '现在重启应用来应用新版本', [
+        { text: '稍后', style: 'cancel' },
+        { text: '立即重启', onPress: () => Updates.reloadAsync() },
+      ]);
+    } catch (err) {
+      Alert.alert('检查更新失败', err instanceof Error ? err.message : String(err));
+    } finally {
+      setChecking(false);
+    }
   }
 
   function handleClearKey(model: AIModel) {
@@ -111,6 +144,38 @@ export default function SettingsScreen() {
             </View>
           );
         })}
+
+        <Text style={[styles.label, { marginTop: spacing.lg }]}>版本信息</Text>
+        <View style={styles.versionCard}>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionKey}>更新 ID</Text>
+            <Text style={styles.versionValue}>{shortId(Updates.updateId)}</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionKey}>更新时间</Text>
+            <Text style={styles.versionValue}>{formatTime(Updates.createdAt)}</Text>
+          </View>
+          <View style={styles.versionRow}>
+            <Text style={styles.versionKey}>发布渠道</Text>
+            <Text style={styles.versionValue}>{Updates.channel ?? '未知'}</Text>
+          </View>
+          {Updates.isEmbeddedLaunch && (
+            <Text style={styles.versionWarning}>
+              ⚠️ 当前运行的是安装包自带版本，还没有应用过任何 OTA 更新
+            </Text>
+          )}
+          <Pressable
+            style={styles.checkButton}
+            onPress={handleCheckUpdate}
+            disabled={checking}
+          >
+            {checking ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.checkButtonText}>检查更新</Text>
+            )}
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -193,4 +258,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.purpleDark,
   },
   saveButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
+  versionCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  versionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  versionKey: { fontSize: fontSize.secondary, color: colors.textMuted },
+  versionValue: { fontSize: fontSize.secondary, color: colors.textPrimary, fontWeight: '600' },
+  versionWarning: {
+    fontSize: fontSize.secondary,
+    color: colors.redDark,
+    lineHeight: 18,
+  },
+  checkButton: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.purpleDark,
+    borderRadius: radius.widget,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  checkButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
 });
