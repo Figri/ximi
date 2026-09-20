@@ -3,29 +3,41 @@ import { Platform } from 'react-native';
 import type { Action, Card } from '../types';
 import { getActionDecay } from './decay';
 
+const TIMER_IDENTIFIER_PREFIX = 'ximi-timer-';
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const isTimer = notification.request.identifier.startsWith(TIMER_IDENTIFIER_PREFIX);
+    return {
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: isTimer, // 计时器完成要响铃，日常提醒不用吵
+      shouldSetBadge: false,
+    };
+  },
 });
 
+async function ensureAndroidChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('ximi-default', {
+    name: '西米OS 日常提醒',
+    importance: Notifications.AndroidImportance.DEFAULT,
+  });
+  await Notifications.setNotificationChannelAsync('ximi-timer', {
+    name: '西米OS 计时器',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
+  });
+}
+
 export async function ensureNotificationPermission(): Promise<boolean> {
+  await ensureAndroidChannels();
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
 
   const requested = await Notifications.requestPermissionsAsync();
-  if (requested.granted) return true;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('ximi-default', {
-      name: '西米OS 提醒',
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
-  return false;
+  return requested.granted;
 }
 
 const notificationIdKey = (actionId: string) => `ximi-action-${actionId}`;
@@ -61,12 +73,17 @@ export async function cancelActionNotification(actionId: string): Promise<void> 
   await Notifications.cancelScheduledNotificationAsync(notificationIdKey(actionId)).catch(() => {});
 }
 
-/** 工具箱计时器用：N 秒后本地提醒一次，返回 identifier 方便中途取消 */
+/** 工具箱计时器用：N 秒后本地提醒一次（响铃+震动），返回 identifier 方便中途取消 */
 export async function scheduleTimerNotification(label: string, seconds: number): Promise<string> {
-  const identifier = `ximi-timer-${Date.now()}`;
+  const identifier = `${TIMER_IDENTIFIER_PREFIX}${Date.now()}`;
   await Notifications.scheduleNotificationAsync({
     identifier,
-    content: { title: '计时到了', body: label },
+    content: {
+      title: '⏱ 计时到了',
+      body: label,
+      sound: 'default',
+      ...(Platform.OS === 'android' ? { channelId: 'ximi-timer' } : {}),
+    },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
