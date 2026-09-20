@@ -64,22 +64,18 @@ function SheetTitle({ children }: { children: string }) {
   return <Text style={styles.sheetTitle}>{children}</Text>;
 }
 
-type WeighMode = 'alone' | 'held';
-
 function WeightTool({ onDone }: { onDone: () => void }) {
   const cats = useCardStore((s) => s.cats);
   const [myWeight, setMyWeight] = useState('');
   const [myLast, setMyLast] = useState<{ kg: number; date: string } | null>(null);
   const [savingMy, setSavingMy] = useState(false);
 
-  const [mode, setMode] = useState<WeighMode>('alone');
-  const [catInputs, setCatInputs] = useState<Record<string, string>>({});
-  const [catLast, setCatLast] = useState<Record<string, { value: number; date: string }>>({});
+  const [aloneInputs, setAloneInputs] = useState<Record<string, string>>({});
+  const [heldInputs, setHeldInputs] = useState<Record<string, string>>({});
   const [savingAll, setSavingAll] = useState(false);
 
   useEffect(() => {
     fetchLastWeight().then(setMyLast).catch(() => {});
-    fetchLastCatWeights(cats.map((c) => c.id)).then(setCatLast).catch(() => {});
   }, []);
 
   async function handleSaveMy() {
@@ -100,25 +96,32 @@ function WeightTool({ onDone }: { onDone: () => void }) {
   }
 
   async function handleSaveAll() {
-    const filled = cats.filter((c) => catInputs[c.id]?.trim());
-    if (filled.length === 0) {
-      Alert.alert('还没填猫的体重', '至少填一只猫');
+    const myRef = myWeight ? Number(myWeight) : myLast?.kg ?? null;
+    const hasHeld = cats.some((c) => heldInputs[c.id]?.trim());
+    if (hasHeld && !myRef) {
+      Alert.alert('先填我的体重', '抱着称需要先知道你自己的体重才能减出猫的重量');
       return;
     }
 
-    const myRef = myWeight ? Number(myWeight) : myLast?.kg ?? null;
-    if (mode === 'held' && !myRef) {
-      Alert.alert('先填我的体重', '抱着称需要先知道你自己的体重才能减出猫的重量');
+    const toSave: { catId: string; kg: number }[] = [];
+    for (const cat of cats) {
+      const aloneRaw = aloneInputs[cat.id]?.trim();
+      const heldRaw = heldInputs[cat.id]?.trim();
+      if (aloneRaw && !Number.isNaN(Number(aloneRaw))) {
+        toSave.push({ catId: cat.id, kg: Number(aloneRaw) });
+      } else if (heldRaw && !Number.isNaN(Number(heldRaw))) {
+        toSave.push({ catId: cat.id, kg: Math.round((Number(heldRaw) - (myRef ?? 0)) * 10) / 10 });
+      }
+    }
+    if (toSave.length === 0) {
+      Alert.alert('还没填猫的体重', '单独称/抱着称两列填一列就行');
       return;
     }
 
     setSavingAll(true);
     try {
-      for (const cat of filled) {
-        const raw = Number(catInputs[cat.id]);
-        if (Number.isNaN(raw)) continue;
-        const kg = mode === 'held' ? Math.round((raw - (myRef ?? 0)) * 10) / 10 : raw;
-        await addCatEvent(cat.id, { event_type: '体重', value: kg, event_date: new Date().toISOString() });
+      for (const item of toSave) {
+        await addCatEvent(item.catId, { event_type: '体重', value: item.kg, event_date: new Date().toISOString() });
       }
       onDone();
     } catch (err) {
@@ -129,16 +132,19 @@ function WeightTool({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <ScrollView style={styles.weightScroll}>
-      <SheetTitle>⚖️ 记录体重</SheetTitle>
+    <View>
+      <View style={styles.weightTitleRow}>
+        <SheetTitle>⚖️ 记录体重</SheetTitle>
+        {myLast && (
+          <Text style={styles.hint}>
+            上次：{myLast.kg}kg（
+            {new Date(myLast.date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}）
+          </Text>
+        )}
+      </View>
 
-      <Text style={styles.weightSectionLabel}>👤 我的体重</Text>
-      {myLast && (
-        <Text style={styles.hint}>
-          上次：{myLast.kg}kg（{new Date(myLast.date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}）
-        </Text>
-      )}
       <View style={styles.weightInputRow}>
+        <Text style={styles.catWeightLabel}>👤 我的体重</Text>
         <TextInput
           style={[styles.input, styles.weightInputFlex]}
           value={myWeight}
@@ -154,22 +160,12 @@ function WeightTool({ onDone }: { onDone: () => void }) {
 
       {cats.length > 0 && (
         <>
-          <Text style={[styles.weightSectionLabel, { marginTop: spacing.lg }]}>── 🐱 猫猫称重 ──</Text>
-          <View style={styles.chipRow}>
-            <Pressable
-              onPress={() => setMode('alone')}
-              style={[styles.chip, mode === 'alone' && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, mode === 'alone' && styles.chipTextActive]}>单独称</Text>
-            </Pressable>
-            <Pressable onPress={() => setMode('held')} style={[styles.chip, mode === 'held' && styles.chipActive]}>
-              <Text style={[styles.chipText, mode === 'held' && styles.chipTextActive]}>抱着称</Text>
-            </Pressable>
+          <Text style={[styles.weightSectionLabel, { marginTop: spacing.md }]}>── 🐱 猫猫 ──</Text>
+          <View style={styles.weightColumnHeaderRow}>
+            <Text style={styles.catWeightLabel} />
+            <Text style={styles.weightColumnHeader}>单独称</Text>
+            <Text style={styles.weightColumnHeader}>抱着称</Text>
           </View>
-          {mode === 'held' && (
-            <Text style={styles.hint}>先填上面「我的体重」，再填抱猫总重，系统自动减出猫的重量</Text>
-          )}
-
           {cats.map((cat) => (
             <View key={cat.id} style={styles.weightInputRow}>
               <Text style={styles.catWeightLabel} numberOfLines={1}>
@@ -177,9 +173,17 @@ function WeightTool({ onDone }: { onDone: () => void }) {
               </Text>
               <TextInput
                 style={[styles.input, styles.weightInputFlex]}
-                value={catInputs[cat.id] ?? ''}
-                onChangeText={(text) => setCatInputs((prev) => ({ ...prev, [cat.id]: text }))}
-                placeholder={catLast[cat.id] ? `上次${catLast[cat.id].value}` : 'kg'}
+                value={aloneInputs[cat.id] ?? ''}
+                onChangeText={(text) => setAloneInputs((prev) => ({ ...prev, [cat.id]: text }))}
+                placeholder="kg"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.weightInputFlex]}
+                value={heldInputs[cat.id] ?? ''}
+                onChangeText={(text) => setHeldInputs((prev) => ({ ...prev, [cat.id]: text }))}
+                placeholder="总重kg"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="decimal-pad"
               />
@@ -191,7 +195,7 @@ function WeightTool({ onDone }: { onDone: () => void }) {
           </Pressable>
         </>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -421,12 +425,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing.md,
   },
-  weightScroll: { maxHeight: 480 },
+  weightTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   weightSectionLabel: {
     fontSize: fontSize.secondary,
     color: colors.textSecondary,
     fontWeight: '600',
     marginBottom: spacing.xs,
+  },
+  weightColumnHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 4 },
+  weightColumnHeader: {
+    flex: 1,
+    fontSize: fontSize.tiny,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
   weightInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   weightInputFlex: { flex: 1, marginBottom: spacing.sm },
@@ -439,7 +450,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  catWeightLabel: { width: 76, fontSize: fontSize.body, color: colors.textPrimary },
+  catWeightLabel: { width: 84, fontSize: fontSize.secondary, color: colors.textPrimary },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   chip: {
     paddingHorizontal: spacing.md,

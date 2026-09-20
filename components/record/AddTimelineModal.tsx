@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { addTimelineEntry, fetchLastEntryEnd } from '../../lib/timeline';
 import { pickImage, uploadChatImage } from '../../lib/chatImages';
@@ -29,11 +29,13 @@ function formatTime(d: Date): string {
 
 export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }: AddTimelineModalProps) {
   const [category, setCategory] = useState<TimelineCategory>(defaultCategory);
+  const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [weight, setWeight] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [defaultStart, setDefaultStart] = useState<Date | null>(null);
+  const [editingTime, setEditingTime] = useState(false);
   const [durationLabel, setDurationLabel] = useState<string | null>(null); // null = 默认区间
   const [customMinutes, setCustomMinutes] = useState('');
   const [hpChange, setHpChange] = useState<number | null>(null);
@@ -60,6 +62,19 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
     selectedDuration?.minutes ?? (durationLabel === '自定义' ? Number(customMinutes) || 0 : null);
   const startTime = effectiveMinutes != null ? new Date(now.getTime() - effectiveMinutes * 60_000) : defaultStart;
 
+  const categoryLabel = TIMELINE_CATEGORY_OPTIONS.find((o) => o.category === category);
+
+  function handlePickCategory() {
+    Alert.alert(
+      '选分类',
+      undefined,
+      TIMELINE_CATEGORY_OPTIONS.map((opt) => ({
+        text: `${opt.emoji} ${opt.label}`,
+        onPress: () => setCategory(opt.category),
+      }))
+    );
+  }
+
   async function handlePickImage(source: 'camera' | 'library') {
     setPickingImage(true);
     try {
@@ -75,17 +90,17 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
   }
 
   async function handleSave() {
+    if (!title.trim()) {
+      Alert.alert('起个标题吧', '比如"色色"、"学习"这种简短的');
+      return;
+    }
     const weightNum = weight.trim() ? Number(weight.trim()) : null;
     if (category === 'body' && weight.trim() && Number.isNaN(weightNum)) {
       Alert.alert('体重要填数字', '比如 62.5');
       return;
     }
     const weightPrefix = weightNum != null ? `体重: ${weightNum}kg` : '';
-    const fullText = [weightPrefix, text.trim()].filter(Boolean).join('\n');
-    if (!fullText) {
-      Alert.alert('写点什么吧', '内容不能是空的');
-      return;
-    }
+    const fullText = [title.trim(), weightPrefix, text.trim()].filter(Boolean).join('\n');
     setSaving(true);
     try {
       await addTimelineEntry({
@@ -97,10 +112,12 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
         mp_change: mpChange,
         image_url: imageUri,
       });
+      setTitle('');
       setText('');
       setWeight('');
       setDurationLabel(null);
       setCustomMinutes('');
+      setEditingTime(false);
       setHpChange(null);
       setMpChange(null);
       setImageUri(null);
@@ -116,13 +133,18 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.title}>📝 记录事件</Text>
+          <Text style={styles.title}>📝 记录事件</Text>
 
-            <Text style={styles.label}>
+          <View style={styles.timeRow}>
+            <Text style={styles.timeText}>
               时间：{startTime ? formatTime(startTime) : '--'} — {formatTime(now)}
               {effectiveMinutes == null ? '（现在）' : ''}
             </Text>
+            <Pressable onPress={() => setEditingTime((v) => !v)}>
+              <Text style={styles.timeEditButton}>改{editingTime ? '▲' : '▼'}</Text>
+            </Pressable>
+          </View>
+          {editingTime && (
             <View style={styles.chipRow}>
               {DURATION_OPTIONS.map((opt) => (
                 <Pressable
@@ -136,96 +158,102 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
                 </Pressable>
               ))}
             </View>
-            {durationLabel === '自定义' && (
-              <TextInput
-                style={styles.input}
-                value={customMinutes}
-                onChangeText={setCustomMinutes}
-                placeholder="多少分钟"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="number-pad"
-              />
-            )}
+          )}
+          {editingTime && durationLabel === '自定义' && (
+            <TextInput
+              style={styles.input}
+              value={customMinutes}
+              onChangeText={setCustomMinutes}
+              placeholder="多少分钟"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+            />
+          )}
 
-            <Text style={styles.label}>做了什么</Text>
-            <View style={styles.chipRow}>
-              {TIMELINE_CATEGORY_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.category}
-                  onPress={() => setCategory(opt.category)}
-                  style={[styles.chip, category === opt.category && styles.chipActive]}
-                >
-                  <Text style={styles.chipEmoji}>{opt.emoji}</Text>
-                  <Text style={[styles.chipText, category === opt.category && styles.chipTextActive]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>标题</Text>
+            <TextInput
+              style={[styles.input, styles.rowInput]}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="做了什么"
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
 
-            {category === 'body' && (
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>分类</Text>
+            <Pressable style={[styles.input, styles.rowInput, styles.categoryPicker]} onPress={handlePickCategory}>
+              <Text style={styles.categoryPickerText}>
+                {categoryLabel?.emoji} {categoryLabel?.label} ▼
+              </Text>
+            </Pressable>
+          </View>
+
+          {category === 'body' && (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>体重</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.rowInput]}
                 value={weight}
                 onChangeText={setWeight}
-                placeholder="体重（kg，选填），比如 62.5"
+                placeholder="kg，选填"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="decimal-pad"
               />
+            </View>
+          )}
+
+          <TextInput
+            style={styles.descInput}
+            value={text}
+            onChangeText={setText}
+            placeholder="描述（选填）…"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            scrollEnabled
+          />
+
+          <Pressable style={styles.imageButton} onPress={() => handlePickImage('library')} disabled={pickingImage}>
+            {pickingImage ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <Text style={styles.imageButtonText}>{imageUri ? '📷 已加图片，点击重选' : '📷 加图片'}</Text>
             )}
+          </Pressable>
 
-            <Text style={styles.label}>备注（选填）</Text>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="写点什么…"
-              placeholderTextColor={colors.textMuted}
-              multiline
-            />
+          <View style={styles.deltaRow}>
+            <Text style={styles.deltaLabel}>HP</Text>
+            {HP_MP_DELTAS.map((d) => (
+              <Pressable
+                key={d}
+                onPress={() => setHpChange(hpChange === d ? null : d)}
+                style={[styles.deltaChip, hpChange === d && styles.chipActive]}
+              >
+                <Text style={[styles.deltaChipText, hpChange === d && styles.chipTextActive]}>
+                  {d > 0 ? `+${d}` : d}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.deltaRow}>
+            <Text style={styles.deltaLabel}>MP</Text>
+            {HP_MP_DELTAS.map((d) => (
+              <Pressable
+                key={d}
+                onPress={() => setMpChange(mpChange === d ? null : d)}
+                style={[styles.deltaChip, mpChange === d && styles.chipActive]}
+              >
+                <Text style={[styles.deltaChipText, mpChange === d && styles.chipTextActive]}>
+                  {d > 0 ? `+${d}` : d}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
 
-            <Pressable style={styles.imageButton} onPress={() => handlePickImage('library')} disabled={pickingImage}>
-              {pickingImage ? (
-                <ActivityIndicator size="small" color={colors.textSecondary} />
-              ) : (
-                <Text style={styles.imageButtonText}>{imageUri ? '📷 已加图片，点击重选' : '📷 加图片'}</Text>
-              )}
-            </Pressable>
-
-            <Text style={styles.label}>HP 变化</Text>
-            <View style={styles.chipRow}>
-              {HP_MP_DELTAS.map((d) => (
-                <Pressable
-                  key={d}
-                  onPress={() => setHpChange(hpChange === d ? null : d)}
-                  style={[styles.deltaChip, hpChange === d && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, hpChange === d && styles.chipTextActive]}>
-                    {d > 0 ? `+${d}` : d}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.label}>MP 变化</Text>
-            <View style={styles.chipRow}>
-              {HP_MP_DELTAS.map((d) => (
-                <Pressable
-                  key={d}
-                  onPress={() => setMpChange(mpChange === d ? null : d)}
-                  style={[styles.deltaChip, mpChange === d && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, mpChange === d && styles.chipTextActive]}>
-                    {d > 0 ? `+${d}` : d}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-              <Text style={styles.saveButtonText}>{saving ? '保存中…' : '确定'}</Text>
-            </Pressable>
-          </ScrollView>
+          <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
+            <Text style={styles.saveButtonText}>{saving ? '保存中…' : '确定'}</Text>
+          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -240,68 +268,69 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.card,
     padding: spacing.lg,
     paddingBottom: spacing.xl,
-    maxHeight: '85%',
   },
-  title: { fontSize: fontSize.pageTitle, color: colors.textPrimary, fontWeight: '600', marginBottom: spacing.md },
-  label: {
-    fontSize: fontSize.secondary,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.button,
-    backgroundColor: colors.card,
-  },
+  title: { fontSize: fontSize.pageTitle, color: colors.textPrimary, fontWeight: '600', marginBottom: spacing.sm },
+  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
+  timeText: { fontSize: fontSize.secondary, color: colors.textSecondary, flex: 1 },
+  timeEditButton: { fontSize: fontSize.secondary, color: colors.blueDark },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+  rowLabel: { width: 36, fontSize: fontSize.secondary, color: colors.textSecondary },
+  rowInput: { flex: 1, marginBottom: 0 },
+  categoryPicker: { justifyContent: 'center' },
+  categoryPickerText: { fontSize: fontSize.body, color: colors.textPrimary },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs },
   smallChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.button,
-    backgroundColor: colors.card,
-  },
-  deltaChip: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: radius.button,
     backgroundColor: colors.card,
-    minWidth: 40,
-    alignItems: 'center',
   },
   chipActive: { backgroundColor: colors.purple },
-  chipEmoji: { fontSize: 14, includeFontPadding: false },
-  chipText: { fontSize: fontSize.body, color: colors.textSecondary },
+  chipText: { fontSize: fontSize.secondary, color: colors.textSecondary },
   chipTextActive: { color: colors.textPrimary, fontWeight: '600' },
   input: {
+    backgroundColor: colors.card,
+    borderRadius: radius.widget,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    fontSize: fontSize.body,
+    color: colors.textPrimary,
+  },
+  descInput: {
     backgroundColor: colors.card,
     borderRadius: radius.widget,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: fontSize.body,
     color: colors.textPrimary,
-    minHeight: 60,
+    height: 56,
     textAlignVertical: 'top',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   imageButton: {
     backgroundColor: colors.card,
     borderRadius: radius.widget,
-    paddingVertical: spacing.sm,
+    paddingVertical: 6,
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  imageButtonText: { fontSize: fontSize.body, color: colors.textSecondary },
+  imageButtonText: { fontSize: fontSize.secondary, color: colors.textSecondary },
+  deltaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  deltaLabel: { width: 24, fontSize: fontSize.tiny, color: colors.textMuted },
+  deltaChip: {
+    flex: 1,
+    paddingVertical: 5,
+    borderRadius: radius.button,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+  },
+  deltaChipText: { fontSize: fontSize.tiny, color: colors.textSecondary },
   saveButton: {
     backgroundColor: colors.purpleDark,
     borderRadius: radius.button,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   saveButtonText: { color: '#fff', fontSize: fontSize.cardName, fontWeight: '600' },
 });
