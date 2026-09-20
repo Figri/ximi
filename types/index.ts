@@ -13,6 +13,7 @@ export interface Card {
   tags: string[];
   notes: string | null;
   time_of_day: TimeOfDay;
+  emoji: string | null;
   created_at: string;
   updated_at: string;
   archived: boolean;

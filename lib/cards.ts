@@ -74,7 +74,7 @@ export async function undoCompletion(completionId: string): Promise<void> {
 }
 
 export async function createCard(
-  card: Pick<Card, 'name' | 'type' | 'tags' | 'notes'> & Partial<Pick<Card, 'time_of_day'>>,
+  card: Pick<Card, 'name' | 'type' | 'tags' | 'notes'> & Partial<Pick<Card, 'time_of_day' | 'emoji'>>,
   actions: Pick<
     Action,
     | 'name'

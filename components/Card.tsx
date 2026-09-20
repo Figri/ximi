@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fontSize, radius, spacing, statusColorDark } from '../constants/theme';
 import type { Action, Card as CardType, DecayResult } from '../types';
-import { ActionButton } from './ActionButton';
 
 interface CardProps {
   card: CardType;
@@ -14,165 +13,147 @@ interface CardProps {
   onUndo: (action: Action) => void;
 }
 
+const TILE_BG = {
+  green: colors.green + '40',
+  yellow: colors.yellow + '55',
+  red: colors.red + '55',
+};
+
 export function Card({ card, primaryAction, secondaryActions, decay, onComplete, onUndo }: CardProps) {
   const [expanded, setExpanded] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scale = useRef(new Animated.Value(1)).current;
+  const checkOpacity = useRef(new Animated.Value(0)).current;
   const dotColor = statusColorDark[decay.status];
+  const bg = TILE_BG[decay.status];
 
-  useEffect(() => () => {
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-  }, []);
-
-  function handleComplete(action: Action) {
-    onComplete(action);
-    if (action.id === primaryAction?.id) {
-      setJustCompleted(true);
-      if (undoTimer.current) clearTimeout(undoTimer.current);
-      undoTimer.current = setTimeout(() => setJustCompleted(false), 3000);
-    }
+  function handlePress() {
+    if (!primaryAction) return;
+    onComplete(primaryAction);
+    setJustCompleted(true);
+    scale.setValue(0.9);
+    checkOpacity.setValue(1);
+    Animated.sequence([
+      Animated.spring(scale, { toValue: 1.1, useNativeDriver: true, speed: 24 }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 24 }),
+    ]).start();
+    Animated.timing(checkOpacity, { toValue: 0, duration: 200, delay: 400, useNativeDriver: true }).start();
   }
 
   function handleUndo() {
     if (!primaryAction) return;
     onUndo(primaryAction);
     setJustCompleted(false);
-    if (undoTimer.current) clearTimeout(undoTimer.current);
   }
 
   return (
     <View style={styles.wrapper}>
-      <Pressable
-        style={styles.row}
-        onPress={() => (secondaryActions.length || card.notes) && setExpanded((v) => !v)}
-        onLongPress={() => router.push(`/card/${card.id}`)}
-      >
-        <View style={[styles.dot, { backgroundColor: dotColor }]} />
-        <Text style={styles.name} numberOfLines={1}>
-          {card.name}
-        </Text>
-        {primaryAction && (
-          <ActionButton
-            label={primaryAction.name}
-            status={decay.status}
-            onPress={() => handleComplete(primaryAction)}
-          />
-        )}
-      </Pressable>
-
-      <View style={styles.progressRow}>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.max(0, Math.min(100, decay.percentage))}%`, backgroundColor: dotColor },
-            ]}
-          />
-        </View>
-        <Text style={[styles.progressText, { color: dotColor }]}>{Math.round(decay.percentage)}%</Text>
-      </View>
-
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Pressable
+          style={[styles.tile, { backgroundColor: bg }]}
+          onPress={handlePress}
+          onLongPress={() => {
+            if (secondaryActions.length || card.notes) setExpanded((v) => !v);
+            else router.push(`/card/${card.id}`);
+          }}
+        >
+          <Text style={styles.emoji}>{card.emoji || '📌'}</Text>
+          <Text style={styles.name} numberOfLines={1}>
+            {card.name}
+          </Text>
+          <Text style={[styles.percentage, { color: dotColor }]}>{Math.round(decay.percentage)}%</Text>
+          <Animated.View style={[styles.checkOverlay, { opacity: checkOpacity }]} pointerEvents="none">
+            <Text style={styles.checkText}>✓</Text>
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
       {justCompleted && (
-        <Pressable style={styles.undoRow} onPress={handleUndo}>
-          <Text style={styles.undoText}>˟ 撤销</Text>
+        <Pressable onPress={handleUndo} hitSlop={8}>
+          <Text style={styles.undoText}>˟撤销</Text>
         </Pressable>
       )}
 
       {expanded && (
         <View style={styles.expanded}>
           {secondaryActions.map((action) => (
-            <View key={action.id} style={styles.secondaryRow}>
+            <Pressable key={action.id} style={styles.secondaryRow} onPress={() => onComplete(action)}>
               <Text style={styles.secondaryLabel}>{action.name}</Text>
-              <ActionButton label={action.name} status="green" onPress={() => onComplete(action)} />
-            </View>
+              <Text style={styles.secondaryDo}>点击完成</Text>
+            </Pressable>
           ))}
           {card.notes ? <Text style={styles.notes}>{card.notes}</Text> : null}
+          <Pressable onPress={() => router.push(`/card/${card.id}`)}>
+            <Text style={styles.detailLink}>查看详情/编辑</Text>
+          </Pressable>
         </View>
       )}
     </View>
   );
 }
 
+const TILE_SIZE = 80;
+
 const styles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.card,
+  wrapper: { width: TILE_SIZE, alignItems: 'center' },
+  tile: {
+    width: TILE_SIZE,
+    height: TILE_SIZE,
     borderRadius: radius.card,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
     overflow: 'hidden',
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 52,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+  emoji: { fontSize: 26, lineHeight: 30, includeFontPadding: false },
   name: {
-    flex: 1,
-    fontSize: fontSize.cardName,
-    lineHeight: fontSize.cardName + 4,
+    fontSize: 11,
+    lineHeight: 14,
     includeFontPadding: false,
     color: colors.textPrimary,
-    fontWeight: '500',
+    marginTop: 2,
+    maxWidth: TILE_SIZE - 12,
   },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.background,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  progressText: {
-    fontSize: fontSize.tiny,
-    fontWeight: '600',
-    width: 32,
-    textAlign: 'right',
+  percentage: {
+    fontSize: 10,
+    lineHeight: 13,
     includeFontPadding: false,
+    fontWeight: '700',
+    marginTop: 2,
   },
-  undoRow: {
-    alignItems: 'flex-end',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+  checkOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
   },
-  undoText: {
-    fontSize: fontSize.tiny,
-    color: colors.textMuted,
-  },
+  checkText: { fontSize: 32, color: colors.greenDark, fontWeight: '700' },
+  undoText: { fontSize: fontSize.tiny, color: colors.textMuted, marginTop: 2 },
   expanded: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    position: 'absolute',
+    top: TILE_SIZE + 4,
+    width: 160,
+    backgroundColor: colors.card,
+    borderRadius: radius.widget,
+    padding: spacing.sm,
+    gap: 6,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   secondaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  secondaryLabel: {
-    fontSize: fontSize.body,
-    color: colors.textSecondary,
-  },
-  notes: {
-    fontSize: fontSize.secondary,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
+  secondaryLabel: { fontSize: fontSize.secondary, color: colors.textPrimary },
+  secondaryDo: { fontSize: fontSize.tiny, color: colors.purpleDark },
+  notes: { fontSize: fontSize.tiny, color: colors.textMuted },
+  detailLink: { fontSize: fontSize.tiny, color: colors.blueDark, marginTop: 2 },
 });

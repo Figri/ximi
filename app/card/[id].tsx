@@ -50,6 +50,7 @@ export default function CardDetailScreen() {
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [emoji, setEmoji] = useState('');
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('anytime');
   const [tags, setTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -80,6 +81,7 @@ export default function CardDetailScreen() {
       if (card) {
         setName(card.name);
         setNotes(card.notes ?? '');
+        setEmoji(card.emoji ?? '');
         setTags(card.tags);
         setTimeOfDay(card.time_of_day ?? 'anytime');
       }
@@ -120,7 +122,14 @@ export default function CardDetailScreen() {
     try {
       if (isNew) {
         await createCard(
-          { name: name.trim(), type: 'habit', tags, notes: notes.trim() || null, time_of_day: timeOfDay },
+          {
+            name: name.trim(),
+            type: 'habit',
+            tags,
+            notes: notes.trim() || null,
+            time_of_day: timeOfDay,
+            emoji: emoji.trim() || null,
+          },
           [
             {
               name: actionName.trim() || '做了',
@@ -135,7 +144,13 @@ export default function CardDetailScreen() {
           ]
         );
       } else if (cardId) {
-        await updateCard(cardId, { name: name.trim(), tags, notes: notes.trim() || null, time_of_day: timeOfDay });
+        await updateCard(cardId, {
+          name: name.trim(),
+          tags,
+          notes: notes.trim() || null,
+          time_of_day: timeOfDay,
+          emoji: emoji.trim() || null,
+        });
         if (primaryAction) {
           await updateAction(primaryAction.id, {
             name: actionName.trim() || '做了',
@@ -181,6 +196,15 @@ export default function CardDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.label}>图标（emoji）</Text>
+        <TextInput
+          style={styles.input}
+          value={emoji}
+          onChangeText={setEmoji}
+          placeholder="比如：🪣（不填用默认📌）"
+          maxLength={4}
+        />
+
         <Text style={styles.label}>名字</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：浇花" />
 
