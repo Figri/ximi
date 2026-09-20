@@ -18,6 +18,19 @@ export async function fetchTimelineForDate(date: Date): Promise<TimelineEntry[]>
   return data ?? [];
 }
 
+/** 最近一条记录的结束时间（没有 end_time 就用 start_time），给"记一笔"默认时间段用 */
+export async function fetchLastEntryEnd(): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from('timeline_entries')
+    .select('start_time, end_time')
+    .order('start_time', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return new Date(data.end_time ?? data.start_time);
+}
+
 /** 某个分类下所有天的条目，按时间倒序（给"身体/睡眠/..."这些跨天汇总用） */
 export async function fetchTimelineByCategory(category: TimelineCategory, limit = 100): Promise<TimelineEntry[]> {
   const { data, error } = await supabase
