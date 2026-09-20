@@ -2,17 +2,9 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
-import { AI_MODELS, buildSystemPrompt, type AIModel } from '../lib/ai';
+import { AI_MODELS, type AIModel } from '../lib/ai';
 import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } from '../lib/aiSettings';
-import { buildCardContextSummary } from '../lib/chatInstructions';
-import { fetchMemory, saveMemory } from '../lib/memory';
-import { useCardStore } from '../lib/store';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
-
-function shortId(id: string | null) {
-  if (!id) return '无（当前是安装包自带版本）';
-  return id.slice(0, 8);
-}
 
 function formatTime(date: Date | null) {
   if (!date) return '未知';
@@ -20,24 +12,14 @@ function formatTime(date: Date | null) {
 }
 
 export default function SettingsScreen() {
-  const { cards, actions, cats, lastCompletions, fetchAll } = useCardStore();
   const [selected, setSelected] = useState<AIModel>('claude-sonnet');
   const [savedKeys, setSavedKeys] = useState<Partial<Record<AIModel, string>>>({});
   const [drafts, setDrafts] = useState<Partial<Record<AIModel, string>>>({});
   const [expanded, setExpanded] = useState<AIModel | null>(null);
   const [checking, setChecking] = useState(false);
-  const [memory, setMemory] = useState('');
-  const [memoryDraft, setMemoryDraft] = useState('');
-  const [savingMemory, setSavingMemory] = useState(false);
-  const [showPromptPreview, setShowPromptPreview] = useState(false);
 
   useEffect(() => {
     load();
-    fetchAll();
-    fetchMemory().then((m) => {
-      setMemory(m);
-      setMemoryDraft(m);
-    });
   }, []);
 
   async function load() {
@@ -61,18 +43,6 @@ export default function SettingsScreen() {
     await load();
     setExpanded(null);
     setDrafts((prev) => ({ ...prev, [model]: '' }));
-  }
-
-  async function handleSaveMemory() {
-    setSavingMemory(true);
-    try {
-      await saveMemory(memoryDraft.trim());
-      setMemory(memoryDraft.trim());
-    } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingMemory(false);
-    }
   }
 
   async function handleCheckUpdate() {
@@ -170,51 +140,11 @@ export default function SettingsScreen() {
           );
         })}
 
-        <Text style={[styles.label, { marginTop: spacing.lg }]}>AI 记忆</Text>
-        <View style={styles.memoryCard}>
-          <Text style={styles.memoryHint}>
-            写在这里的东西，每次跟灵聊天都会带上（人设、习惯、偏好、长期要记住的事……）
-          </Text>
-          <TextInput
-            style={styles.memoryInput}
-            value={memoryDraft}
-            onChangeText={setMemoryDraft}
-            placeholder="比如：我是西米，INTP，喜欢直白但温柔的语气……"
-            placeholderTextColor={colors.textMuted}
-            multiline
-            textAlignVertical="top"
-          />
-          <Pressable style={styles.saveButton} onPress={handleSaveMemory} disabled={savingMemory || memoryDraft === memory}>
-            <Text style={styles.saveButtonText}>{savingMemory ? '保存中…' : '保存'}</Text>
-          </Pressable>
-
-          <Pressable style={styles.previewToggle} onPress={() => setShowPromptPreview((v) => !v)}>
-            <Text style={styles.previewToggleText}>
-              {showPromptPreview ? '收起' : '查看现在会发给 AI 的完整提示词'}
-            </Text>
-          </Pressable>
-          {showPromptPreview && (
-            <Text style={styles.promptPreview} selectable>
-              {buildSystemPrompt(
-                `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false })}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions, memory)}`
-              )}
-            </Text>
-          )}
-        </View>
-
         <Text style={[styles.label, { marginTop: spacing.lg }]}>版本信息</Text>
         <View style={styles.versionCard}>
           <View style={styles.versionRow}>
-            <Text style={styles.versionKey}>更新 ID</Text>
-            <Text style={styles.versionValue}>{shortId(Updates.updateId)}</Text>
-          </View>
-          <View style={styles.versionRow}>
             <Text style={styles.versionKey}>更新时间</Text>
             <Text style={styles.versionValue}>{formatTime(Updates.createdAt)}</Text>
-          </View>
-          <View style={styles.versionRow}>
-            <Text style={styles.versionKey}>发布渠道</Text>
-            <Text style={styles.versionValue}>{Updates.channel ?? '未知'}</Text>
           </View>
           {Updates.isEmbeddedLaunch && (
             <Text style={styles.versionWarning}>
@@ -315,38 +245,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.purpleDark,
   },
   saveButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
-  memoryCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    padding: spacing.md,
-  },
-  memoryHint: {
-    fontSize: fontSize.secondary,
-    color: colors.textMuted,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  memoryInput: {
-    backgroundColor: colors.background,
-    borderRadius: radius.widget,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: fontSize.body,
-    color: colors.textPrimary,
-    minHeight: 100,
-    marginBottom: spacing.sm,
-  },
-  previewToggle: { marginTop: spacing.md, alignItems: 'center' },
-  previewToggleText: { fontSize: fontSize.secondary, color: colors.blueDark },
-  promptPreview: {
-    marginTop: spacing.sm,
-    backgroundColor: colors.background,
-    borderRadius: radius.widget,
-    padding: spacing.sm,
-    fontSize: fontSize.tiny,
-    color: colors.textSecondary,
-    lineHeight: 16,
-  },
   versionCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,

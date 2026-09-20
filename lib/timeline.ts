@@ -34,6 +34,11 @@ export async function addTimelineEntry(entry: {
   category: TimelineCategory;
   description: string;
   start_time?: string;
+  end_time?: string;
+  hp_change?: number | null;
+  mp_change?: number | null;
+  image_url?: string | null;
+  source?: 'manual' | 'chat';
 }): Promise<TimelineEntry> {
   const { data, error } = await supabase
     .from('timeline_entries')
@@ -41,7 +46,11 @@ export async function addTimelineEntry(entry: {
       category: entry.category,
       description: entry.description,
       start_time: entry.start_time ?? new Date().toISOString(),
-      source: 'manual',
+      end_time: entry.end_time ?? null,
+      hp_change: entry.hp_change ?? null,
+      mp_change: entry.mp_change ?? null,
+      image_url: entry.image_url ?? null,
+      source: entry.source ?? 'manual',
     })
     .select()
     .single();

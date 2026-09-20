@@ -18,16 +18,18 @@ import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
 import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
-import { buildCardContextSummary, resolveInstruction } from '../../lib/chatInstructions';
+import { buildCardContextSummary, resolveComplete } from '../../lib/chatInstructions';
 import { pickImage, uploadChatImage } from '../../lib/chatImages';
 import { fetchMemory } from '../../lib/memory';
+import { addTimelineEntry, deleteTimelineEntry } from '../../lib/timeline';
+import { createCard } from '../../lib/cards';
 import { useCardStore } from '../../lib/store';
-import type { ChatMessage } from '../../types';
+import type { ChatMessage, TimelineCategory } from '../../types';
 
 interface Confirmation {
-  actionId: string;
-  cardName: string;
-  actionName: string;
+  kind: 'complete' | 'timeline' | 'create_card';
+  id: string;
+  label: string;
 }
 
 export default function ChatScreen() {
@@ -121,15 +123,64 @@ export default function ChatScreen() {
         assistantMessage,
       ]);
 
-      // 执行 AI 回复里携带的指令（比如"完成了 铲屎 的 铲了"），并记下确认行给这条消息展示
+      // 执行 AI 回复里携带的指令，并记下确认行给这条消息展示
       const results: Confirmation[] = [];
-      for (const instruction of reply.instructions ?? []) {
-        const resolved = resolveInstruction(instruction, cards, actions);
-        if (!resolved) continue;
-        await doComplete(resolved.action, resolved.card, { notes: instruction.notes });
-        results.push({ actionId: resolved.action.id, cardName: resolved.card.name, actionName: resolved.action.name });
+      for (const action of reply.actions ?? []) {
+        if (action.type === 'complete') {
+          const resolved = resolveComplete(action, cards, actions);
+          if (!resolved) continue;
+          await doComplete(resolved.action, resolved.card);
+          results.push({
+            kind: 'complete',
+            id: resolved.action.id,
+            label: `${resolved.card.name} 已更新（${resolved.action.name}）`,
+          });
+        } else if (action.type === 'timeline' && action.description) {
+          const durationMs = (action.duration_min ?? 0) * 60_000;
+          const endTime = new Date();
+          const startTime = new Date(endTime.getTime() - durationMs);
+          const entry = await addTimelineEntry({
+            category: (action.category as TimelineCategory) ?? 'other',
+            description: action.description,
+            start_time: startTime.toISOString(),
+            end_time: durationMs > 0 ? endTime.toISOString() : undefined,
+            hp_change: action.hp_change,
+            mp_change: action.mp_change,
+            source: 'chat',
+          });
+          const delta = [
+            action.duration_min ? `${action.duration_min}min` : null,
+            action.hp_change ? `HP${action.hp_change > 0 ? '+' : ''}${action.hp_change}` : null,
+            action.mp_change ? `MP${action.mp_change > 0 ? '+' : ''}${action.mp_change}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          results.push({
+            kind: 'timeline',
+            id: entry.id,
+            label: `${action.description}${delta ? ` · ${delta}` : ''} 已记录`,
+          });
+        } else if (action.type === 'create_card' && action.card_name && action.action_name) {
+          const newCard = await createCard(
+            { name: action.card_name, type: 'habit', tags: action.card_tags ?? [], notes: null },
+            [
+              {
+                name: action.action_name,
+                is_primary: true,
+                frequency_type: action.frequency_type ?? 'interval',
+                interval_days: action.frequency_type === 'interval' ? (action.interval_days ?? 3) : null,
+                fixed_days: action.frequency_type === 'fixed_day' ? (action.fixed_days ?? null) : null,
+                suggested_interval: action.frequency_type === 'interval' ? (action.interval_days ?? 3) : null,
+                max_delay: action.frequency_type === 'interval' ? (action.interval_days ?? 3) * 1.5 : null,
+                requires_selection: false,
+              },
+            ]
+          );
+          results.push({ kind: 'create_card', id: newCard.id, label: `新卡片「${newCard.name}」已建好` });
+        }
       }
       if (results.length) {
+        await fetchAll();
         setConfirmations((prev) => ({ ...prev, [assistantMessage.id]: results }));
       }
     } catch (err) {
@@ -150,17 +201,7 @@ export default function ChatScreen() {
   }
 
   function buildContextSummary(): string {
-    const now = new Date();
-    const formatted = now.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    return `现在是 ${formatted}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions, memory)}`;
+    return buildCardContextSummary(cards, actions, cats, lastCompletions, memory);
   }
 
   async function handleSendImage(source: 'camera' | 'library') {
@@ -195,11 +236,12 @@ export default function ChatScreen() {
     }
   }
 
-  function handleUndoConfirmation(messageId: string, actionId: string) {
-    doUndo(actionId);
+  function handleUndoConfirmation(messageId: string, confirmation: Confirmation) {
+    if (confirmation.kind === 'complete') doUndo(confirmation.id);
+    else if (confirmation.kind === 'timeline') deleteTimelineEntry(confirmation.id);
     setConfirmations((prev) => ({
       ...prev,
-      [messageId]: (prev[messageId] ?? []).filter((c) => c.actionId !== actionId),
+      [messageId]: (prev[messageId] ?? []).filter((c) => c.id !== confirmation.id),
     }));
   }
 
@@ -213,7 +255,16 @@ export default function ChatScreen() {
           <Text style={styles.headerName}>灵</Text>
           <Text style={styles.headerStatus}>在线</Text>
         </View>
-        <Pressable style={styles.menuButton} onPress={() => router.push('/settings')}>
+        <Pressable
+          style={styles.menuButton}
+          onPress={() =>
+            Alert.alert('灵', undefined, [
+              { text: 'AI 记忆', onPress: () => router.push('/memory') },
+              { text: '设置', onPress: () => router.push('/settings') },
+              { text: '取消', style: 'cancel' },
+            ])
+          }
+        >
           <Text style={styles.menuButtonText}>⋯</Text>
         </Pressable>
       </View>
@@ -233,13 +284,13 @@ export default function ChatScreen() {
             <View>
               <ChatBubble message={item} showDateDivider={showDateDivider} />
               {itemConfirmations?.map((c) => (
-                <View key={c.actionId} style={styles.confirmRow}>
-                  <Text style={styles.confirmText}>
-                    ✓ {c.cardName} 已更新（{c.actionName}）
-                  </Text>
-                  <Pressable onPress={() => handleUndoConfirmation(item.id, c.actionId)}>
-                    <Text style={styles.confirmUndo}>˟ 撤销</Text>
-                  </Pressable>
+                <View key={c.id} style={styles.confirmRow}>
+                  <Text style={styles.confirmText}>✓ {c.label}</Text>
+                  {c.kind !== 'create_card' && (
+                    <Pressable onPress={() => handleUndoConfirmation(item.id, c)}>
+                      <Text style={styles.confirmUndo}>˟ 撤销</Text>
+                    </Pressable>
+                  )}
                 </View>
               ))}
             </View>

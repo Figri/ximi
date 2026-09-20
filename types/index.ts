@@ -4,6 +4,7 @@ export type CardType = 'habit' | 'timer' | 'info' | 'collection';
 export type FrequencyType = 'interval' | 'fixed_day' | 'manual';
 export type DecayStatus = 'green' | 'yellow' | 'red';
 export type TimerStatus = 'idle' | 'running' | 'done';
+export type TimeOfDay = 'morning' | 'day' | 'evening' | 'anytime';
 
 export interface Card {
   id: string;
@@ -11,6 +12,7 @@ export interface Card {
   type: CardType;
   tags: string[];
   notes: string | null;
+  time_of_day: TimeOfDay;
   created_at: string;
   updated_at: string;
   archived: boolean;
@@ -111,6 +113,8 @@ export interface TimelineEntry {
   app_name: string | null;
   image_url: string | null;
   source: TimelineSource;
+  hp_change: number | null;
+  mp_change: number | null;
   created_at: string;
 }
 
@@ -199,16 +203,26 @@ export interface CardWithActions extends Card {
   actions: Action[];
 }
 
-// AI 结构化指令：AI 回复里可以携带的操作
-export interface AIInstruction {
-  action: 'complete' | 'create_card' | 'create_worry' | 'none';
-  card?: string;
-  actionName?: string;
-  selectedCats?: string[];
-  notes?: string;
+// AI 结构化指令：AI 回复里可以携带的操作，格式 {"actions":[{...}]}
+export interface AIAction {
+  type: 'complete' | 'timeline' | 'create_card';
+  // complete：完成某张卡片的动作
+  card_name?: string;
+  action_name?: string;
+  // timeline：写一条时间轴记录
+  description?: string;
+  category?: TimelineCategory;
+  duration_min?: number;
+  hp_change?: number;
+  mp_change?: number;
+  // create_card：新建一张习惯卡片
+  card_tags?: string[];
+  frequency_type?: FrequencyType;
+  interval_days?: number;
+  fixed_days?: number[];
 }
 
 export interface AIReply {
   text: string;
-  instructions?: AIInstruction[];
+  actions?: AIAction[];
 }

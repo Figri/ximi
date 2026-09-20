@@ -1,4 +1,4 @@
-import type { AIInstruction, AIReply, ChatMessage } from '../types';
+import type { AIAction, AIReply, ChatMessage } from '../types';
 
 // 支持的模型（可在聊天页 ⋯ 设置里切换、填各家的 key）
 export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-flash' | 'deepseek-chat';
@@ -10,37 +10,45 @@ export const AI_MODELS: { id: AIModel; label: string; keyHint: string }[] = [
   { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）' },
 ];
 
-const SYSTEM_PROMPT_PREFIX = `你是"灵"，西米的私人生活助手，住在她的西米OS APP里。
-你的语气温暖、亲近，像认识很久的朋友，不是冷冰冰的工具。
-西米会把日常琐事告诉你（喂猫、打扫、护理、心情、烦恼……），你要帮她记录、提醒、陪她聊。
+const SYSTEM_PROMPT_SUFFIX = `
 
-如果西米的话里包含"做了某件事"（比如"铲了猫砂"、"洗头了"），请在回复末尾追加一个 JSON 代码块，
-格式如下，用于给 APP 更新数据（如果没有可执行的操作，就不要输出这个代码块）：
+## 你的能力
+- 用户说做了什么事（铲屎、洗头、称体重等），你要在回复末尾返回结构化指令来更新卡片数据。
+- 用户说"帮我加个每周X的提醒"之类的话，你要新建卡片。
+- 用户说烦恼、心情不好，就正常聊天安慰，不需要返回指令。
+- 用户记录事件（比如"我刚才色色了半小时"、"体重60.5"），你要帮她写入时间轴记录。
+
+如果有可执行的操作，在回复最后追加一个 JSON 代码块（没有可执行操作就不要输出这个代码块）：
 
 \`\`\`json
-{"instructions":[{"action":"complete","card":"卡片名","actionName":"动作名"}]}
+{"actions": [
+  {"type": "complete", "card_name": "铲屎"},
+  {"type": "timeline", "description": "色色", "category": "intimate", "duration_min": 30, "hp_change": -5, "mp_change": -3},
+  {"type": "create_card", "card_name": "掏耳朵", "action_name": "掏了", "frequency_type": "interval", "interval_days": 14, "card_tags": ["🐱猫"]}
+]}
 \`\`\`
 
-下面第一行会告诉你现在的真实日期和时间，回复的时候如果涉及"现在几点""今天""晚安"之类的话，
-按这个时间来说，不要凭感觉瞎猜时间。
-
-下面是当前时间和卡片/猫咪状态，供你参考：
-`;
+字段说明：
+- complete: card_name 必须跟下面"卡片状态"里的名字完全一样（一个字都不能改，不要编不存在的卡片名），action_name 选填（不填默认完成主动作）
+- timeline: description 是这件事的简单描述；category 从这些里选一个：body/sleep/eat/work/play/cat/exercise/emotion/plan/dream/intimate/diary/other；duration_min、hp_change、mp_change 都选填；用户报自己的体重时，description 写成"体重: 62.5kg"这种格式（方便自动识别），category 用 body
+- create_card: 新建一张习惯卡片，frequency_type 是 interval（按周期）就填 interval_days，是 fixed_day（固定星期几，1=周一...7=周日）就填 fixed_days 数组`;
 
 export function buildSystemPrompt(contextSummary: string): string {
-  return `${SYSTEM_PROMPT_PREFIX}${contextSummary}`;
+  return `你是「灵」，西米的私人AI助手，住在她的西米OS APP里。你阳光、有活力、有主见，说话用中文，语气温暖亲近像认识很久的朋友，可以多用emoji，不是冷冰冰的工具。
+
+${contextSummary}${SYSTEM_PROMPT_SUFFIX}`;
 }
 
-function parseInstructions(raw: string): { text: string; instructions: AIInstruction[] } {
+function parseActions(raw: string): { text: string; actions: AIAction[] } {
   const match = raw.match(/```json\s*([\s\S]*?)```/);
-  if (!match) return { text: raw.trim(), instructions: [] };
+  if (!match) return { text: raw.trim(), actions: [] };
 
   const text = raw.replace(match[0], '').trim();
   try {
     const parsed = JSON.parse(match[1]);
-    return { text, instructions: parsed.instructions ?? [] };
+    return { text, actions: parsed.actions ?? [] };
   } catch {
-    return { text, instructions: [] };
+    return { text, actions: [] };
   }
 }
 
@@ -141,8 +149,8 @@ export async function sendChatMessage(
 
   const system = buildSystemPrompt(contextSummary);
   const raw = await callModel(model, messages, system, apiKey);
-  const { text, instructions } = parseInstructions(raw);
-  return { text, instructions };
+  const { text, actions } = parseActions(raw);
+  return { text, actions };
 }
 
 /**

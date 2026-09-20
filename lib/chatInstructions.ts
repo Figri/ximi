@@ -1,7 +1,9 @@
-import type { Action, AIInstruction, Card, Cat } from '../types';
+import type { AIAction, Action, Card, Cat } from '../types';
 import { getActionDecay } from './decay';
 
-/** 给聊天用的卡片/猫上下文摘要，AI 回复里的 card/actionName 要原样抄这里的名字 */
+const STATUS_EMOJI = { red: '🔴', yellow: '🟡', green: '🟢' } as const;
+
+/** 给聊天用的完整上下文：当前时间、记忆、卡片状态、猫信息 */
 export function buildCardContextSummary(
   cards: Card[],
   actions: Action[],
@@ -9,13 +11,18 @@ export function buildCardContextSummary(
   lastCompletions: Record<string, string>,
   memory?: string
 ): string {
-  const memorySection = memory?.trim()
-    ? `西米让你一直记住的事情（人设/习惯/偏好……，聊天时要参考）：\n${memory.trim()}\n\n`
-    : '';
+  const now = new Date();
+  const timeText = now.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const weekdayText = now.toLocaleDateString('zh-CN', { weekday: 'long' });
 
-  const catLines = cats
-    .map((c) => `${c.name}${c.gender ? `(${c.gender})` : ''}${c.notes ? ` ${c.notes}` : ''}`)
-    .join('、');
+  const memorySection = memory?.trim() ? `\n## 西米想让你一直记住的事\n${memory.trim()}\n` : '';
 
   const byCard: Record<string, Action[]> = {};
   for (const a of actions) {
@@ -26,48 +33,48 @@ export function buildCardContextSummary(
   const cardLines = cards
     .filter((c) => !c.archived)
     .map((card) => {
-      const cardActions = byCard[card.id] ?? [];
-      const actionLines = cardActions.map((a) => {
-        const lastCompletedAt = lastCompletions[a.id] ? new Date(lastCompletions[a.id]) : null;
-        const decay = getActionDecay(a, lastCompletedAt);
-        return `${a.name}(${decay.status === 'red' ? '超期' : decay.status === 'yellow' ? '快到了' : '还好'})`;
-      });
-      return `${card.name}：${actionLines.join('、') || '（无动作）'}`;
+      const primary = (byCard[card.id] ?? []).find((a) => a.is_primary);
+      if (!primary) return `- ${card.name}：（无主动作）`;
+      const lastCompletedAt = lastCompletions[primary.id] ? new Date(lastCompletions[primary.id]) : null;
+      const decay = getActionDecay(primary, lastCompletedAt);
+      return `- ${card.name}：${STATUS_EMOJI[decay.status]}${decay.timeLeft}`;
     })
     .join('\n');
 
-  return `${memorySection}猫：${catLines || '（暂无）'}
+  const catLine = cats
+    .map((c) => `${c.name}(${c.gender ?? ''}${c.notes ? ` ${c.notes}` : ''})`)
+    .join('、');
 
-卡片和动作（西米说"做了/完成了xxx"，你判断出对应哪张卡片的哪个动作时，
-在 JSON 指令里的 "card" 和 "actionName" 必须跟下面列出的名字完全一样，
-一个字都不能改，也不要自己编不存在的卡片名）：
-${cardLines || '（暂无卡片）'}`;
+  return `当前时间：${timeText}
+今天星期：${weekdayText}
+${memorySection}
+## 用户的卡片状态（生活tab数据）
+${cardLines || '（暂无卡片）'}
+
+## 用户的猫
+${catLine || '（暂无）'}`;
 }
 
-interface ResolvedInstruction {
+interface ResolvedComplete {
   card: Card;
   action: Action;
 }
 
-/** 把 AI 回复里的指令，对应回真实的卡片/动作。找不到就返回 null（宁可不执行，也不要误操作）*/
-export function resolveInstruction(
-  instruction: AIInstruction,
-  cards: Card[],
-  actions: Action[]
-): ResolvedInstruction | null {
-  if (instruction.action !== 'complete' || !instruction.card || !instruction.actionName) return null;
+/** 把 AI 的 complete 指令，对应回真实的卡片/动作。找不到就返回 null（宁可不执行，也不要误操作）*/
+export function resolveComplete(action: AIAction, cards: Card[], actions: Action[]): ResolvedComplete | null {
+  if (action.type !== 'complete' || !action.card_name) return null;
 
   const normalize = (s: string) => s.trim().toLowerCase();
-  const wantedCard = normalize(instruction.card);
-  const wantedAction = normalize(instruction.actionName);
+  const wantedCard = normalize(action.card_name);
 
   const card = cards.find((c) => normalize(c.name) === wantedCard);
   if (!card) return null;
 
-  const action = actions.find(
-    (a) => a.card_id === card.id && normalize(a.name) === wantedAction
-  );
-  if (!action) return null;
+  const cardActions = actions.filter((a) => a.card_id === card.id);
+  const resolved = action.action_name
+    ? cardActions.find((a) => normalize(a.name) === normalize(action.action_name!))
+    : cardActions.find((a) => a.is_primary);
+  if (!resolved) return null;
 
-  return { card, action };
+  return { card, action: resolved };
 }

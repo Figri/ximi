@@ -49,6 +49,16 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
+          <Stack.Screen
+            name="memory"
+            options={{
+              headerShown: true,
+              title: 'AI 记忆',
+              presentation: 'modal',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.textPrimary,
+            }}
+          />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
