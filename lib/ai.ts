@@ -1,13 +1,14 @@
 import type { AIAction, AIReply, ChatMessage } from '../types';
+import { imageUrlToBase64 } from './chatImages';
 
 // 支持的模型（可在聊天页 ⋯ 设置里切换、填各家的 key）
 export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-flash' | 'deepseek-chat';
 
-export const AI_MODELS: { id: AIModel; label: string; keyHint: string }[] = [
-  { id: 'claude-sonnet', label: 'Claude', keyHint: 'sk-ant-...（console.anthropic.com）' },
-  { id: 'gpt-4o', label: 'GPT-4o', keyHint: 'sk-...（platform.openai.com）' },
-  { id: 'gemini-flash', label: 'Gemini', keyHint: 'AIza...（aistudio.google.com/apikey）' },
-  { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）' },
+export const AI_MODELS: { id: AIModel; label: string; keyHint: string; supportsImages: boolean }[] = [
+  { id: 'claude-sonnet', label: 'Claude', keyHint: 'sk-ant-...（console.anthropic.com）', supportsImages: true },
+  { id: 'gpt-4o', label: 'GPT-4o', keyHint: 'sk-...（platform.openai.com）', supportsImages: true },
+  { id: 'gemini-flash', label: 'Gemini', keyHint: 'AIza...（aistudio.google.com/apikey）', supportsImages: true },
+  { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）', supportsImages: false },
 ];
 
 const SYSTEM_PROMPT_SUFFIX = `
@@ -17,6 +18,7 @@ const SYSTEM_PROMPT_SUFFIX = `
 - 用户说"帮我加个每周X的提醒"之类的话，你要新建卡片。
 - 用户说烦恼、心情不好，就正常聊天安慰，不需要返回指令。
 - 用户记录事件（比如"我刚才色色了半小时"、"体重60.5"），你要帮她写入时间轴记录。
+- 用户发了图片，你能直接看到图片内容，可以描述、评价或者根据图片内容聊天。
 
 如果有可执行的操作，在回复最后追加一个 JSON 代码块（没有可执行操作就不要输出这个代码块）：
 
@@ -53,6 +55,18 @@ function parseActions(raw: string): { text: string; actions: AIAction[] } {
 }
 
 async function callAnthropic(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
+  const mapped = await Promise.all(
+    messages.map(async (m) => {
+      if (!m.image_url) return { role: m.role, content: m.content };
+      const { base64, mimeType } = await imageUrlToBase64(m.image_url);
+      const parts: unknown[] = [
+        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+      ];
+      if (m.content) parts.push({ type: 'text', text: m.content });
+      return { role: m.role, content: parts };
+    })
+  );
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -64,7 +78,7 @@ async function callAnthropic(messages: ChatMessage[], system: string, apiKey: st
       model: 'claude-sonnet-5',
       max_tokens: 1024,
       system,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: mapped,
     }),
   });
   if (!res.ok) throw new Error(`Anthropic API 错误: ${res.status} ${await res.text()}`);
@@ -79,8 +93,19 @@ async function callOpenAICompatible(
   messages: ChatMessage[],
   system: string,
   apiKey: string,
-  errorLabel: string
+  errorLabel: string,
+  supportsImages: boolean
 ): Promise<string> {
+  const mapped = await Promise.all(
+    messages.map(async (m) => {
+      if (!m.image_url || !supportsImages) return { role: m.role, content: m.content };
+      const { base64, mimeType } = await imageUrlToBase64(m.image_url);
+      const parts: unknown[] = [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }];
+      if (m.content) parts.push({ type: 'text', text: m.content });
+      return { role: m.role, content: parts };
+    })
+  );
+
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -89,7 +114,7 @@ async function callOpenAICompatible(
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'system', content: system }, ...messages.map((m) => ({ role: m.role, content: m.content }))],
+      messages: [{ role: 'system', content: system }, ...mapped],
     }),
   });
   if (!res.ok) throw new Error(`${errorLabel} API 错误: ${res.status} ${await res.text()}`);
@@ -98,6 +123,19 @@ async function callOpenAICompatible(
 }
 
 async function callGemini(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
+  const contents = await Promise.all(
+    messages.map(async (m) => {
+      const parts: unknown[] = [];
+      if (m.image_url) {
+        const { base64, mimeType } = await imageUrlToBase64(m.image_url);
+        parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
+      }
+      if (m.content) parts.push({ text: m.content });
+      if (parts.length === 0) parts.push({ text: '' });
+      return { role: m.role === 'assistant' ? 'model' : 'user', parts };
+    })
+  );
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
@@ -105,10 +143,7 @@ async function callGemini(messages: ChatMessage[], system: string, apiKey: strin
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: messages.map((m) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        })),
+        contents,
       }),
     }
   );
@@ -125,9 +160,17 @@ async function callModel(
 ): Promise<string> {
   switch (model) {
     case 'gpt-4o':
-      return callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI');
+      return callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI', true);
     case 'deepseek-chat':
-      return callOpenAICompatible('https://api.deepseek.com', 'deepseek-chat', messages, system, apiKey, 'DeepSeek');
+      return callOpenAICompatible(
+        'https://api.deepseek.com',
+        'deepseek-chat',
+        messages,
+        system,
+        apiKey,
+        'DeepSeek',
+        false
+      );
     case 'gemini-flash':
       return callGemini(messages, system, apiKey);
     case 'claude-sonnet':

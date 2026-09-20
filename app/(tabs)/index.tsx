@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -49,6 +50,13 @@ export default function ChatScreen() {
     if (cards.length === 0) fetchAll();
   }, []);
 
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    });
+    return () => sub.remove();
+  }, []);
+
   // 每次回到聊天页都重新读一下选中的模型（比如刚从设置页切换回来）
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +84,16 @@ export default function ChatScreen() {
     await setSelectedModel(next);
   }
 
+  function handleOpenMenu() {
+    const currentLabel = AI_MODELS.find((m) => m.id === model)?.label ?? model;
+    Alert.alert('灵', undefined, [
+      { text: `切换模型（当前：${currentLabel}）`, onPress: handleModelCycle },
+      { text: 'AI 记忆', onPress: () => router.push('/memory') },
+      { text: '设置', onPress: () => router.push('/settings') },
+      { text: '取消', style: 'cancel' },
+    ]);
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (!text || sending) return;
@@ -100,6 +118,10 @@ export default function ChatScreen() {
 
       const apiKey = await getApiKey(model);
       const history = [...messages, savedUser ?? userMessage].slice(-20);
+      const modelInfo = AI_MODELS.find((m) => m.id === model);
+      if (!modelInfo?.supportsImages && history.some((m) => m.image_url)) {
+        Alert.alert('这个模型看不了图片', 'DeepSeek暂不支持图片识别，去⋯菜单切换到Claude/GPT/Gemini才能让AI看到图片');
+      }
       const contextSummary = buildContextSummary();
       const reply = await sendChatMessage(history, contextSummary, model, apiKey);
 
@@ -255,58 +277,59 @@ export default function ChatScreen() {
           <Text style={styles.headerName}>灵</Text>
           <Text style={styles.headerStatus}>在线</Text>
         </View>
-        <Pressable
-          style={styles.menuButton}
-          onPress={() =>
-            Alert.alert('灵', undefined, [
-              { text: 'AI 记忆', onPress: () => router.push('/memory') },
-              { text: '设置', onPress: () => router.push('/settings') },
-              { text: '取消', style: 'cancel' },
-            ])
-          }
-        >
+        <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
           <Text style={styles.menuButtonText}>⋯</Text>
         </Pressable>
       </View>
 
-      <FlatList
-        ref={listRef}
-        style={styles.list}
-        removeClippedSubviews={false}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item, index }) => {
-          const prev = index > 0 ? messages[index - 1] : null;
-          const showDateDivider =
-            !prev || new Date(prev.created_at).toDateString() !== new Date(item.created_at).toDateString();
-          const itemConfirmations = confirmations[item.id];
-          return (
-            <View>
-              <ChatBubble message={item} showDateDivider={showDateDivider} />
-              {itemConfirmations?.map((c) => (
-                <View key={c.id} style={styles.confirmRow}>
-                  <Text style={styles.confirmText}>✓ {c.label}</Text>
-                  {c.kind !== 'create_card' && (
-                    <Pressable onPress={() => handleUndoConfirmation(item.id, c)}>
-                      <Text style={styles.confirmUndo}>˟ 撤销</Text>
-                    </Pressable>
-                  )}
-                </View>
-              ))}
-            </View>
-          );
-        }}
-        contentContainerStyle={styles.listContent}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-      />
+      <KeyboardAvoidingView
+        style={styles.flexOne}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <FlatList
+          ref={listRef}
+          style={styles.list}
+          removeClippedSubviews={false}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          renderItem={({ item, index }) => {
+            const prev = index > 0 ? messages[index - 1] : null;
+            const showDateDivider =
+              !prev || new Date(prev.created_at).toDateString() !== new Date(item.created_at).toDateString();
+            const itemConfirmations = confirmations[item.id];
+            return (
+              <View>
+                <ChatBubble message={item} showDateDivider={showDateDivider} />
+                {itemConfirmations?.map((c) => (
+                  <View key={c.id} style={styles.confirmRow}>
+                    <Text style={styles.confirmText}>✓ {c.label}</Text>
+                    {c.kind !== 'create_card' && (
+                      <Pressable onPress={() => handleUndoConfirmation(item.id, c)}>
+                        <Text style={styles.confirmUndo}>˟ 撤销</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+              </View>
+            );
+          }}
+          contentContainerStyle={styles.listContent}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.inputBar}>
           <Pressable style={styles.iconButton} onPress={() => handleSendImage('camera')} disabled={sendingImage}>
-            {sendingImage ? <ActivityIndicator size="small" color={colors.textSecondary} /> : <Text style={styles.icon}>📷</Text>}
+            {sendingImage ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <Text style={styles.icon}>📷</Text>
+            )}
           </Pressable>
           <Pressable style={styles.iconButton} onPress={() => handleSendImage('library')} disabled={sendingImage}>
             <Text style={styles.icon}>🖼</Text>
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={handleOpenMenu}>
+            <Text style={styles.icon}>＋</Text>
           </Pressable>
           <TextInput
             style={styles.input}
@@ -319,9 +342,6 @@ export default function ChatScreen() {
             cursorColor={colors.purpleDark}
             selectionColor={colors.purple}
           />
-          <Pressable onPress={handleModelCycle} style={styles.modelTag}>
-            <Text style={styles.modelTagText}>{AI_MODELS.find((m) => m.id === model)?.label}</Text>
-          </Pressable>
           <Pressable onPress={handleSend} style={styles.sendButton} disabled={sending}>
             {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendText}>↑</Text>}
           </Pressable>
@@ -359,6 +379,7 @@ const styles = StyleSheet.create({
   headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
   menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
+  flexOne: { flex: 1 },
   list: { flex: 1 },
   listContent: { paddingVertical: spacing.md },
   confirmRow: {
@@ -386,8 +407,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     borderRadius: radius.card,
   },
-  iconButton: { padding: spacing.xs },
-  icon: { fontSize: 18 },
+  iconButton: { padding: 4 },
+  icon: { fontSize: 20, includeFontPadding: false },
   input: {
     flex: 1,
     fontSize: fontSize.body,
@@ -399,13 +420,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     includeFontPadding: false,
   },
-  modelTag: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 4,
-    borderRadius: radius.widget,
-    backgroundColor: colors.blueLight,
-  },
-  modelTagText: { fontSize: fontSize.tiny, color: colors.blueDark },
   sendButton: {
     width: 32,
     height: 32,

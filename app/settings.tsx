@@ -102,6 +102,7 @@ export default function SettingsScreen() {
                   <Text style={styles.providerName}>{m.label}</Text>
                   <Text style={styles.providerStatus}>
                     {hasKey ? `已设置 ${maskKey(savedKeys[m.id]!)}` : '还没填 key'}
+                    {!m.supportsImages ? ' · 不支持图片识别' : ''}
                   </Text>
                 </View>
                 <Pressable
