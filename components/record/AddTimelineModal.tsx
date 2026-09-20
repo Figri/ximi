@@ -15,17 +15,26 @@ interface AddTimelineModalProps {
 export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }: AddTimelineModalProps) {
   const [category, setCategory] = useState<TimelineCategory>(defaultCategory);
   const [text, setText] = useState('');
+  const [weight, setWeight] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
-    if (!text.trim()) {
+    const weightNum = weight.trim() ? Number(weight.trim()) : null;
+    if (category === 'body' && weight.trim() && Number.isNaN(weightNum)) {
+      Alert.alert('体重要填数字', '比如 62.5');
+      return;
+    }
+    const weightPrefix = weightNum != null ? `体重: ${weightNum}kg` : '';
+    const fullText = [weightPrefix, text.trim()].filter(Boolean).join('\n');
+    if (!fullText) {
       Alert.alert('写点什么吧', '内容不能是空的');
       return;
     }
     setSaving(true);
     try {
-      await addTimelineEntry({ category, description: text.trim() });
+      await addTimelineEntry({ category, description: fullText });
       setText('');
+      setWeight('');
       setCategory(defaultCategory);
       onAdded();
     } catch (err) {
@@ -52,6 +61,16 @@ export function AddTimelineModal({ visible, defaultCategory, onClose, onAdded }:
               </Pressable>
             ))}
           </View>
+          {category === 'body' && (
+            <TextInput
+              style={styles.input}
+              value={weight}
+              onChangeText={setWeight}
+              placeholder="体重（kg，选填），比如 62.5"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="decimal-pad"
+            />
+          )}
           <TextInput
             style={styles.input}
             value={text}
