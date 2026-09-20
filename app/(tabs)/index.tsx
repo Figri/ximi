@@ -24,6 +24,7 @@ import { pickImage, uploadChatImage } from '../../lib/chatImages';
 import { fetchMemory } from '../../lib/memory';
 import { addTimelineEntry, deleteTimelineEntry } from '../../lib/timeline';
 import { createCard } from '../../lib/cards';
+import { generateDailySummary } from '../../lib/dailySummary';
 import { useCardStore } from '../../lib/store';
 import type { ChatMessage, TimelineCategory } from '../../types';
 
@@ -38,6 +39,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
+  const [dreaming, setDreaming] = useState(false);
   const [model, setModel] = useState<AIModel>('claude-sonnet');
   const [memory, setMemory] = useState('');
   const [confirmations, setConfirmations] = useState<Record<string, Confirmation[]>>({});
@@ -88,10 +90,28 @@ export default function ChatScreen() {
     const currentLabel = AI_MODELS.find((m) => m.id === model)?.label ?? model;
     Alert.alert('灵', undefined, [
       { text: `切换模型（当前：${currentLabel}）`, onPress: handleModelCycle },
+      { text: '🌙 手动做梦（生成今日总结）', onPress: handleManualDream },
       { text: 'AI 记忆', onPress: () => router.push('/memory') },
       { text: '设置', onPress: () => router.push('/settings') },
       { text: '取消', style: 'cancel' },
     ]);
+  }
+
+  async function handleManualDream() {
+    if (dreaming) return;
+    setDreaming(true);
+    try {
+      const apiKey = await getApiKey(model);
+      const summary = await generateDailySummary(new Date(), model, apiKey);
+      Alert.alert(
+        '🌙 做梦做完了',
+        `身体：${summary.body_summary ?? '—'}\n睡眠：${summary.sleep_summary ?? '—'}\n饮食：${summary.food_summary ?? '—'}\n情绪：${summary.emotion_summary ?? '—'}\n烦恼：${summary.worry_summary ?? '—'}\n计划：${summary.plan_summary ?? '—'}\n\nHP ${summary.hp ?? '—'} · MP ${summary.mp ?? '—'}\n\n已存进记录tab的AI总结卡片里`
+      );
+    } catch (err) {
+      Alert.alert('做梦失败', err instanceof Error ? err.message : String(err));
+    } finally {
+      setDreaming(false);
+    }
   }
 
   async function handleSend() {

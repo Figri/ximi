@@ -34,8 +34,28 @@ const SUMMARY_SYSTEM_PROMPT = `你是西米OS里帮西米整理每日总结的�
   "mp": 0到100之间的整数，代表今天的情绪/精神状态
 }`;
 
+async function fetchTodayMessages(date: Date): Promise<{ role: string; content: string; created_at: string }[]> {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const { data, error } = await supabase
+    .from('messages')
+    .select('role, content, created_at')
+    .gte('created_at', start.toISOString())
+    .lt('created_at', end.toISOString())
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function generateDailySummary(date: Date, model: AIModel, apiKey: string | null): Promise<DailySummary> {
-  const [entries, worries] = await Promise.all([fetchTimelineForDate(date), fetchWorries()]);
+  const [entries, worries, chatMessages] = await Promise.all([
+    fetchTimelineForDate(date),
+    fetchWorries(),
+    fetchTodayMessages(date),
+  ]);
 
   const entriesText = entries.length
     ? entries
@@ -48,7 +68,14 @@ export async function generateDailySummary(date: Date, model: AIModel, apiKey: s
     ? activeWorries.map((w) => `- ${w.content}`).join('\n')
     : '（暂无进行中的烦恼）';
 
-  const userPrompt = `日期：${toDateKey(date)}\n\n时间轴：\n${entriesText}\n\n进行中的烦恼：\n${worriesText}`;
+  const chatText = chatMessages.length
+    ? chatMessages
+        .filter((m) => m.content?.trim())
+        .map((m) => `${m.role === 'user' ? '西米' : '灵'}：${m.content}`)
+        .join('\n')
+    : '（今天没有聊天记录）';
+
+  const userPrompt = `日期：${toDateKey(date)}\n\n时间轴：\n${entriesText}\n\n进行中的烦恼：\n${worriesText}\n\n今天的聊天内容：\n${chatText}`;
 
   const raw = await callAIOnce(SUMMARY_SYSTEM_PROMPT, userPrompt, model, apiKey);
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
