@@ -7,9 +7,11 @@ import { TodayView } from '../../components/record/TodayView';
 import { CategoryTimelineView } from '../../components/record/CategoryTimelineView';
 import { WorriesView } from '../../components/record/WorriesView';
 import { CollectionsView } from '../../components/record/CollectionsView';
+import { ProjectsView } from '../../components/record/ProjectsView';
 import { AddTimelineModal } from '../../components/record/AddTimelineModal';
 import { AddWorryModal } from '../../components/record/AddWorryModal';
 import { AddCollectionModal } from '../../components/record/AddCollectionModal';
+import { AddProjectModal } from '../../components/record/AddProjectModal';
 
 export default function RecordScreen() {
   const [selected, setSelected] = useState<SidebarKey>('今日');
@@ -45,6 +47,7 @@ export default function RecordScreen() {
           {selected === '今日' && <TodayView refreshKey={refreshKey} />}
           {selected === '烦恼' && <WorriesView refreshKey={refreshKey} />}
           {selected === '收藏' && <CollectionsView refreshKey={refreshKey} />}
+          {selected === '项目' && <ProjectsView refreshKey={refreshKey} />}
           {timelineCategory && <CategoryTimelineView category={timelineCategory} refreshKey={refreshKey} />}
         </ScrollView>
 
@@ -57,6 +60,8 @@ export default function RecordScreen() {
         <AddWorryModal visible={addOpen} onClose={() => setAddOpen(false)} onAdded={bumpRefresh} />
       ) : selected === '收藏' ? (
         <AddCollectionModal visible={addOpen} onClose={() => setAddOpen(false)} onAdded={bumpRefresh} />
+      ) : selected === '项目' ? (
+        <AddProjectModal visible={addOpen} onClose={() => setAddOpen(false)} onAdded={bumpRefresh} />
       ) : (
         <AddTimelineModal
           visible={addOpen}

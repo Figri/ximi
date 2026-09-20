@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
-import type { DailySummary, Project } from '../types';
+import type { DailySummary } from '../types';
+
+export { fetchProjects } from './projects';
 
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
@@ -69,10 +71,4 @@ export async function fetchWeightSeries(limit = 30): Promise<{ date: string; wei
     }
   }
   return points.reverse().slice(-limit);
-}
-
-export async function fetchProjects(): Promise<Project[]> {
-  const { data, error } = await supabase.from('projects').select('*').order('updated_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
 }

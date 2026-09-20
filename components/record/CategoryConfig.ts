@@ -8,6 +8,7 @@ export type SidebarKey =
   | '情绪'
   | '烦恼'
   | '计划'
+  | '项目'
   | '收藏'
   | '梦'
   | '色色'
@@ -21,6 +22,7 @@ export const SIDEBAR_ITEMS: { key: SidebarKey; emoji: string }[] = [
   { key: '情绪', emoji: '💭' },
   { key: '烦恼', emoji: '😮‍💨' },
   { key: '计划', emoji: '📋' },
+  { key: '项目', emoji: '🚀' },
   { key: '收藏', emoji: '⭐' },
   { key: '梦', emoji: '🌙' },
   { key: '色色', emoji: '💗' },
