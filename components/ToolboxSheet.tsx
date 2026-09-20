@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
 import {
   addPeriodEvent,
@@ -10,7 +10,9 @@ import {
   predictNextPeriod,
   type PeriodEvent,
 } from '../lib/toolbox';
+import { addCatEvent, fetchLastCatWeights } from '../lib/cats';
 import { cancelTimerNotification, ensureNotificationPermission, scheduleTimerNotification } from '../lib/notifications';
+import { useCardStore } from '../lib/store';
 
 type ToolKind = 'weight' | 'period' | 'exercise' | 'timer' | null;
 
@@ -62,53 +64,134 @@ function SheetTitle({ children }: { children: string }) {
   return <Text style={styles.sheetTitle}>{children}</Text>;
 }
 
+type WeighMode = 'alone' | 'held';
+
 function WeightTool({ onDone }: { onDone: () => void }) {
-  const [value, setValue] = useState('');
-  const [last, setLast] = useState<{ kg: number; date: string } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const cats = useCardStore((s) => s.cats);
+  const [myWeight, setMyWeight] = useState('');
+  const [myLast, setMyLast] = useState<{ kg: number; date: string } | null>(null);
+  const [savingMy, setSavingMy] = useState(false);
+
+  const [mode, setMode] = useState<WeighMode>('alone');
+  const [catInputs, setCatInputs] = useState<Record<string, string>>({});
+  const [catLast, setCatLast] = useState<Record<string, { value: number; date: string }>>({});
+  const [savingAll, setSavingAll] = useState(false);
 
   useEffect(() => {
-    fetchLastWeight().then(setLast).catch(() => {});
+    fetchLastWeight().then(setMyLast).catch(() => {});
+    fetchLastCatWeights(cats.map((c) => c.id)).then(setCatLast).catch(() => {});
   }, []);
 
-  async function handleSave() {
-    const kg = Number(value);
-    if (!value || Number.isNaN(kg) || kg <= 0) {
+  async function handleSaveMy() {
+    const kg = Number(myWeight);
+    if (!myWeight || Number.isNaN(kg) || kg <= 0) {
       Alert.alert('填个数字', '比如 55.5');
       return;
     }
-    setSaving(true);
+    setSavingMy(true);
     try {
       await logWeight(kg);
+      setMyLast({ kg, date: new Date().toISOString() });
+    } catch (err) {
+      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingMy(false);
+    }
+  }
+
+  async function handleSaveAll() {
+    const filled = cats.filter((c) => catInputs[c.id]?.trim());
+    if (filled.length === 0) {
+      Alert.alert('还没填猫的体重', '至少填一只猫');
+      return;
+    }
+
+    const myRef = myWeight ? Number(myWeight) : myLast?.kg ?? null;
+    if (mode === 'held' && !myRef) {
+      Alert.alert('先填我的体重', '抱着称需要先知道你自己的体重才能减出猫的重量');
+      return;
+    }
+
+    setSavingAll(true);
+    try {
+      for (const cat of filled) {
+        const raw = Number(catInputs[cat.id]);
+        if (Number.isNaN(raw)) continue;
+        const kg = mode === 'held' ? Math.round((raw - (myRef ?? 0)) * 10) / 10 : raw;
+        await addCatEvent(cat.id, { event_type: '体重', value: kg, event_date: new Date().toISOString() });
+      }
       onDone();
     } catch (err) {
       Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
     } finally {
-      setSaving(false);
+      setSavingAll(false);
     }
   }
 
   return (
-    <View>
-      <SheetTitle>⚖️ 体重</SheetTitle>
-      {last && (
+    <ScrollView style={styles.weightScroll}>
+      <SheetTitle>⚖️ 记录体重</SheetTitle>
+
+      <Text style={styles.weightSectionLabel}>👤 我的体重</Text>
+      {myLast && (
         <Text style={styles.hint}>
-          上次记录：{last.kg}kg（{new Date(last.date).toLocaleDateString('zh-CN')}）
+          上次：{myLast.kg}kg（{new Date(myLast.date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}）
         </Text>
       )}
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={setValue}
-        placeholder="今天多少 kg"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="decimal-pad"
-        autoFocus
-      />
-      <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        <Text style={styles.saveButtonText}>{saving ? '保存中…' : '保存'}</Text>
-      </Pressable>
-    </View>
+      <View style={styles.weightInputRow}>
+        <TextInput
+          style={[styles.input, styles.weightInputFlex]}
+          value={myWeight}
+          onChangeText={setMyWeight}
+          placeholder="kg"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+        />
+        <Pressable style={styles.weightSaveOneButton} onPress={handleSaveMy} disabled={savingMy}>
+          <Text style={styles.saveButtonText}>{savingMy ? '…' : '保存'}</Text>
+        </Pressable>
+      </View>
+
+      {cats.length > 0 && (
+        <>
+          <Text style={[styles.weightSectionLabel, { marginTop: spacing.lg }]}>── 🐱 猫猫称重 ──</Text>
+          <View style={styles.chipRow}>
+            <Pressable
+              onPress={() => setMode('alone')}
+              style={[styles.chip, mode === 'alone' && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, mode === 'alone' && styles.chipTextActive]}>单独称</Text>
+            </Pressable>
+            <Pressable onPress={() => setMode('held')} style={[styles.chip, mode === 'held' && styles.chipActive]}>
+              <Text style={[styles.chipText, mode === 'held' && styles.chipTextActive]}>抱着称</Text>
+            </Pressable>
+          </View>
+          {mode === 'held' && (
+            <Text style={styles.hint}>先填上面「我的体重」，再填抱猫总重，系统自动减出猫的重量</Text>
+          )}
+
+          {cats.map((cat) => (
+            <View key={cat.id} style={styles.weightInputRow}>
+              <Text style={styles.catWeightLabel} numberOfLines={1}>
+                😺{cat.name}
+              </Text>
+              <TextInput
+                style={[styles.input, styles.weightInputFlex]}
+                value={catInputs[cat.id] ?? ''}
+                onChangeText={(text) => setCatInputs((prev) => ({ ...prev, [cat.id]: text }))}
+                placeholder={catLast[cat.id] ? `上次${catLast[cat.id].value}` : 'kg'}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          ))}
+
+          <Pressable style={styles.saveButton} onPress={handleSaveAll} disabled={savingAll}>
+            <Text style={styles.saveButtonText}>{savingAll ? '保存中…' : '保存全部'}</Text>
+          </Pressable>
+        </>
+      )}
+    </ScrollView>
   );
 }
 
@@ -338,6 +421,25 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing.md,
   },
+  weightScroll: { maxHeight: 480 },
+  weightSectionLabel: {
+    fontSize: fontSize.secondary,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  weightInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  weightInputFlex: { flex: 1, marginBottom: spacing.sm },
+  weightSaveOneButton: {
+    backgroundColor: colors.purpleDark,
+    borderRadius: radius.widget,
+    paddingHorizontal: spacing.md,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  catWeightLabel: { width: 76, fontSize: fontSize.body, color: colors.textPrimary },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   chip: {
     paddingHorizontal: spacing.md,

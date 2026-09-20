@@ -34,3 +34,22 @@ export async function deleteCatEvent(id: string): Promise<void> {
   const { error } = await supabase.from('cat_events').delete().eq('id', id);
   if (error) throw error;
 }
+
+/** 每只猫最近一次称重记录，catId -> {value, date} */
+export async function fetchLastCatWeights(catIds: string[]): Promise<Record<string, { value: number; date: string }>> {
+  if (catIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('cat_events')
+    .select('cat_id, value, event_date')
+    .in('cat_id', catIds)
+    .eq('event_type', '体重')
+    .not('value', 'is', null)
+    .order('event_date', { ascending: false });
+  if (error) throw error;
+
+  const result: Record<string, { value: number; date: string }> = {};
+  for (const row of data ?? []) {
+    if (!result[row.cat_id]) result[row.cat_id] = { value: row.value, date: row.event_date };
+  }
+  return result;
+}

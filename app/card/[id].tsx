@@ -24,12 +24,19 @@ import {
   updateCard,
 } from '../../lib/cards';
 import { useCardStore } from '../../lib/store';
-import type { Action, Completion, FrequencyType } from '../../types';
+import type { Action, Completion, FrequencyType, TimeOfDay } from '../../types';
 
 const FREQUENCY_LABELS: Record<FrequencyType, string> = {
   interval: '周期衰减',
   fixed_day: '固定星期几',
   manual: '手动（不衰减）',
+};
+
+const TIME_OF_DAY_LABELS: Record<TimeOfDay, string> = {
+  morning: '🌅 早上',
+  day: '☀️ 白天',
+  evening: '🌙 晚上',
+  anytime: '⏰ 随时',
 };
 
 export default function CardDetailScreen() {
@@ -43,6 +50,7 @@ export default function CardDetailScreen() {
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('anytime');
   const [tags, setTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
@@ -73,6 +81,7 @@ export default function CardDetailScreen() {
         setName(card.name);
         setNotes(card.notes ?? '');
         setTags(card.tags);
+        setTimeOfDay(card.time_of_day ?? 'anytime');
       }
       const primary = actions.find((a) => a.is_primary) ?? null;
       setPrimaryAction(primary);
@@ -111,7 +120,7 @@ export default function CardDetailScreen() {
     try {
       if (isNew) {
         await createCard(
-          { name: name.trim(), type: 'habit', tags, notes: notes.trim() || null },
+          { name: name.trim(), type: 'habit', tags, notes: notes.trim() || null, time_of_day: timeOfDay },
           [
             {
               name: actionName.trim() || '做了',
@@ -126,7 +135,7 @@ export default function CardDetailScreen() {
           ]
         );
       } else if (cardId) {
-        await updateCard(cardId, { name: name.trim(), tags, notes: notes.trim() || null });
+        await updateCard(cardId, { name: name.trim(), tags, notes: notes.trim() || null, time_of_day: timeOfDay });
         if (primaryAction) {
           await updateAction(primaryAction.id, {
             name: actionName.trim() || '做了',
@@ -197,6 +206,21 @@ export default function CardDetailScreen() {
           <Pressable style={styles.addTagButton} onPress={handleAddTag}>
             <Text style={styles.addTagButtonText}>添加</Text>
           </Pressable>
+        </View>
+
+        <Text style={styles.label}>属于哪个时间段</Text>
+        <View style={styles.tagRow}>
+          {(Object.keys(TIME_OF_DAY_LABELS) as TimeOfDay[]).map((tod) => (
+            <Pressable
+              key={tod}
+              onPress={() => setTimeOfDay(tod)}
+              style={[styles.tagChip, timeOfDay === tod && styles.tagChipActive]}
+            >
+              <Text style={[styles.tagChipText, timeOfDay === tod && styles.tagChipTextActive]}>
+                {TIME_OF_DAY_LABELS[tod]}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         <Text style={styles.label}>主动作</Text>
