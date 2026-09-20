@@ -6,8 +6,13 @@ export function buildCardContextSummary(
   cards: Card[],
   actions: Action[],
   cats: Cat[],
-  lastCompletions: Record<string, string>
+  lastCompletions: Record<string, string>,
+  memory?: string
 ): string {
+  const memorySection = memory?.trim()
+    ? `西米让你一直记住的事情（人设/习惯/偏好……，聊天时要参考）：\n${memory.trim()}\n\n`
+    : '';
+
   const catLines = cats
     .map((c) => `${c.name}${c.gender ? `(${c.gender})` : ''}${c.notes ? ` ${c.notes}` : ''}`)
     .join('、');
@@ -31,7 +36,7 @@ export function buildCardContextSummary(
     })
     .join('\n');
 
-  return `猫：${catLines || '（暂无）'}
+  return `${memorySection}猫：${catLines || '（暂无）'}
 
 卡片和动作（西米说"做了/完成了xxx"，你判断出对应哪张卡片的哪个动作时，
 在 JSON 指令里的 "card" 和 "actionName" 必须跟下面列出的名字完全一样，

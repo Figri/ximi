@@ -20,6 +20,7 @@ import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
 import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
 import { buildCardContextSummary, resolveInstruction } from '../../lib/chatInstructions';
 import { pickImage, uploadChatImage } from '../../lib/chatImages';
+import { fetchMemory } from '../../lib/memory';
 import { useCardStore } from '../../lib/store';
 import type { ChatMessage } from '../../types';
 
@@ -35,6 +36,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [sendingImage, setSendingImage] = useState(false);
   const [model, setModel] = useState<AIModel>('claude-sonnet');
+  const [memory, setMemory] = useState('');
   const [confirmations, setConfirmations] = useState<Record<string, Confirmation[]>>({});
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -51,6 +53,9 @@ export default function ChatScreen() {
       getSelectedModel().then((m) => {
         if (m) setModel(m);
       });
+      fetchMemory()
+        .then(setMemory)
+        .catch(() => {});
     }, [])
   );
 
@@ -155,7 +160,7 @@ export default function ChatScreen() {
       minute: '2-digit',
       hour12: false,
     });
-    return `现在是 ${formatted}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions)}`;
+    return `现在是 ${formatted}。\n\n${buildCardContextSummary(cards, actions, cats, lastCompletions, memory)}`;
   }
 
   async function handleSendImage(source: 'camera' | 'library') {

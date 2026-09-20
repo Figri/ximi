@@ -1,11 +1,14 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from './Card';
 import { TagFilter } from './TagFilter';
+import { CatRow } from './CatRow';
 import { useCardStore } from '../lib/store';
 import { getActionDecay, sortByUrgency } from '../lib/decay';
 import { colors, fontSize, spacing } from '../constants/theme';
-import type { Action, Card as CardType, DecayResult } from '../types';
+import type { Action, Card as CardType, Cat, DecayResult } from '../types';
+
+const CAT_TAG = '🐱猫';
 
 interface Row {
   card: CardType;
@@ -15,17 +18,13 @@ interface Row {
 }
 
 interface CardListProps {
+  cats: Cat[];
   onNewCardPress?: () => void;
-  onTagChange?: (tag: string | null) => void;
 }
 
-export function CardList({ onNewCardPress, onTagChange }: CardListProps) {
+export function CardList({ cats, onNewCardPress }: CardListProps) {
   const { cards, actions, lastCompletions, doComplete, doUndo } = useCardStore();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-
-  useEffect(() => {
-    onTagChange?.(selectedTag);
-  }, [selectedTag, onTagChange]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -62,6 +61,7 @@ export function CardList({ onNewCardPress, onTagChange }: CardListProps) {
   return (
     <View style={styles.container}>
       <TagFilter tags={allTags} selected={selectedTag} onSelect={setSelectedTag} onAddPress={onNewCardPress} />
+      {selectedTag === CAT_TAG && <CatRow cats={cats} />}
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
         {rows.length === 0 ? (
           <Text style={styles.empty}>这个标签下还没有卡片，点右上角 ＋ 新建一个吧</Text>

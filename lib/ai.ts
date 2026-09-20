@@ -27,7 +27,7 @@ const SYSTEM_PROMPT_PREFIX = `你是"灵"，西米的私人生活助手，住在
 下面是当前时间和卡片/猫咪状态，供你参考：
 `;
 
-function buildSystemPrompt(contextSummary: string): string {
+export function buildSystemPrompt(contextSummary: string): string {
   return `${SYSTEM_PROMPT_PREFIX}${contextSummary}`;
 }
 
