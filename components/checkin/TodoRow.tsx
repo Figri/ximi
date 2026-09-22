@@ -1,6 +1,6 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { Alert, Animated, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { router } from 'expo-router';
-import { Vibration } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { archiveCard } from '../../lib/cards';
 import type { Action, Card } from '../../types';
@@ -23,14 +23,17 @@ function formatDue(dueDate: string | null): string | null {
 export function TodoRow({ card, action, done, onComplete, onUndo, onDeleted }: TodoRowProps) {
   const due = formatDue(card.due_date);
   const overdue = card.due_date && !done && new Date(card.due_date).getTime() < Date.now();
+  const scale = useRef(new Animated.Value(1)).current;
 
   function handleCheckboxPress() {
     if (done) {
       onUndo(action);
-    } else {
-      onComplete(action);
-      Vibration.vibrate(12);
+      return;
     }
+    onComplete(action);
+    Vibration.vibrate(12);
+    scale.setValue(0.8);
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 24 }).start();
   }
 
   function handleLongPress() {
@@ -54,9 +57,9 @@ export function TodoRow({ card, action, done, onComplete, onUndo, onDeleted }: T
       onLongPress={handleLongPress}
     >
       <Pressable hitSlop={10} style={styles.checkboxHit} onPress={handleCheckboxPress}>
-        <View style={[styles.checkbox, done && styles.checkboxDone]}>
+        <Animated.View style={[styles.checkbox, done && styles.checkboxDone, { transform: [{ scale }] }]}>
           {done && <Text style={styles.checkMark}>✓</Text>}
-        </View>
+        </Animated.View>
       </Pressable>
       <Text style={[styles.title, done && styles.titleDone]} numberOfLines={1}>
         {card.name}
