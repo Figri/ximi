@@ -121,6 +121,7 @@ export interface TimelineEntry {
   source: TimelineSource;
   hp_change: number | null;
   mp_change: number | null;
+  icon: string | null;
   created_at: string;
 }
 
@@ -140,6 +141,7 @@ export interface Worry {
 export interface DailySummary {
   id: string;
   date: string;
+  summary: string | null;
   body_summary: string | null;
   sleep_summary: string | null;
   food_summary: string | null;
