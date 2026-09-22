@@ -6,6 +6,7 @@ const TAB_ICONS: Record<string, string> = {
   index: '💬',
   life: '📌',
   timeline: '🕐',
+  notes: '📁',
   record: '📋',
   data: '📊',
 };
@@ -29,6 +30,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: '聊天' }} />
       <Tabs.Screen name="life" options={{ title: '打卡' }} />
       <Tabs.Screen name="timeline" options={{ title: '时间' }} />
+      <Tabs.Screen name="notes" options={{ title: '笔记' }} />
       <Tabs.Screen name="record" options={{ title: '记录' }} />
       <Tabs.Screen name="data" options={{ title: '数据' }} />
     </Tabs>

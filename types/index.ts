@@ -199,6 +199,24 @@ export interface ProjectLog {
   created_at: string;
 }
 
+export interface Folder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Note {
+  id: string;
+  folder_id: string | null;
+  title: string;
+  content: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ---- 派生/UI类型 ----
 
 export interface DecayResult {
