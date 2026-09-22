@@ -25,9 +25,14 @@ export default function CheckinScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>打卡</Text>
-        <Pressable style={styles.addButton} onPress={() => router.push('/habit/new')}>
-          <Text style={styles.addButtonText}>＋</Text>
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable style={styles.iconButton} onPress={() => router.push('/settings')}>
+            <Text style={styles.iconButtonText}>⚙️</Text>
+          </Pressable>
+          <Pressable style={styles.addButton} onPress={() => router.push('/habit/new')}>
+            <Text style={styles.addButtonText}>＋</Text>
+          </Pressable>
+        </View>
       </View>
       <HPMPBar hp={hp} mp={mp} onToolboxPress={() => setToolboxOpen((v) => !v)} />
       {error && <Text style={styles.error}>{error}</Text>}
@@ -51,6 +56,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
+  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  iconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.avatar,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonText: { fontSize: 16 },
   addButton: {
     width: 32,
     height: 32,

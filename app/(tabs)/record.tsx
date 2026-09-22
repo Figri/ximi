@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { SIDEBAR_ITEMS, SIDEBAR_TO_TIMELINE_CATEGORY, type SidebarKey } from '../../components/record/CategoryConfig';
@@ -27,6 +28,9 @@ export default function RecordScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <Pressable style={styles.backRow} onPress={() => router.push('/life')}>
+        <Text style={styles.backText}>‹ 打卡</Text>
+      </Pressable>
       <View style={styles.body}>
         <View style={styles.sidebarWrap}>
           <ScrollView style={styles.sidebar} contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
@@ -76,6 +80,8 @@ export default function RecordScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  backRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
+  backText: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '600' },
   body: { flex: 1, flexDirection: 'row' },
   sidebarWrap: { width: 64 },
   sidebar: { flex: 1 },

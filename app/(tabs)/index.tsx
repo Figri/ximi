@@ -290,6 +290,9 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
+        <Pressable style={styles.backButton} onPress={() => router.push('/life')} hitSlop={8}>
+          <Text style={styles.menuButtonText}>‹</Text>
+        </Pressable>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>灵</Text>
         </View>
@@ -397,6 +400,7 @@ const styles = StyleSheet.create({
   headerNameBlock: { flex: 1 },
   headerName: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '600' },
   headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
+  backButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
   flexOne: { flex: 1 },

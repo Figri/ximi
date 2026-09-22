@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { AI_MODELS, type AIModel } from '../lib/ai';
 import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } from '../lib/aiSettings';
@@ -84,6 +85,25 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.label}>更多功能</Text>
+        <View style={styles.moreCard}>
+          <Pressable style={styles.moreRow} onPress={() => router.push('/')}>
+            <Text style={styles.moreEmoji}>💬</Text>
+            <Text style={styles.moreText}>聊天（跟灵对话）</Text>
+            <Text style={styles.moreArrow}>›</Text>
+          </Pressable>
+          <Pressable style={styles.moreRow} onPress={() => router.push('/record')}>
+            <Text style={styles.moreEmoji}>📋</Text>
+            <Text style={styles.moreText}>记录（烦恼·收藏·项目·分类时间线）</Text>
+            <Text style={styles.moreArrow}>›</Text>
+          </Pressable>
+          <Pressable style={[styles.moreRow, styles.moreRowLast]} onPress={() => router.push('/data')}>
+            <Text style={styles.moreEmoji}>📊</Text>
+            <Text style={styles.moreText}>数据（图表统计）</Text>
+            <Text style={styles.moreArrow}>›</Text>
+          </Pressable>
+        </View>
+
         <Text style={styles.intro}>
           每个 key 只存在这台手机本地（系统安全存储），不会传到 Supabase 或者任何服务器。换 APP/清数据要重新填。
         </Text>
@@ -183,6 +203,24 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
+  moreCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    marginBottom: spacing.lg,
+    overflow: 'hidden',
+  },
+  moreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.background,
+  },
+  moreRowLast: { borderBottomWidth: 0 },
+  moreEmoji: { fontSize: 18 },
+  moreText: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary },
+  moreArrow: { fontSize: fontSize.cardName, color: colors.textMuted },
   providerCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,

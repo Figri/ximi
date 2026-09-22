@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing, statusColorDark } from '../../constants/theme';
 import { getActionDecay } from '../../lib/decay';
@@ -100,6 +101,9 @@ export default function DataScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Pressable onPress={() => router.push('/life')}>
+          <Text style={styles.backText}>‹ 打卡</Text>
+        </Pressable>
         <Text style={styles.title}>📊 数据</Text>
         {loading && <Text style={styles.loadingText}>加载中…</Text>}
 
@@ -248,6 +252,7 @@ const BAR_HEIGHT = 80;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  backText: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '600', marginBottom: spacing.sm },
   title: { fontSize: fontSize.pageTitle, color: colors.textPrimary, fontWeight: '600', marginBottom: spacing.lg },
   loadingText: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.sm },
   card: {
