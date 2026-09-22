@@ -5,6 +5,8 @@ export type FrequencyType = 'interval' | 'fixed_day' | 'manual';
 export type DecayStatus = 'green' | 'yellow' | 'red';
 export type TimerStatus = 'idle' | 'running' | 'done';
 export type TimeOfDay = 'morning' | 'day' | 'evening' | 'anytime';
+export type DisplayType = 'habit' | 'todo' | 'card';
+export type Priority = 'important' | 'normal';
 
 export interface Card {
   id: string;
@@ -17,6 +19,9 @@ export interface Card {
   created_at: string;
   updated_at: string;
   archived: boolean;
+  display_type: DisplayType;
+  priority: Priority;
+  due_date: string | null;
 }
 
 export interface Action {

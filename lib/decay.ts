@@ -88,6 +88,45 @@ export function getActionDecay(action: Action, lastCompletedAt: Date | null): De
   return calculateDecay(lastCompletedAt, suggestedInterval, maxDelay);
 }
 
+/**
+ * 打卡tab习惯图标今天要不要显示。
+ * - manual: 一直显示
+ * - fixed_day: 只在设定的星期几显示，超过7天没做也显示（避免彻底藏起来忘掉）
+ * - interval（含"每天"=interval 1、"每X天一次"）: 距上次完成 >= 间隔天数才显示，今天已完成也显示（这样点完能立刻看到打勾状态）
+ */
+export function shouldShowHabitToday(action: Action, lastCompletedAt: Date | null): boolean {
+  if (action.frequency_type === 'manual') return true;
+
+  const now = new Date();
+
+  if (action.frequency_type === 'fixed_day' && action.fixed_days?.length) {
+    const jsDayToOurs = (d: number) => (d === 0 ? 7 : d);
+    const isTodayFixed = action.fixed_days.includes(jsDayToOurs(now.getDay()));
+    if (isTodayFixed) return true;
+    if (!lastCompletedAt) return true;
+    const elapsed = (now.getTime() - lastCompletedAt.getTime()) / DAY_MS;
+    return elapsed > 7;
+  }
+
+  // interval（默认，覆盖"每天"和"每X天一次"）
+  if (isCompletedToday(lastCompletedAt)) return true;
+  if (!lastCompletedAt) return true;
+  const interval = action.suggested_interval ?? action.interval_days ?? 1;
+  const elapsed = (now.getTime() - lastCompletedAt.getTime()) / DAY_MS;
+  return elapsed >= interval;
+}
+
+/** 是不是"今天"已经完成过了（打卡圆形图标用，日历日边界，不是按周期衰减算） */
+export function isCompletedToday(lastCompletedAt: Date | null): boolean {
+  if (!lastCompletedAt) return false;
+  const now = new Date();
+  return (
+    lastCompletedAt.getFullYear() === now.getFullYear() &&
+    lastCompletedAt.getMonth() === now.getMonth() &&
+    lastCompletedAt.getDate() === now.getDate()
+  );
+}
+
 export const statusRank: Record<DecayStatus, number> = { red: 0, yellow: 1, green: 2 };
 
 /** 卡片列表排序：红 → 黄 → 绿，同状态内按最紧迫排序 */

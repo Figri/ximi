@@ -26,7 +26,7 @@ export default function TabsLayout() {
       })}
     >
       <Tabs.Screen name="index" options={{ title: '聊天' }} />
-      <Tabs.Screen name="life" options={{ title: '生活' }} />
+      <Tabs.Screen name="life" options={{ title: '打卡' }} />
       <Tabs.Screen name="record" options={{ title: '记录' }} />
       <Tabs.Screen name="data" options={{ title: '数据' }} />
     </Tabs>
