@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.label}>更多功能</Text>
         <View style={styles.moreCard}>
-          <Pressable style={styles.moreRow} onPress={() => router.push('/')}>
+          <Pressable style={styles.moreRow} onPress={() => router.push('/chat')}>
             <Text style={styles.moreEmoji}>💬</Text>
             <Text style={styles.moreText}>聊天（跟灵对话）</Text>
             <Text style={styles.moreArrow}>›</Text>

@@ -28,7 +28,7 @@ export default function RecordScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Pressable style={styles.backRow} onPress={() => router.push('/life')}>
+      <Pressable style={styles.backRow} onPress={() => router.push('/')}>
         <Text style={styles.backText}>‹ 打卡</Text>
       </Pressable>
       <View style={styles.body}>

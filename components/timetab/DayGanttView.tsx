@@ -119,9 +119,13 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
     onChanged?.();
   }
 
-  function handleTrackLayout(evt: LayoutChangeEvent) {
+  function handleTrackWidthLayout(evt: LayoutChangeEvent) {
     setTrackWidth(evt.nativeEvent.layout.width);
-    if (!gridMode) setViewportHeight(evt.nativeEvent.layout.height);
+  }
+
+  /** 格子视图的可视高度——量的是flex:1撑开的外层容器，不是滚动内容自己的高度 */
+  function handleGridViewportLayout(evt: LayoutChangeEvent) {
+    setViewportHeight(evt.nativeEvent.layout.height);
   }
 
   function addCellFromTouch(x: number, y: number) {
@@ -137,16 +141,15 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
     });
   }
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => gridMode && !locked,
-      onMoveShouldSetPanResponder: () => gridMode && !locked,
-      onPanResponderGrant: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
-      onPanResponderMove: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
-      onPanResponderRelease: () => {},
-      onPanResponderTerminate: () => {},
-    })
-  ).current;
+  // 每次渲染都重建，避免回调闭包锁死在首次渲染的 gridMode/locked/addCellFromTouch 上
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => gridMode && !locked,
+    onMoveShouldSetPanResponder: () => gridMode && !locked,
+    onPanResponderGrant: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
+    onPanResponderMove: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
+    onPanResponderRelease: () => {},
+    onPanResponderTerminate: () => {},
+  });
 
   useEffect(() => {
     // 切进/切出网格图或改粒度时清空选区
@@ -309,29 +312,31 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
             )}
 
             {gridMode ? (
-              <View style={[styles.gridBody, { height: editRowHeight * 24 }]} onLayout={handleTrackLayout}>
-                <View style={styles.hourCol}>
-                  {HOURS.map((h) => (
-                    <View key={h} style={{ height: editRowHeight, justifyContent: 'flex-start' }}>
-                      <Text style={styles.hourLabel}>{h}</Text>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.trackCol} {...panResponder.panHandlers}>
-                  {HOURS.map((h) => (
-                    <View key={h} style={[styles.gridRow, { height: editRowHeight }]}>
-                      {Array.from({ length: cellsPerHour }, (_, col) => {
-                        const index = h * cellsPerHour + col;
-                        const selected = selectedCells.has(index);
-                        return (
-                          <View
-                            key={col}
-                            style={[styles.gridCell, selected && styles.gridCellSelected]}
-                          />
-                        );
-                      })}
-                    </View>
-                  ))}
+              <View style={styles.gridViewport} onLayout={handleGridViewportLayout}>
+                <View style={[styles.gridBody, { height: editRowHeight * 24 }]}>
+                  <View style={styles.hourCol}>
+                    {HOURS.map((h) => (
+                      <View key={h} style={{ height: editRowHeight, justifyContent: 'flex-start' }}>
+                        <Text style={styles.hourLabel}>{h}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.trackCol} onLayout={handleTrackWidthLayout} {...panResponder.panHandlers}>
+                    {HOURS.map((h) => (
+                      <View key={h} style={[styles.gridRow, { height: editRowHeight }]}>
+                        {Array.from({ length: cellsPerHour }, (_, col) => {
+                          const index = h * cellsPerHour + col;
+                          const selected = selectedCells.has(index);
+                          return (
+                            <View
+                              key={col}
+                              style={[styles.gridCell, selected && styles.gridCellSelected]}
+                            />
+                          );
+                        })}
+                      </View>
+                    ))}
+                  </View>
                 </View>
               </View>
             ) : (
@@ -345,7 +350,7 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
                     ))}
                   </View>
 
-                  <View style={styles.trackCol} onLayout={handleTrackLayout}>
+                  <View style={styles.trackCol} onLayout={handleTrackWidthLayout}>
                     {HOURS.map((h) => (
                       <View key={h} style={[styles.emptySlot, { height: HOUR_HEIGHT, top: h * HOUR_HEIGHT }]}>
                         <View style={styles.emptySlotDots}>
@@ -542,6 +547,7 @@ const styles = StyleSheet.create({
   },
   exitButtonDisabled: { opacity: 0.4 },
   exitButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  gridViewport: { flex: 1 },
   gridBody: { flexDirection: 'row' },
   gridRow: { flexDirection: 'row' },
   gridCell: {

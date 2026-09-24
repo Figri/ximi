@@ -3,8 +3,8 @@ import { Text } from 'react-native';
 import { colors } from '../../constants/theme';
 
 const TAB_ICONS: Record<string, string> = {
-  index: '💬',
-  life: '📌',
+  index: '📌',
+  chat: '💬',
   timeline: '🕐',
   notes: '📁',
   record: '📋',
@@ -14,7 +14,6 @@ const TAB_ICONS: Record<string, string> = {
 export default function TabsLayout() {
   return (
     <Tabs
-      initialRouteName="life"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.purpleDark,
@@ -28,10 +27,10 @@ export default function TabsLayout() {
         tabBarIcon: () => <Text style={{ fontSize: 18 }}>{TAB_ICONS[route.name]}</Text>,
       })}
     >
-      <Tabs.Screen name="life" options={{ title: '打卡' }} />
+      <Tabs.Screen name="index" options={{ title: '打卡' }} />
       <Tabs.Screen name="timeline" options={{ title: '时间' }} />
       <Tabs.Screen name="notes" options={{ title: '笔记' }} />
-      <Tabs.Screen name="index" options={{ title: '聊天', href: null }} />
+      <Tabs.Screen name="chat" options={{ title: '聊天', href: null }} />
       <Tabs.Screen name="record" options={{ title: '记录', href: null }} />
       <Tabs.Screen name="data" options={{ title: '数据', href: null }} />
     </Tabs>

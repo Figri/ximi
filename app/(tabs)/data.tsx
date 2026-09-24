@@ -101,7 +101,7 @@ export default function DataScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.push('/life')}>
+        <Pressable onPress={() => router.push('/')}>
           <Text style={styles.backText}>‹ 打卡</Text>
         </Pressable>
         <Text style={styles.title}>📊 数据</Text>
