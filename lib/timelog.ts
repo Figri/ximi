@@ -75,6 +75,75 @@ export async function deleteLog(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * 甘特图选区模式：把一段段连续的时间区间(runs)填成某个分类，同时按规则处理
+ * 跟已有记录(existingLogs)的重叠——完全覆盖的删掉，部分重叠的截断，选区被
+ * 一条更长的旧记录整个包住的话把旧记录拆成两段。
+ */
+export async function applySelectionFill(
+  runs: { start: Date; end: Date }[],
+  categoryId: string,
+  description: string | null,
+  existingLogs: TimeLog[]
+): Promise<void> {
+  let remaining = [...existingLogs];
+  for (const run of runs) {
+    const rs = run.start.getTime();
+    const re = run.end.getTime();
+    const next: TimeLog[] = [];
+    for (const log of remaining) {
+      const ls = new Date(log.start_time).getTime();
+      const le = new Date(log.end_time).getTime();
+      if (le <= rs || ls >= re) {
+        next.push(log);
+        continue;
+      }
+      if (ls >= rs && le <= re) {
+        await deleteLog(log.id);
+        continue;
+      }
+      if (ls < rs && le > re) {
+        // 选区被这条旧记录整个包住：拆成前后两段
+        await updateLog(log.id, { end_time: run.start.toISOString() });
+        const tail = await addLog({
+          category_id: log.category_id,
+          start_time: run.end.toISOString(),
+          end_time: log.end_time,
+          description: log.description,
+          tag_ids: log.tag_ids,
+        });
+        next.push({ ...log, end_time: run.start.toISOString() });
+        next.push(tail);
+        continue;
+      }
+      if (ls < rs) {
+        await updateLog(log.id, { end_time: run.start.toISOString() });
+        next.push({ ...log, end_time: run.start.toISOString() });
+        continue;
+      }
+      await updateLog(log.id, { start_time: run.end.toISOString() });
+      next.push({ ...log, start_time: run.end.toISOString() });
+    }
+    const inserted = await addLog({
+      category_id: categoryId,
+      start_time: run.start.toISOString(),
+      end_time: run.end.toISOString(),
+      description,
+      tag_ids: [],
+    });
+    next.push(inserted);
+    remaining = next;
+  }
+}
+
+export function formatLogDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}分`;
+  if (m === 0) return `${h}时`;
+  return `${h}时${m}分`;
+}
+
 // ---------------- time_categories ----------------
 
 export async function fetchCategories(): Promise<TimeCategory[]> {

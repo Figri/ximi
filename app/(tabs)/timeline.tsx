@@ -3,11 +3,11 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { DayTimelineView } from '../../components/timetab/DayTimelineView';
+import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { DayGanttView } from '../../components/timetab/DayGanttView';
+import { TimeLogListView } from '../../components/timetab/TimeLogListView';
 import { MonthCalendarView } from '../../components/timetab/MonthCalendarView';
 import { StatsView } from '../../components/timetab/StatsView';
-import { AddEntryModal } from '../../components/timetab/AddEntryModal';
 
 type ViewMode = 'day' | 'month' | 'stats';
 type DayViewMode = 'gantt' | 'list';
@@ -16,11 +16,9 @@ export default function TimelineScreen() {
   const [mode, setMode] = useState<ViewMode>('day');
   const [dayViewMode, setDayViewMode] = useState<DayViewMode>('gantt');
   const [date, setDate] = useState(new Date());
-  const [addOpen, setAddOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  function handleAdded() {
-    setAddOpen(false);
+  function bumpRefresh() {
     setRefreshKey((k) => k + 1);
   }
 
@@ -71,11 +69,13 @@ export default function TimelineScreen() {
         </View>
       </View>
 
+      {mode === 'day' && <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} />}
+
       {mode === 'day' &&
         (dayViewMode === 'gantt' ? (
-          <DayGanttView date={date} refreshKey={refreshKey} />
+          <DayGanttView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
         ) : (
-          <DayTimelineView date={date} onDateChange={setDate} refreshKey={refreshKey} />
+          <TimeLogListView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
         ))}
       {mode === 'month' && (
         <MonthCalendarView
@@ -89,14 +89,6 @@ export default function TimelineScreen() {
         />
       )}
       {mode === 'stats' && <StatsView />}
-
-      {mode !== 'stats' && (
-        <Pressable style={styles.fab} onPress={() => setAddOpen(true)}>
-          <Text style={styles.fabText}>＋</Text>
-        </Pressable>
-      )}
-
-      <AddEntryModal visible={addOpen} onClose={() => setAddOpen(false)} onAdded={handleAdded} />
     </SafeAreaView>
   );
 }
@@ -129,21 +121,4 @@ const styles = StyleSheet.create({
   modeButtonActive: { backgroundColor: colors.purple },
   modeText: { fontSize: fontSize.body, color: colors.textSecondary },
   modeTextActive: { color: colors.textPrimary, fontWeight: '600' },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.lg,
-    width: 52,
-    height: 52,
-    borderRadius: radius.avatar,
-    backgroundColor: colors.purpleDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  fabText: { color: '#fff', fontSize: 26, fontWeight: '300', marginTop: -2 },
 });
