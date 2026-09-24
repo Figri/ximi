@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { DayTimelineView } from '../../components/timetab/DayTimelineView';
@@ -22,11 +23,22 @@ export default function TimelineScreen() {
     setRefreshKey((k) => k + 1);
   }
 
+  function handleOpenMenu() {
+    Alert.alert('时间日志设置', undefined, [
+      { text: '取消', style: 'cancel' },
+      { text: '📁 分类管理', onPress: () => router.push('/timelog-categories') },
+      { text: '💭 情绪标签管理', onPress: () => router.push('/timelog-tags') },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>时间</Text>
         <View style={styles.headerRight}>
+          <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
+            <Text style={styles.menuButtonText}>⋮</Text>
+          </Pressable>
           {mode === 'day' && (
             <Pressable
               style={styles.dayViewToggle}
@@ -91,6 +103,8 @@ const styles = StyleSheet.create({
   },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  menuButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
+  menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
   dayViewToggle: {
     width: 32,
     height: 32,

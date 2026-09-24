@@ -59,6 +59,8 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
+          <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
