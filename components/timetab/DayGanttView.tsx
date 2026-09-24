@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { applySelectionFill, fetchLogsForDate } from '../../lib/timelog';
+import { applySelectionFill, fetchLastLogEnd, fetchLogsForDate } from '../../lib/timelog';
 import { fetchDailySummary } from '../../lib/dailySummary';
 import { setDaySummary } from '../../lib/timeline';
 import { useTimeLogStore } from '../../lib/timelogStore';
@@ -50,6 +50,7 @@ function formatHM(minutes: number): string {
 interface DayGanttViewProps {
   date: Date;
   refreshKey: number;
+  gridMode: boolean;
   onChanged?: () => void;
 }
 
@@ -60,14 +61,13 @@ interface ModalState {
   end: Date;
 }
 
-export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps) {
+export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGanttViewProps) {
   const { categories, fetchAll: fetchCategoriesAndTags } = useTimeLogStore();
   const [logs, setLogs] = useState<TimeLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const [editMode, setEditMode] = useState(false);
   const [locked, setLocked] = useState(false);
   const [paletteCollapsed, setPaletteCollapsed] = useState(false);
   const [granularity, setGranularity] = useState(5);
@@ -110,7 +110,7 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
   const nowMinutes = isToday ? minutesSinceMidnight(now, dayStart) : -1;
 
   const HOUR_HEIGHT = expanded ? HOUR_HEIGHT_EXPANDED : HOUR_HEIGHT_NORMAL;
-  const editRowHeight = editMode ? Math.max(18, viewportHeight / 24) : HOUR_HEIGHT;
+  const editRowHeight = gridMode ? Math.max(18, viewportHeight / 24) : HOUR_HEIGHT;
   const cellsPerHour = Math.max(1, Math.round(60 / granularity));
   const cellWidth = trackWidth / cellsPerHour;
 
@@ -121,7 +121,7 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
 
   function handleTrackLayout(evt: LayoutChangeEvent) {
     setTrackWidth(evt.nativeEvent.layout.width);
-    if (!editMode) setViewportHeight(evt.nativeEvent.layout.height);
+    if (!gridMode) setViewportHeight(evt.nativeEvent.layout.height);
   }
 
   function addCellFromTouch(x: number, y: number) {
@@ -139,8 +139,8 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => editMode && !locked,
-      onMoveShouldSetPanResponder: () => editMode && !locked,
+      onStartShouldSetPanResponder: () => gridMode && !locked,
+      onMoveShouldSetPanResponder: () => gridMode && !locked,
       onPanResponderGrant: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
       onPanResponderMove: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
       onPanResponderRelease: () => {},
@@ -149,16 +149,16 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
   ).current;
 
   useEffect(() => {
-    // 重新进editMode或改粒度时清空选区
+    // 切进/切出网格图或改粒度时清空选区
     setSelectedCells(new Set());
-  }, [editMode, granularity]);
+  }, [gridMode, granularity]);
 
   useEffect(() => {
-    if (loading || hasScrolledToNow.current || !isToday || editMode) return;
+    if (loading || hasScrolledToNow.current || !isToday || gridMode) return;
     hasScrolledToNow.current = true;
     const y = Math.max(0, (nowMinutes / 60) * HOUR_HEIGHT - 120);
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: false }));
-  }, [loading, isToday, editMode]);
+  }, [loading, isToday, gridMode]);
 
   const selectionRuns = (() => {
     if (selectedCells.size === 0) return [];
@@ -201,8 +201,24 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
     }
   }
 
+  /** 色块图下点色卡 = 从上一条记录结束接到现在，快速记一笔 */
+  async function handleQuickContinue(categoryId: string) {
+    const lastEnd = await fetchLastLogEnd();
+    const fallbackStart = new Date(Date.now() - 15 * 60_000);
+    const start = lastEnd && lastEnd.getTime() < Date.now() ? lastEnd : fallbackStart;
+    setModalState({ log: null, categoryId, start, end: new Date() });
+  }
+
+  function handlePalettePress(categoryId: string) {
+    if (gridMode) {
+      handleFillCategory(categoryId);
+    } else {
+      handleQuickContinue(categoryId);
+    }
+  }
+
   function handleBlockPress(log: TimeLog) {
-    if (editMode) return;
+    if (gridMode) return;
     setModalState({
       log,
       categoryId: log.category_id,
@@ -251,7 +267,7 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
       ) : (
         <View style={styles.body}>
           <View style={styles.leftCol}>
-            {editMode && (
+            {gridMode && (
               <View style={styles.selectionOverlay}>
                 <View style={styles.selectionCard}>
                   <Text style={styles.selectionCardTitle}>
@@ -277,18 +293,22 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
                 </View>
               </View>
             )}
-            {editMode && (
+            {gridMode && (
               <View style={styles.warnRow}>
                 <Text style={styles.warnText}>
                   注：被完全覆盖的事件，会将其删除，备注会丢失。时间部分重叠的事件，会将其截断
                 </Text>
-                <Pressable style={styles.exitButton} onPress={() => setEditMode(false)}>
+                <Pressable
+                  style={[styles.exitButton, selectedCells.size === 0 && styles.exitButtonDisabled]}
+                  onPress={() => setSelectedCells(new Set())}
+                  disabled={selectedCells.size === 0}
+                >
                   <Text style={styles.exitButtonText}>✕</Text>
                 </Pressable>
               </View>
             )}
 
-            {editMode ? (
+            {gridMode ? (
               <View style={[styles.gridBody, { height: editRowHeight * 24 }]} onLayout={handleTrackLayout}>
                 <View style={styles.hourCol}>
                   {HOURS.map((h) => (
@@ -384,36 +404,35 @@ export function DayGanttView({ date, refreshKey, onChanged }: DayGanttViewProps)
                 <Text style={styles.controlIcon}>⚙</Text>
               </Pressable>
             </View>
-            <View style={styles.controlCard}>
-              <Pressable
-                style={[styles.controlHalf, editMode && styles.controlHalfActive]}
-                onPress={() => setEditMode((v) => !v)}
-              >
-                <Text style={[styles.controlIcon, editMode && styles.controlIconActive]}>✎</Text>
-              </Pressable>
-              <View style={styles.controlDivider} />
-              <Pressable style={styles.controlHalf} onPress={() => setLocked((v) => !v)}>
-                <Text style={[styles.controlIcon, locked && styles.controlIconActive]}>{locked ? '🔒' : '🔓'}</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              style={[styles.controlCard, styles.lockCard, locked && styles.controlHalfActive]}
+              onPress={() => setLocked((v) => !v)}
+            >
+              <Text style={[styles.controlIcon, locked && styles.controlIconActive]}>{locked ? '🔒' : '🔓'}</Text>
+            </Pressable>
             <Pressable style={styles.collapseButton} onPress={() => setPaletteCollapsed((v) => !v)}>
               <Text style={styles.collapseIcon}>{paletteCollapsed ? '∨' : '∧'}</Text>
             </Pressable>
 
             {!paletteCollapsed && (
-              <ScrollView style={styles.palette} contentContainerStyle={styles.paletteContent}>
-                {topLevelCategories.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    style={[styles.paletteChip, { backgroundColor: c.color }]}
-                    onPress={() => (editMode ? handleFillCategory(c.id) : setEditMode(true))}
-                  >
-                    <Text style={styles.paletteChipText} numberOfLines={1}>
-                      {c.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <>
+                <ScrollView style={styles.palette} contentContainerStyle={styles.paletteContent}>
+                  {topLevelCategories.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      style={[styles.paletteChip, { backgroundColor: c.color }]}
+                      onPress={() => handlePalettePress(c.id)}
+                    >
+                      <Text style={styles.paletteChipText} numberOfLines={1}>
+                        {c.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Pressable style={styles.manageButton} onPress={() => router.push('/timelog-categories')}>
+                  <Text style={styles.manageButtonText}>⚙ 管理分类</Text>
+                </Pressable>
+              </>
             )}
           </View>
         </View>
@@ -521,6 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  exitButtonDisabled: { opacity: 0.4 },
   exitButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   gridBody: { flexDirection: 'row' },
   gridRow: { flexDirection: 'row' },
@@ -544,10 +564,18 @@ const styles = StyleSheet.create({
   controlDivider: { width: 1, backgroundColor: colors.background },
   controlIcon: { fontSize: 15, color: colors.textSecondary },
   controlIconActive: { color: colors.purpleDark },
+  lockCard: { alignItems: 'center', paddingVertical: spacing.sm },
   collapseButton: { alignItems: 'center', paddingVertical: 4, marginBottom: spacing.xs },
   collapseIcon: { fontSize: 13, color: colors.textMuted },
   palette: { flex: 1 },
-  paletteContent: { paddingBottom: spacing.xl * 2, gap: spacing.xs },
+  paletteContent: { paddingBottom: spacing.sm, gap: spacing.xs },
+  manageButton: {
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.background,
+  },
+  manageButtonText: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
   paletteChip: {
     borderRadius: radius.widget,
     paddingVertical: spacing.sm,

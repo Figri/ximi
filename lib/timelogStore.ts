@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { TimeCategory, TimeTag } from '../types';
-import { fetchCategories, fetchTags } from './timelog';
+import { fetchCategories, fetchTags, seedDefaultsIfNeeded } from './timelog';
 
 interface TimeLogStoreState {
   categories: TimeCategory[];
@@ -19,6 +19,7 @@ export const useTimeLogStore = create<TimeLogStoreState>((set) => ({
   fetchAll: async () => {
     set({ loading: true, error: null });
     try {
+      await seedDefaultsIfNeeded();
       const [categories, tags] = await Promise.all([fetchCategories(), fetchTags()]);
       set({ categories, tags, loading: false });
     } catch (err) {

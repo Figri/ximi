@@ -56,7 +56,12 @@ export default function TimelogCategoriesScreen() {
           <Text style={styles.addButtonText}>＋</Text>
         </Pressable>
       </View>
-      <Text style={styles.hint}>长按分类可以编辑或加次级分类</Text>
+      <View style={styles.hintRow}>
+        <Text style={styles.hint}>长按分类可以编辑或加次级分类</Text>
+        <Pressable onPress={() => router.push('/timelog-tags')}>
+          <Text style={styles.crossLink}>💭 情绪标签 ›</Text>
+        </Pressable>
+      </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />
@@ -138,7 +143,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: { color: colors.purpleDark, fontSize: 18, fontWeight: '600', marginTop: -2 },
-  hint: { fontSize: fontSize.tiny, color: colors.textMuted, paddingHorizontal: spacing.lg, marginTop: 4 },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    marginTop: 4,
+  },
+  hint: { fontSize: fontSize.tiny, color: colors.textMuted },
+  crossLink: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   row: {
     flexDirection: 'row',

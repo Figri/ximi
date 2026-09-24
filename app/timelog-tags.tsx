@@ -33,6 +33,9 @@ export default function TimelogTagsScreen() {
           <Text style={styles.addButtonText}>＋</Text>
         </Pressable>
       </View>
+      <Pressable style={styles.crossLinkRow} onPress={() => router.push('/timelog-categories')}>
+        <Text style={styles.crossLink}>📁 分类管理 ›</Text>
+      </Pressable>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />
@@ -82,6 +85,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: { color: colors.purpleDark, fontSize: 18, fontWeight: '600', marginTop: -2 },
+  crossLinkRow: { paddingHorizontal: spacing.lg, marginTop: 4 },
+  crossLink: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   tagCard: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.button },

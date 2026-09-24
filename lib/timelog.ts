@@ -1,5 +1,56 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import type { TimeCategory, TimeLog, TimeTag } from '../types';
+
+const SEED_KEY = 'timelog_seeded_v1';
+
+const DEFAULT_CATEGORIES = [
+  { name: '做饭', color: '#8B7BA8', sort_order: 1 },
+  { name: '吃饭', color: '#8B5E2B', sort_order: 2 },
+  { name: '玩', color: '#A78BCE', sort_order: 3 },
+  { name: '睡觉', color: '#5CB88A', sort_order: 4 },
+  { name: '运动', color: '#F5B841', sort_order: 5 },
+  { name: '家务', color: '#E86F52', sort_order: 6 },
+  { name: '项目', color: '#2E6DB4', sort_order: 7 },
+  { name: '探索', color: '#3E3A7A', sort_order: 8 },
+  { name: '社交', color: '#1FA69A', sort_order: 9 },
+  { name: '色色', color: '#E8D96F', sort_order: 10 },
+  { name: '收纳', color: '#8B5A2B', sort_order: 11 },
+  { name: 'ai', color: '#7A857D', sort_order: 12 },
+];
+
+const DEFAULT_TAGS = [
+  { name: '状态很差', color: '#1E6B3A', sort_order: 1 },
+  { name: '内耗中', color: '#3A1E4A', sort_order: 2 },
+  { name: '状态比较好', color: '#6B5A1E', sort_order: 3 },
+  { name: '状态很好', color: '#8B6F5A', sort_order: 4 },
+  { name: '平静', color: '#B5654A', sort_order: 5 },
+  { name: '崩溃', color: '#7A6B2B', sort_order: 6 },
+];
+
+/**
+ * app内幂等播种默认分类/标签，只在首次（本机从没播过 且 表是空的）时插入。
+ * 用户之后删光分类/标签也不会被这个函数回填——AsyncStorage标志一旦写过
+ * 'true' 就再也不会重新播种。
+ */
+export async function seedDefaultsIfNeeded(): Promise<void> {
+  const done = await AsyncStorage.getItem(SEED_KEY);
+  if (done === 'true') return;
+
+  const { count: catCount } = await supabase
+    .from('time_categories')
+    .select('id', { count: 'exact', head: true });
+  if ((catCount ?? 0) === 0) {
+    await supabase.from('time_categories').insert(DEFAULT_CATEGORIES);
+  }
+
+  const { count: tagCount } = await supabase.from('time_tags').select('id', { count: 'exact', head: true });
+  if ((tagCount ?? 0) === 0) {
+    await supabase.from('time_tags').insert(DEFAULT_TAGS);
+  }
+
+  await AsyncStorage.setItem(SEED_KEY, 'true');
+}
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();

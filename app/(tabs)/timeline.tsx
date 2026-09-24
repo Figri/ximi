@@ -10,11 +10,13 @@ import { MonthCalendarView } from '../../components/timetab/MonthCalendarView';
 import { StatsView } from '../../components/timetab/StatsView';
 
 type ViewMode = 'day' | 'month' | 'stats';
-type DayViewMode = 'gantt' | 'list';
+type DayViewMode = 'block' | 'grid' | 'list';
+const DAY_VIEW_LABELS: Record<DayViewMode, string> = { block: '块', grid: '格', list: '表' };
+const DAY_VIEW_ORDER: DayViewMode[] = ['block', 'grid', 'list'];
 
 export default function TimelineScreen() {
   const [mode, setMode] = useState<ViewMode>('day');
-  const [dayViewMode, setDayViewMode] = useState<DayViewMode>('gantt');
+  const [dayViewMode, setDayViewMode] = useState<DayViewMode>('block');
   const [date, setDate] = useState(new Date());
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -39,12 +41,19 @@ export default function TimelineScreen() {
             <Text style={styles.menuButtonText}>⋮</Text>
           </Pressable>
           {mode === 'day' && (
-            <Pressable
-              style={styles.dayViewToggle}
-              onPress={() => setDayViewMode((v) => (v === 'gantt' ? 'list' : 'gantt'))}
-            >
-              <Text style={styles.dayViewToggleText}>{dayViewMode === 'gantt' ? '▦' : '☰'}</Text>
-            </Pressable>
+            <View style={styles.dayViewSwitch}>
+              {DAY_VIEW_ORDER.map((v) => (
+                <Pressable
+                  key={v}
+                  style={[styles.dayViewButton, dayViewMode === v && styles.dayViewButtonActive]}
+                  onPress={() => setDayViewMode(v)}
+                >
+                  <Text style={[styles.dayViewText, dayViewMode === v && styles.dayViewTextActive]}>
+                    {DAY_VIEW_LABELS[v]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           )}
           <View style={styles.modeSwitch}>
             <Pressable
@@ -72,10 +81,15 @@ export default function TimelineScreen() {
       {mode === 'day' && <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} />}
 
       {mode === 'day' &&
-        (dayViewMode === 'gantt' ? (
-          <DayGanttView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
-        ) : (
+        (dayViewMode === 'list' ? (
           <TimeLogListView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
+        ) : (
+          <DayGanttView
+            date={date}
+            refreshKey={refreshKey}
+            gridMode={dayViewMode === 'grid'}
+            onChanged={bumpRefresh}
+          />
         ))}
       {mode === 'month' && (
         <MonthCalendarView
@@ -107,15 +121,11 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   menuButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
-  dayViewToggle: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.widget,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayViewToggleText: { fontSize: 15, color: colors.textSecondary },
+  dayViewSwitch: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.button, padding: 2 },
+  dayViewButton: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.button - 2 },
+  dayViewButtonActive: { backgroundColor: colors.purple },
+  dayViewText: { fontSize: fontSize.body, color: colors.textSecondary },
+  dayViewTextActive: { color: colors.textPrimary, fontWeight: '600' },
   modeSwitch: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.button, padding: 2 },
   modeButton: { paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.button - 2 },
   modeButtonActive: { backgroundColor: colors.purple },
