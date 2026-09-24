@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { fetchMonthSummaries } from '../../lib/timeline';
+import { fetchMonthStats } from '../../lib/timelog';
 
 interface MonthCalendarViewProps {
   month: Date; // 任意一天代表这个月
@@ -21,9 +22,15 @@ function toDateKey(date: Date): string {
 
 export function MonthCalendarView({ month, onMonthChange, onSelectDate, refreshKey }: MonthCalendarViewProps) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [dominantColors, setDominantColors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchMonthSummaries(month.getFullYear(), month.getMonth()).then(setSummaries);
+    fetchMonthStats(month.getFullYear(), month.getMonth()).then((stats) => {
+      const colorsByDay: Record<string, string> = {};
+      for (const [day, v] of Object.entries(stats)) colorsByDay[day] = v.color;
+      setDominantColors(colorsByDay);
+    });
   }, [month, refreshKey]);
 
   const weeks = useMemo(() => {
@@ -72,9 +79,16 @@ export function MonthCalendarView({ month, onMonthChange, onSelectDate, refreshK
             if (!day) return <View key={j} style={styles.cell} />;
             const isToday = day.toDateString() === today.toDateString();
             const summary = summaries[toDateKey(day)];
+            const dominantColor = dominantColors[toDateKey(day)];
             return (
               <Pressable key={j} style={styles.cell} onPress={() => onSelectDate(day)}>
-                <View style={[styles.cellInner, isToday && styles.cellToday]}>
+                <View
+                  style={[
+                    styles.cellInner,
+                    dominantColor ? { backgroundColor: dominantColor + '38' } : null,
+                    isToday && styles.cellToday,
+                  ]}
+                >
                   <Text style={[styles.dayNumber, isToday && styles.dayNumberToday]}>{day.getDate()}</Text>
                   {summary && (
                     <Text style={styles.summaryText} numberOfLines={2}>

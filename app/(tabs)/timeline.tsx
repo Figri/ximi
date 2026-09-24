@@ -6,9 +6,10 @@ import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { DayTimelineView } from '../../components/timetab/DayTimelineView';
 import { DayGanttView } from '../../components/timetab/DayGanttView';
 import { MonthCalendarView } from '../../components/timetab/MonthCalendarView';
+import { StatsView } from '../../components/timetab/StatsView';
 import { AddEntryModal } from '../../components/timetab/AddEntryModal';
 
-type ViewMode = 'day' | 'month';
+type ViewMode = 'day' | 'month' | 'stats';
 type DayViewMode = 'gantt' | 'list';
 
 export default function TimelineScreen() {
@@ -60,17 +61,23 @@ export default function TimelineScreen() {
             >
               <Text style={[styles.modeText, mode === 'month' && styles.modeTextActive]}>月</Text>
             </Pressable>
+            <Pressable
+              style={[styles.modeButton, mode === 'stats' && styles.modeButtonActive]}
+              onPress={() => setMode('stats')}
+            >
+              <Text style={[styles.modeText, mode === 'stats' && styles.modeTextActive]}>统计</Text>
+            </Pressable>
           </View>
         </View>
       </View>
 
-      {mode === 'day' ? (
-        dayViewMode === 'gantt' ? (
+      {mode === 'day' &&
+        (dayViewMode === 'gantt' ? (
           <DayGanttView date={date} refreshKey={refreshKey} />
         ) : (
           <DayTimelineView date={date} onDateChange={setDate} refreshKey={refreshKey} />
-        )
-      ) : (
+        ))}
+      {mode === 'month' && (
         <MonthCalendarView
           month={date}
           onMonthChange={setDate}
@@ -81,10 +88,13 @@ export default function TimelineScreen() {
           refreshKey={refreshKey}
         />
       )}
+      {mode === 'stats' && <StatsView />}
 
-      <Pressable style={styles.fab} onPress={() => setAddOpen(true)}>
-        <Text style={styles.fabText}>＋</Text>
-      </Pressable>
+      {mode !== 'stats' && (
+        <Pressable style={styles.fab} onPress={() => setAddOpen(true)}>
+          <Text style={styles.fabText}>＋</Text>
+        </Pressable>
+      )}
 
       <AddEntryModal visible={addOpen} onClose={() => setAddOpen(false)} onAdded={handleAdded} />
     </SafeAreaView>
