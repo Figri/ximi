@@ -207,6 +207,37 @@ export interface Folder {
   created_at: string;
 }
 
+export interface TimeCategory {
+  id: string;
+  name: string;
+  color: string;
+  parent_id: string | null;
+  default_description: string | null;
+  sort_order: number;
+  archived: boolean;
+  created_at: string;
+}
+
+export interface TimeTag {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  archived: boolean;
+  created_at: string;
+}
+
+export interface TimeLog {
+  id: string;
+  category_id: string | null;
+  start_time: string;
+  end_time: string;
+  description: string | null;
+  tag_ids: string[];
+  source: 'manual' | 'chat';
+  created_at: string;
+}
+
 export interface Note {
   id: string;
   folder_id: string | null;

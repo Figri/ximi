@@ -1,0 +1,268 @@
+import { supabase } from './supabase';
+import type { TimeCategory, TimeLog, TimeTag } from '../types';
+
+function toDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function dayRange(date: Date): { start: Date; end: Date } {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+// ---------------- time_logs ----------------
+
+export async function fetchLogsForDate(date: Date): Promise<TimeLog[]> {
+  const { start, end } = dayRange(date);
+  const { data, error } = await supabase
+    .from('time_logs')
+    .select('*')
+    .lt('start_time', end.toISOString())
+    .gt('end_time', start.toISOString())
+    .order('start_time', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchLastLogEnd(): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from('time_logs')
+    .select('end_time')
+    .order('end_time', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? new Date(data.end_time) : null;
+}
+
+export async function addLog(entry: {
+  category_id: string | null;
+  start_time: string;
+  end_time: string;
+  description?: string | null;
+  tag_ids?: string[];
+  source?: 'manual' | 'chat';
+}): Promise<TimeLog> {
+  const { data, error } = await supabase
+    .from('time_logs')
+    .insert({
+      category_id: entry.category_id,
+      start_time: entry.start_time,
+      end_time: entry.end_time,
+      description: entry.description ?? null,
+      tag_ids: entry.tag_ids ?? [],
+      source: entry.source ?? 'manual',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateLog(id: string, patch: Partial<Pick<TimeLog, 'category_id' | 'start_time' | 'end_time' | 'description' | 'tag_ids'>>): Promise<void> {
+  const { error } = await supabase.from('time_logs').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteLog(id: string): Promise<void> {
+  const { error } = await supabase.from('time_logs').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------- time_categories ----------------
+
+export async function fetchCategories(): Promise<TimeCategory[]> {
+  const { data, error } = await supabase
+    .from('time_categories')
+    .select('*')
+    .eq('archived', false)
+    .order('sort_order')
+    .order('created_at');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addCategory(cat: {
+  name: string;
+  color: string;
+  parent_id?: string | null;
+  default_description?: string | null;
+}): Promise<TimeCategory> {
+  const { data, error } = await supabase
+    .from('time_categories')
+    .insert({
+      name: cat.name,
+      color: cat.color,
+      parent_id: cat.parent_id ?? null,
+      default_description: cat.default_description ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateCategory(id: string, patch: Partial<Pick<TimeCategory, 'name' | 'color' | 'default_description' | 'sort_order'>>): Promise<void> {
+  const { error } = await supabase.from('time_categories').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function archiveCategory(id: string): Promise<void> {
+  const { error } = await supabase.from('time_categories').update({ archived: true }).eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------- time_tags ----------------
+
+export async function fetchTags(): Promise<TimeTag[]> {
+  const { data, error } = await supabase
+    .from('time_tags')
+    .select('*')
+    .eq('archived', false)
+    .order('sort_order')
+    .order('created_at');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addTag(tag: { name: string; color: string }): Promise<TimeTag> {
+  const { data, error } = await supabase.from('time_tags').insert(tag).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateTag(id: string, patch: Partial<Pick<TimeTag, 'name' | 'color' | 'sort_order'>>): Promise<void> {
+  const { error } = await supabase.from('time_tags').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function archiveTag(id: string): Promise<void> {
+  const { error } = await supabase.from('time_tags').update({ archived: true }).eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------- 统计 ----------------
+
+function overlapMinutes(logStart: Date, logEnd: Date, rangeStart: Date, rangeEnd: Date): number {
+  const s = Math.max(logStart.getTime(), rangeStart.getTime());
+  const e = Math.min(logEnd.getTime(), rangeEnd.getTime());
+  return Math.max(0, (e - s) / 60000);
+}
+
+async function fetchLogsOverlapping(start: Date, end: Date): Promise<TimeLog[]> {
+  const { data, error } = await supabase
+    .from('time_logs')
+    .select('*')
+    .lt('start_time', end.toISOString())
+    .gt('end_time', start.toISOString())
+    .order('start_time', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export interface RangeStats {
+  byCategory: { category_id: string | null; minutes: number }[];
+  byTag: { tag_id: string; minutes: number; count: number }[];
+  totalMinutes: number;
+}
+
+/** 跨天统计：每个一级分类累计时长 + 每个情绪标签出现次数/时长 */
+export async function fetchRangeStats(start: Date, end: Date): Promise<RangeStats> {
+  const logs = await fetchLogsOverlapping(start, end);
+  const byCategory: Record<string, number> = {};
+  const byTag: Record<string, { minutes: number; count: number }> = {};
+  let totalMinutes = 0;
+
+  for (const log of logs) {
+    const minutes = overlapMinutes(new Date(log.start_time), new Date(log.end_time), start, end);
+    totalMinutes += minutes;
+    const key = log.category_id ?? '__none__';
+    byCategory[key] = (byCategory[key] ?? 0) + minutes;
+    for (const tagId of log.tag_ids ?? []) {
+      if (!byTag[tagId]) byTag[tagId] = { minutes: 0, count: 0 };
+      byTag[tagId].minutes += minutes;
+      byTag[tagId].count += 1;
+    }
+  }
+
+  return {
+    byCategory: Object.entries(byCategory).map(([category_id, minutes]) => ({
+      category_id: category_id === '__none__' ? null : category_id,
+      minutes,
+    })),
+    byTag: Object.entries(byTag).map(([tag_id, v]) => ({ tag_id, ...v })),
+    totalMinutes,
+  };
+}
+
+/** 某天各分类总时长，饼图用 */
+export async function fetchDayStats(date: Date): Promise<RangeStats> {
+  const { start, end } = dayRange(date);
+  return fetchRangeStats(start, end);
+}
+
+/** 月历每天的主导分类（时长最长的那个）id+颜色，格子底色用 */
+export async function fetchMonthStats(year: number, month: number): Promise<Record<string, { category_id: string; color: string }>> {
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 1);
+  const [logs, categories] = await Promise.all([fetchLogsOverlapping(start, end), fetchCategories()]);
+  const colorById: Record<string, string> = {};
+  for (const c of categories) colorById[c.id] = c.color;
+
+  const byDay: Record<string, Record<string, number>> = {};
+  for (const log of logs) {
+    if (!log.category_id) continue;
+    const logStart = new Date(log.start_time);
+    const logEnd = new Date(log.end_time);
+    // 按天切片累加（一条记录可能跨天，虽然一般不会）
+    let cursor = new Date(Math.max(logStart.getTime(), start.getTime()));
+    const clampEnd = new Date(Math.min(logEnd.getTime(), end.getTime()));
+    while (cursor < clampEnd) {
+      const dayStart = new Date(cursor);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const sliceEnd = new Date(Math.min(dayEnd.getTime(), clampEnd.getTime()));
+      const minutes = overlapMinutes(logStart, logEnd, dayStart, dayEnd);
+      const key = toDateKey(dayStart);
+      byDay[key] = byDay[key] ?? {};
+      byDay[key][log.category_id] = (byDay[key][log.category_id] ?? 0) + minutes;
+      cursor = sliceEnd;
+    }
+  }
+
+  const result: Record<string, { category_id: string; color: string }> = {};
+  for (const [day, cats] of Object.entries(byDay)) {
+    let bestId: string | null = null;
+    let bestMinutes = -1;
+    for (const [catId, minutes] of Object.entries(cats)) {
+      if (minutes > bestMinutes) {
+        bestMinutes = minutes;
+        bestId = catId;
+      }
+    }
+    if (bestId) result[day] = { category_id: bestId, color: colorById[bestId] ?? '#A49BB8' };
+  }
+  return result;
+}
+
+/** 某天记录条数（日期条下面的小数字用） */
+export async function fetchLogCountsForRange(dates: Date[]): Promise<Record<string, number>> {
+  if (dates.length === 0) return {};
+  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
+  const { start } = dayRange(sorted[0]);
+  const { end } = dayRange(sorted[sorted.length - 1]);
+  const logs = await fetchLogsOverlapping(start, end);
+  const counts: Record<string, number> = {};
+  for (const log of logs) {
+    const key = toDateKey(new Date(log.start_time));
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
