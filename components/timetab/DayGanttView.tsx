@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { applySelectionFill, fetchLastLogEnd, fetchLogsForDate } from '../../lib/timelog';
 import { fetchDailySummary } from '../../lib/dailySummary';
@@ -20,10 +19,9 @@ import { AddLogModal } from './AddLogModal';
 import { PromptModal } from '../PromptModal';
 import type { TimeCategory, TimeLog } from '../../types';
 
-const HOUR_HEIGHT_NORMAL = 44;
-const HOUR_HEIGHT_EXPANDED = 64;
-const GRANULARITY_OPTIONS = [5, 10, 15, 30];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const CELLS_PER_ROW = 12; // 每小时固定12格，每格5分钟
+const CELL_MINUTES = 60 / CELLS_PER_ROW;
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.toDateString() === b.toDateString();
@@ -67,19 +65,12 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [localRefresh, setLocalRefresh] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const [locked, setLocked] = useState(false);
-  const [paletteCollapsed, setPaletteCollapsed] = useState(false);
-  const [granularity, setGranularity] = useState(5);
   const [selectedCells, setSelectedCells] = useState<Set<number>>(new Set());
+  const [areaHeight, setAreaHeight] = useState(0);
   const [trackWidth, setTrackWidth] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [summaryText, setSummaryText] = useState('');
   const [editingSummary, setEditingSummary] = useState(false);
-
-  const scrollRef = useRef<ScrollView>(null);
-  const hasScrolledToNow = useRef(false);
 
   useEffect(() => {
     if (categories.length === 0) fetchCategoriesAndTags();
@@ -91,7 +82,6 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
       .then(setLogs)
       .finally(() => setLoading(false));
     fetchDailySummary(date).then((s) => setSummaryText(s?.summary ?? ''));
-    hasScrolledToNow.current = false;
   }, [date, refreshKey, localRefresh]);
 
   useEffect(() => {
@@ -109,30 +99,28 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
   const isToday = isSameDay(date, now);
   const nowMinutes = isToday ? minutesSinceMidnight(now, dayStart) : -1;
 
-  const HOUR_HEIGHT = expanded ? HOUR_HEIGHT_EXPANDED : HOUR_HEIGHT_NORMAL;
-  const editRowHeight = gridMode ? Math.max(18, viewportHeight / 24) : HOUR_HEIGHT;
-  const cellsPerHour = Math.max(1, Math.round(60 / granularity));
-  const cellWidth = trackWidth / cellsPerHour;
+  // 时间轴容器自己实际分到的高度 ÷ 24 = 每小时行高。绝不用「屏幕高÷24」。
+  const ROW_H = areaHeight > 0 ? areaHeight / 24 : 0;
+  const cellWidth = trackWidth / CELLS_PER_ROW;
 
   function notifyChanged() {
     setLocalRefresh((k) => k + 1);
     onChanged?.();
   }
 
+  function handleAreaLayout(evt: LayoutChangeEvent) {
+    setAreaHeight(evt.nativeEvent.layout.height);
+  }
+
   function handleTrackWidthLayout(evt: LayoutChangeEvent) {
     setTrackWidth(evt.nativeEvent.layout.width);
   }
 
-  /** 格子视图的可视高度——量的是flex:1撑开的外层容器，不是滚动内容自己的高度 */
-  function handleGridViewportLayout(evt: LayoutChangeEvent) {
-    setViewportHeight(evt.nativeEvent.layout.height);
-  }
-
   function addCellFromTouch(x: number, y: number) {
-    if (cellWidth <= 0) return;
-    const row = Math.max(0, Math.min(23, Math.floor(y / editRowHeight)));
-    const col = Math.max(0, Math.min(cellsPerHour - 1, Math.floor(x / cellWidth)));
-    const index = row * cellsPerHour + col;
+    if (ROW_H <= 0 || cellWidth <= 0) return;
+    const row = Math.max(0, Math.min(23, Math.floor(y / ROW_H)));
+    const col = Math.max(0, Math.min(CELLS_PER_ROW - 1, Math.floor(x / cellWidth)));
+    const index = row * CELLS_PER_ROW + col;
     setSelectedCells((prev) => {
       if (prev.has(index)) return prev;
       const next = new Set(prev);
@@ -141,10 +129,10 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
     });
   }
 
-  // 每次渲染都重建，避免回调闭包锁死在首次渲染的 gridMode/locked/addCellFromTouch 上
+  // 每次渲染都重建，避免回调闭包锁死在首次渲染的 gridMode/ROW_H 上
   const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => gridMode && !locked,
-    onMoveShouldSetPanResponder: () => gridMode && !locked,
+    onStartShouldSetPanResponder: () => gridMode,
+    onMoveShouldSetPanResponder: () => gridMode,
     onPanResponderGrant: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
     onPanResponderMove: (evt) => addCellFromTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
     onPanResponderRelease: () => {},
@@ -152,16 +140,9 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
   });
 
   useEffect(() => {
-    // 切进/切出网格图或改粒度时清空选区
+    // 切进/切出网格图时清空选区
     setSelectedCells(new Set());
-  }, [gridMode, granularity]);
-
-  useEffect(() => {
-    if (loading || hasScrolledToNow.current || !isToday || gridMode) return;
-    hasScrolledToNow.current = true;
-    const y = Math.max(0, (nowMinutes / 60) * HOUR_HEIGHT - 120);
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: false }));
-  }, [loading, isToday, gridMode]);
+  }, [gridMode]);
 
   const selectionRuns = (() => {
     if (selectedCells.size === 0) return [];
@@ -182,18 +163,18 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
     return runs;
   })();
 
-  const selectionTotalMinutes = selectedCells.size * granularity;
+  const selectionTotalMinutes = selectedCells.size * CELL_MINUTES;
   const selectionRangeLabel =
     selectionRuns.length > 0
-      ? `${formatHM(selectionRuns[0].startIdx * granularity)}-${formatHM((selectionRuns[selectionRuns.length - 1].endIdx + 1) * granularity)}`
+      ? `${formatHM(selectionRuns[0].startIdx * CELL_MINUTES)}-${formatHM((selectionRuns[selectionRuns.length - 1].endIdx + 1) * CELL_MINUTES)}`
       : '还没划选';
 
   async function handleFillCategory(categoryId: string) {
     if (selectionRuns.length === 0) return;
     const cat = categoryById[categoryId];
     const runs = selectionRuns.map((r) => ({
-      start: new Date(dayStart.getTime() + r.startIdx * granularity * 60_000),
-      end: new Date(dayStart.getTime() + (r.endIdx + 1) * granularity * 60_000),
+      start: new Date(dayStart.getTime() + r.startIdx * CELL_MINUTES * 60_000),
+      end: new Date(dayStart.getTime() + (r.endIdx + 1) * CELL_MINUTES * 60_000),
     }));
     try {
       await applySelectionFill(runs, categoryId, cat?.default_description ?? null, logs);
@@ -235,14 +216,6 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
     notifyChanged();
   }
 
-  function handleOpenSettings() {
-    Alert.alert('时间日志设置', undefined, [
-      { text: '取消', style: 'cancel' },
-      { text: '📁 分类管理', onPress: () => router.push('/timelog-categories') },
-      { text: '💭 情绪标签管理', onPress: () => router.push('/timelog-tags') },
-    ]);
-  }
-
   async function handleSaveSummary(text: string) {
     setEditingSummary(false);
     await setDaySummary(date, text);
@@ -271,174 +244,105 @@ export function DayGanttView({ date, refreshKey, gridMode, onChanged }: DayGantt
         <View style={styles.body}>
           <View style={styles.leftCol}>
             {gridMode && (
-              <View style={styles.selectionOverlay}>
-                <View style={styles.selectionCard}>
-                  <Text style={styles.selectionCardTitle}>
-                    选区（{selectionTotalMinutes > 0 ? formatDuration(selectionTotalMinutes) : '0'}）
-                  </Text>
-                  <Text style={styles.selectionCardRange}>{selectionRangeLabel}</Text>
-                </View>
-                <View style={styles.selectionCard}>
-                  <Text style={styles.selectionCardTitle}>一个块等于{granularity}分钟</Text>
-                  <View style={styles.granularityRow}>
-                    {GRANULARITY_OPTIONS.map((g) => (
-                      <Pressable
-                        key={g}
-                        style={[styles.granularityChip, granularity === g && styles.granularityChipActive]}
-                        onPress={() => setGranularity(g)}
-                      >
-                        <Text style={[styles.granularityChipText, granularity === g && styles.granularityChipTextActive]}>
-                          {g}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              </View>
-            )}
-            {gridMode && (
-              <View style={styles.warnRow}>
-                <Text style={styles.warnText}>
-                  注：被完全覆盖的事件，会将其删除，备注会丢失。时间部分重叠的事件，会将其截断
+              <View style={styles.selectionCard}>
+                <Text style={styles.selectionCardTitle}>
+                  选区（{selectionTotalMinutes > 0 ? formatDuration(selectionTotalMinutes) : '0'}）
                 </Text>
-                <Pressable
-                  style={[styles.exitButton, selectedCells.size === 0 && styles.exitButtonDisabled]}
-                  onPress={() => setSelectedCells(new Set())}
-                  disabled={selectedCells.size === 0}
-                >
-                  <Text style={styles.exitButtonText}>✕</Text>
-                </Pressable>
+                <Text style={styles.selectionCardRange}>{selectionRangeLabel}</Text>
               </View>
             )}
 
-            {gridMode ? (
-              <View style={styles.gridViewport} onLayout={handleGridViewportLayout}>
-                <View style={[styles.gridBody, { height: editRowHeight * 24 }]}>
+            <View style={styles.axisArea} onLayout={handleAreaLayout}>
+              {areaHeight > 0 && (
+                <>
                   <View style={styles.hourCol}>
                     {HOURS.map((h) => (
-                      <View key={h} style={{ height: editRowHeight, justifyContent: 'flex-start' }}>
-                        <Text style={styles.hourLabel}>{h}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={styles.trackCol} onLayout={handleTrackWidthLayout} {...panResponder.panHandlers}>
-                    {HOURS.map((h) => (
-                      <View key={h} style={[styles.gridRow, { height: editRowHeight }]}>
-                        {Array.from({ length: cellsPerHour }, (_, col) => {
-                          const index = h * cellsPerHour + col;
-                          const selected = selectedCells.has(index);
-                          return (
-                            <View
-                              key={col}
-                              style={[styles.gridCell, selected && styles.gridCellSelected]}
-                            />
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <ScrollView ref={scrollRef} contentContainerStyle={{ height: HOUR_HEIGHT * 24 + spacing.lg }}>
-                <View style={styles.grid}>
-                  <View style={styles.hourCol}>
-                    {HOURS.map((h) => (
-                      <View key={h} style={[styles.hourRow, { height: HOUR_HEIGHT }]}>
+                      <View key={h} style={{ height: ROW_H }}>
                         <Text style={styles.hourLabel}>{h}</Text>
                       </View>
                     ))}
                   </View>
 
-                  <View style={styles.trackCol} onLayout={handleTrackWidthLayout}>
-                    {HOURS.map((h) => (
-                      <View key={h} style={[styles.emptySlot, { height: HOUR_HEIGHT, top: h * HOUR_HEIGHT }]}>
-                        <View style={styles.emptySlotDots}>
-                          {Array.from({ length: 8 }, (_, i) => (
-                            <View key={i} style={styles.emptyDot} />
-                          ))}
-                        </View>
-                      </View>
-                    ))}
+                  <View
+                    style={styles.trackCol}
+                    onLayout={handleTrackWidthLayout}
+                    {...(gridMode ? panResponder.panHandlers : {})}
+                  >
+                    {gridMode
+                      ? HOURS.map((h) => (
+                          <View key={h} style={[styles.gridRow, { height: ROW_H }]}>
+                            {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
+                              const index = h * CELLS_PER_ROW + col;
+                              const selected = selectedCells.has(index);
+                              return <View key={col} style={[styles.gridCell, selected && styles.gridCellSelected]} />;
+                            })}
+                          </View>
+                        ))
+                      : (
+                          <>
+                            {HOURS.map((h) => (
+                              <View key={h} style={[styles.emptySlot, { height: ROW_H, top: h * ROW_H }]}>
+                                <View style={styles.emptySlotDots}>
+                                  {Array.from({ length: 8 }, (_, i) => (
+                                    <View key={i} style={styles.emptyDot} />
+                                  ))}
+                                </View>
+                              </View>
+                            ))}
 
-                    {logs.map((log) => {
-                      const cat = log.category_id ? categoryById[log.category_id] : null;
-                      const top = (minutesSinceMidnight(new Date(log.start_time), dayStart) / 60) * HOUR_HEIGHT;
-                      const bottom = (minutesSinceMidnight(new Date(log.end_time), dayStart) / 60) * HOUR_HEIGHT;
-                      const height = Math.max(4, bottom - top);
-                      return (
-                        <Pressable
-                          key={log.id}
-                          onPress={() => handleBlockPress(log)}
-                          style={[
-                            styles.block,
-                            { top, height, backgroundColor: cat?.color ?? colors.textMuted },
-                          ]}
-                        >
-                          {height >= 16 && (
-                            <Text style={styles.blockText} numberOfLines={height >= 34 ? 2 : 1}>
-                              {cat?.name ?? '未分类'}
-                              {height >= 34 && log.description ? `\n${log.description}` : ''}
-                            </Text>
-                          )}
-                        </Pressable>
-                      );
-                    })}
+                            {logs.map((log) => {
+                              const cat = log.category_id ? categoryById[log.category_id] : null;
+                              const top = (minutesSinceMidnight(new Date(log.start_time), dayStart) / 60) * ROW_H;
+                              const bottom = (minutesSinceMidnight(new Date(log.end_time), dayStart) / 60) * ROW_H;
+                              const height = Math.max(2, bottom - top);
+                              return (
+                                <Pressable
+                                  key={log.id}
+                                  onPress={() => handleBlockPress(log)}
+                                  style={[
+                                    styles.block,
+                                    { top, height, backgroundColor: cat?.color ?? colors.textMuted },
+                                  ]}
+                                >
+                                  {height >= 14 && (
+                                    <Text style={styles.blockText} numberOfLines={1}>
+                                      {cat?.name ?? '未分类'}
+                                    </Text>
+                                  )}
+                                </Pressable>
+                              );
+                            })}
 
-                    {isToday && nowMinutes >= 0 && (
-                      <View style={[styles.nowMarker, { top: (nowMinutes / 60) * HOUR_HEIGHT }]} pointerEvents="none">
-                        <View style={styles.nowCaret} />
-                        <Text style={styles.nowLabel}>
-                          {now.toLocaleTimeString('zh-CN', { hour12: false })}
-                        </Text>
-                      </View>
-                    )}
+                            {isToday && nowMinutes >= 0 && (
+                              <View style={[styles.nowMarker, { top: (nowMinutes / 60) * ROW_H }]} pointerEvents="none">
+                                <View style={styles.nowCaret} />
+                                <Text style={styles.nowLabel}>
+                                  {now.toLocaleTimeString('zh-CN', { hour12: false })}
+                                </Text>
+                              </View>
+                            )}
+                          </>
+                        )}
                   </View>
-                </View>
-              </ScrollView>
-            )}
+                </>
+              )}
+            </View>
           </View>
 
           <View style={styles.rightCol}>
-            <View style={styles.controlCard}>
-              <Pressable style={styles.controlHalf} onPress={() => setExpanded((v) => !v)}>
-                <Text style={styles.controlIcon}>⇕</Text>
-              </Pressable>
-              <View style={styles.controlDivider} />
-              <Pressable style={styles.controlHalf} onPress={handleOpenSettings}>
-                <Text style={styles.controlIcon}>⚙</Text>
-              </Pressable>
-            </View>
-            <Pressable
-              style={[styles.controlCard, styles.lockCard, locked && styles.controlHalfActive]}
-              onPress={() => setLocked((v) => !v)}
-            >
-              <Text style={[styles.controlIcon, locked && styles.controlIconActive]}>{locked ? '🔒' : '🔓'}</Text>
-            </Pressable>
-            <Pressable style={styles.collapseButton} onPress={() => setPaletteCollapsed((v) => !v)}>
-              <Text style={styles.collapseIcon}>{paletteCollapsed ? '∨' : '∧'}</Text>
-            </Pressable>
-
-            {!paletteCollapsed && (
-              <>
-                <ScrollView style={styles.palette} contentContainerStyle={styles.paletteContent}>
-                  {topLevelCategories.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.paletteChip, { backgroundColor: c.color }]}
-                      onPress={() => handlePalettePress(c.id)}
-                    >
-                      <Text style={styles.paletteChipText} numberOfLines={1}>
-                        {c.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                <Pressable style={styles.manageButton} onPress={() => router.push('/timelog-categories')}>
-                  <Text style={styles.manageButtonText}>⚙ 管理分类</Text>
+            <ScrollView style={styles.palette} contentContainerStyle={styles.paletteContent}>
+              {topLevelCategories.map((c) => (
+                <Pressable
+                  key={c.id}
+                  style={[styles.paletteChip, { backgroundColor: c.color }]}
+                  onPress={() => handlePalettePress(c.id)}
+                >
+                  <Text style={styles.paletteChipText} numberOfLines={1}>
+                    {c.name}
+                  </Text>
                 </Pressable>
-              </>
-            )}
+              ))}
+            </ScrollView>
           </View>
         </View>
       )}
@@ -463,9 +367,8 @@ const styles = StyleSheet.create({
   summaryText: { fontSize: fontSize.tiny, color: colors.textMuted, textAlign: 'center' },
   body: { flex: 1, flexDirection: 'row', paddingHorizontal: spacing.lg },
   leftCol: { flex: 1 },
-  grid: { flexDirection: 'row' },
+  axisArea: { flex: 1, flexDirection: 'row' },
   hourCol: { width: 24 },
-  hourRow: { justifyContent: 'flex-start' },
   hourLabel: { fontSize: fontSize.tiny, color: colors.textMuted, includeFontPadding: false },
   trackCol: { flex: 1, position: 'relative', marginLeft: spacing.xs },
   emptySlot: {
@@ -513,42 +416,16 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     includeFontPadding: false,
   },
-  selectionOverlay: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs },
   selectionCard: {
-    flex: 1,
     backgroundColor: colors.card,
     borderRadius: radius.widget,
     borderWidth: 1.5,
     borderColor: colors.textPrimary,
     padding: spacing.sm,
+    marginBottom: spacing.xs,
   },
   selectionCardTitle: { fontSize: fontSize.secondary, color: colors.textPrimary, fontWeight: '600' },
   selectionCardRange: { fontSize: fontSize.body, color: colors.textPrimary, marginTop: 2 },
-  granularityRow: { flexDirection: 'row', gap: 4, marginTop: 6 },
-  granularityChip: {
-    flex: 1,
-    paddingVertical: 4,
-    borderRadius: radius.widget - 2,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-  },
-  granularityChipActive: { backgroundColor: colors.purpleDark },
-  granularityChipText: { fontSize: fontSize.tiny, color: colors.textSecondary },
-  granularityChipTextActive: { color: '#fff', fontWeight: '700' },
-  warnRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-  warnText: { flex: 1, fontSize: 10, lineHeight: 13, color: '#B8860B' },
-  exitButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.widget,
-    backgroundColor: colors.redDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exitButtonDisabled: { opacity: 0.4 },
-  exitButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  gridViewport: { flex: 1 },
-  gridBody: { flexDirection: 'row' },
   gridRow: { flexDirection: 'row' },
   gridCell: {
     flex: 1,
@@ -556,32 +433,10 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: '#EAF4FA',
   },
-  gridCellSelected: { backgroundColor: '#8B99A8' },
+  gridCellSelected: { backgroundColor: '#8A94A6' },
   rightCol: { width: 68, marginLeft: spacing.sm },
-  controlCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: radius.widget,
-    marginBottom: spacing.xs,
-    overflow: 'hidden',
-  },
-  controlHalf: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
-  controlHalfActive: { backgroundColor: colors.purpleLight },
-  controlDivider: { width: 1, backgroundColor: colors.background },
-  controlIcon: { fontSize: 15, color: colors.textSecondary },
-  controlIconActive: { color: colors.purpleDark },
-  lockCard: { alignItems: 'center', paddingVertical: spacing.sm },
-  collapseButton: { alignItems: 'center', paddingVertical: 4, marginBottom: spacing.xs },
-  collapseIcon: { fontSize: 13, color: colors.textMuted },
   palette: { flex: 1 },
   paletteContent: { paddingBottom: spacing.sm, gap: spacing.xs },
-  manageButton: {
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.background,
-  },
-  manageButtonText: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
   paletteChip: {
     borderRadius: radius.widget,
     paddingVertical: spacing.sm,

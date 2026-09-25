@@ -1,10 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
 import type { TimeCategory, TimeLog, TimeTag } from '../types';
+import { genId, loadCategories, loadLogs, loadTags, saveCategories, saveLogs, saveTags } from './timelogLocal';
+import { enqueueSync } from './timelogSync';
 
-const SEED_KEY = 'timelog_seeded_v1';
-
-const DEFAULT_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   { name: '做饭', color: '#8B7BA8', sort_order: 1 },
   { name: '吃饭', color: '#8B5E2B', sort_order: 2 },
   { name: '玩', color: '#A78BCE', sort_order: 3 },
@@ -19,7 +17,7 @@ const DEFAULT_CATEGORIES = [
   { name: 'ai', color: '#7A857D', sort_order: 12 },
 ];
 
-const DEFAULT_TAGS = [
+export const DEFAULT_TAGS = [
   { name: '状态很差', color: '#1E6B3A', sort_order: 1 },
   { name: '内耗中', color: '#3A1E4A', sort_order: 2 },
   { name: '状态比较好', color: '#6B5A1E', sort_order: 3 },
@@ -27,30 +25,6 @@ const DEFAULT_TAGS = [
   { name: '平静', color: '#B5654A', sort_order: 5 },
   { name: '崩溃', color: '#7A6B2B', sort_order: 6 },
 ];
-
-/**
- * app内幂等播种默认分类/标签，只在首次（本机从没播过 且 表是空的）时插入。
- * 用户之后删光分类/标签也不会被这个函数回填——AsyncStorage标志一旦写过
- * 'true' 就再也不会重新播种。
- */
-export async function seedDefaultsIfNeeded(): Promise<void> {
-  const done = await AsyncStorage.getItem(SEED_KEY);
-  if (done === 'true') return;
-
-  const { count: catCount } = await supabase
-    .from('time_categories')
-    .select('id', { count: 'exact', head: true });
-  if ((catCount ?? 0) === 0) {
-    await supabase.from('time_categories').insert(DEFAULT_CATEGORIES);
-  }
-
-  const { count: tagCount } = await supabase.from('time_tags').select('id', { count: 'exact', head: true });
-  if ((tagCount ?? 0) === 0) {
-    await supabase.from('time_tags').insert(DEFAULT_TAGS);
-  }
-
-  await AsyncStorage.setItem(SEED_KEY, 'true');
-}
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -67,29 +41,27 @@ function dayRange(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-// ---------------- time_logs ----------------
+function overlapsRange(log: TimeLog, start: Date, end: Date): boolean {
+  return new Date(log.start_time).getTime() < end.getTime() && new Date(log.end_time).getTime() > start.getTime();
+}
+
+// ---------------- time_logs（本地优先，写操作排队后台上传） ----------------
 
 export async function fetchLogsForDate(date: Date): Promise<TimeLog[]> {
   const { start, end } = dayRange(date);
-  const { data, error } = await supabase
-    .from('time_logs')
-    .select('*')
-    .lt('start_time', end.toISOString())
-    .gt('end_time', start.toISOString())
-    .order('start_time', { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  const all = await loadLogs();
+  return all
+    .filter((log) => overlapsRange(log, start, end))
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 }
 
 export async function fetchLastLogEnd(): Promise<Date | null> {
-  const { data, error } = await supabase
-    .from('time_logs')
-    .select('end_time')
-    .order('end_time', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data ? new Date(data.end_time) : null;
+  const all = await loadLogs();
+  if (all.length === 0) return null;
+  const latest = all.reduce((best, log) =>
+    new Date(log.end_time).getTime() > new Date(best.end_time).getTime() ? log : best
+  );
+  return new Date(latest.end_time);
 }
 
 export async function addLog(entry: {
@@ -100,30 +72,41 @@ export async function addLog(entry: {
   tag_ids?: string[];
   source?: 'manual' | 'chat';
 }): Promise<TimeLog> {
-  const { data, error } = await supabase
-    .from('time_logs')
-    .insert({
-      category_id: entry.category_id,
-      start_time: entry.start_time,
-      end_time: entry.end_time,
-      description: entry.description ?? null,
-      tag_ids: entry.tag_ids ?? [],
-      source: entry.source ?? 'manual',
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const all = await loadLogs();
+  const newLog: TimeLog = {
+    id: genId(),
+    category_id: entry.category_id,
+    start_time: entry.start_time,
+    end_time: entry.end_time,
+    description: entry.description ?? null,
+    tag_ids: entry.tag_ids ?? [],
+    source: entry.source ?? 'manual',
+    created_at: new Date().toISOString(),
+  };
+  await saveLogs([...all, newLog]);
+  enqueueSync({ table: 'time_logs', op: 'upsert', row: newLog });
+  return newLog;
 }
 
-export async function updateLog(id: string, patch: Partial<Pick<TimeLog, 'category_id' | 'start_time' | 'end_time' | 'description' | 'tag_ids'>>): Promise<void> {
-  const { error } = await supabase.from('time_logs').update(patch).eq('id', id);
-  if (error) throw error;
+export async function updateLog(
+  id: string,
+  patch: Partial<Pick<TimeLog, 'category_id' | 'start_time' | 'end_time' | 'description' | 'tag_ids'>>
+): Promise<void> {
+  const all = await loadLogs();
+  let updated: TimeLog | null = null;
+  const next = all.map((l) => {
+    if (l.id !== id) return l;
+    updated = { ...l, ...patch };
+    return updated;
+  });
+  await saveLogs(next);
+  if (updated) enqueueSync({ table: 'time_logs', op: 'upsert', row: updated });
 }
 
 export async function deleteLog(id: string): Promise<void> {
-  const { error } = await supabase.from('time_logs').delete().eq('id', id);
-  if (error) throw error;
+  const all = await loadLogs();
+  await saveLogs(all.filter((l) => l.id !== id));
+  enqueueSync({ table: 'time_logs', op: 'delete', row: { id } });
 }
 
 /**
@@ -195,17 +178,13 @@ export function formatLogDuration(minutes: number): string {
   return `${h}时${m}分`;
 }
 
-// ---------------- time_categories ----------------
+// ---------------- time_categories（本地优先） ----------------
 
 export async function fetchCategories(): Promise<TimeCategory[]> {
-  const { data, error } = await supabase
-    .from('time_categories')
-    .select('*')
-    .eq('archived', false)
-    .order('sort_order')
-    .order('created_at');
-  if (error) throw error;
-  return data ?? [];
+  const all = await loadCategories();
+  return all
+    .filter((c) => !c.archived)
+    .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
 }
 
 export async function addCategory(cat: {
@@ -214,60 +193,98 @@ export async function addCategory(cat: {
   parent_id?: string | null;
   default_description?: string | null;
 }): Promise<TimeCategory> {
-  const { data, error } = await supabase
-    .from('time_categories')
-    .insert({
-      name: cat.name,
-      color: cat.color,
-      parent_id: cat.parent_id ?? null,
-      default_description: cat.default_description ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const all = await loadCategories();
+  const newCat: TimeCategory = {
+    id: genId(),
+    name: cat.name,
+    color: cat.color,
+    parent_id: cat.parent_id ?? null,
+    default_description: cat.default_description ?? null,
+    sort_order: all.length,
+    archived: false,
+    created_at: new Date().toISOString(),
+  };
+  await saveCategories([...all, newCat]);
+  enqueueSync({ table: 'time_categories', op: 'upsert', row: newCat });
+  return newCat;
 }
 
-export async function updateCategory(id: string, patch: Partial<Pick<TimeCategory, 'name' | 'color' | 'default_description' | 'sort_order'>>): Promise<void> {
-  const { error } = await supabase.from('time_categories').update(patch).eq('id', id);
-  if (error) throw error;
+export async function updateCategory(
+  id: string,
+  patch: Partial<Pick<TimeCategory, 'name' | 'color' | 'default_description' | 'sort_order'>>
+): Promise<void> {
+  const all = await loadCategories();
+  let updated: TimeCategory | null = null;
+  const next = all.map((c) => {
+    if (c.id !== id) return c;
+    updated = { ...c, ...patch };
+    return updated;
+  });
+  await saveCategories(next);
+  if (updated) enqueueSync({ table: 'time_categories', op: 'upsert', row: updated });
 }
 
 export async function archiveCategory(id: string): Promise<void> {
-  const { error } = await supabase.from('time_categories').update({ archived: true }).eq('id', id);
-  if (error) throw error;
+  const all = await loadCategories();
+  let updated: TimeCategory | null = null;
+  const next = all.map((c) => {
+    if (c.id !== id) return c;
+    updated = { ...c, archived: true };
+    return updated;
+  });
+  await saveCategories(next);
+  if (updated) enqueueSync({ table: 'time_categories', op: 'upsert', row: updated });
 }
 
-// ---------------- time_tags ----------------
+// ---------------- time_tags（本地优先） ----------------
 
 export async function fetchTags(): Promise<TimeTag[]> {
-  const { data, error } = await supabase
-    .from('time_tags')
-    .select('*')
-    .eq('archived', false)
-    .order('sort_order')
-    .order('created_at');
-  if (error) throw error;
-  return data ?? [];
+  const all = await loadTags();
+  return all
+    .filter((t) => !t.archived)
+    .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
 }
 
 export async function addTag(tag: { name: string; color: string }): Promise<TimeTag> {
-  const { data, error } = await supabase.from('time_tags').insert(tag).select().single();
-  if (error) throw error;
-  return data;
+  const all = await loadTags();
+  const newTag: TimeTag = {
+    id: genId(),
+    name: tag.name,
+    color: tag.color,
+    sort_order: all.length,
+    archived: false,
+    created_at: new Date().toISOString(),
+  };
+  await saveTags([...all, newTag]);
+  enqueueSync({ table: 'time_tags', op: 'upsert', row: newTag });
+  return newTag;
 }
 
 export async function updateTag(id: string, patch: Partial<Pick<TimeTag, 'name' | 'color' | 'sort_order'>>): Promise<void> {
-  const { error } = await supabase.from('time_tags').update(patch).eq('id', id);
-  if (error) throw error;
+  const all = await loadTags();
+  let updated: TimeTag | null = null;
+  const next = all.map((t) => {
+    if (t.id !== id) return t;
+    updated = { ...t, ...patch };
+    return updated;
+  });
+  await saveTags(next);
+  if (updated) enqueueSync({ table: 'time_tags', op: 'upsert', row: updated });
 }
 
 export async function archiveTag(id: string): Promise<void> {
-  const { error } = await supabase.from('time_tags').update({ archived: true }).eq('id', id);
-  if (error) throw error;
+  const all = await loadTags();
+  let updated: TimeTag | null = null;
+  const next = all.map((t) => {
+    if (t.id !== id) return t;
+    updated = { ...t, archived: true };
+    return updated;
+  });
+  await saveTags(next);
+  if (updated) enqueueSync({ table: 'time_tags', op: 'upsert', row: updated });
 }
 
-// ---------------- 统计 ----------------
+// ---------------- 统计（读本地 logs + categories） ----------------
 
 function overlapMinutes(logStart: Date, logEnd: Date, rangeStart: Date, rangeEnd: Date): number {
   const s = Math.max(logStart.getTime(), rangeStart.getTime());
@@ -276,14 +293,10 @@ function overlapMinutes(logStart: Date, logEnd: Date, rangeStart: Date, rangeEnd
 }
 
 async function fetchLogsOverlapping(start: Date, end: Date): Promise<TimeLog[]> {
-  const { data, error } = await supabase
-    .from('time_logs')
-    .select('*')
-    .lt('start_time', end.toISOString())
-    .gt('end_time', start.toISOString())
-    .order('start_time', { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  const all = await loadLogs();
+  return all
+    .filter((log) => overlapsRange(log, start, end))
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 }
 
 export interface RangeStats {

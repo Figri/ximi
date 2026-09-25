@@ -1,12 +1,23 @@
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from '../constants/theme';
 import { useDecayNotifications } from '../lib/useDecayNotifications';
+import { flushSync } from '../lib/timelogSync';
 
 export default function RootLayout() {
   useDecayNotifications();
+
+  useEffect(() => {
+    flushSync();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') flushSync();
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
