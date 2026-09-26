@@ -31,7 +31,7 @@ interface TimeBlockViewProps {
 export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProps) {
   const { categories, fetchAll } = useTimeLogStore();
   const [logs, setLogs] = useState<TimeLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [areaHeight, setAreaHeight] = useState(0);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [current, setCurrent] = useState<number | null>(null);
@@ -44,10 +44,9 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   }, []);
 
   useEffect(() => {
-    setLoading(true);
     fetchLogsForDate(date)
       .then(setLogs)
-      .finally(() => setLoading(false));
+      .finally(() => setFirstLoad(false));
   }, [date, refreshKey]);
 
   const categoryById: Record<string, TimeCategory> = {};
@@ -56,8 +55,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
 
-  // 时间轴容器自己实际分到的高度(onLayout量) ÷ 24 = 每小时行高
-  const ROW_H = areaHeight > 0 ? areaHeight / 24 : 0;
+  // 时间轴容器自己实际分到的高度(onLayout量) ÷ 24 = 每小时行高，取整避免24行堆叠时的浮点累积误差
+  const ROW_H = areaHeight > 0 ? Math.floor(areaHeight / 24) : 0;
 
   function measureTrack() {
     trackRef.current?.measureInWindow((x, y, w, h) => {
@@ -106,6 +105,30 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return s;
   }, [anchor, current]);
 
+  // 把当天 logs 摊平成 Map<cellIndex, color>，格子只有一套、只查一次颜色，不再叠两层定位
+  const cellColorByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const log of logs) {
+      const cat = log.category_id ? categoryById[log.category_id] : null;
+      const color = cat?.color ?? colors.textMuted;
+      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
+      const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
+      const loIdx = Math.floor(startMin / CELL_MINUTES);
+      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
+      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
+        if (i >= 0) map.set(i, color);
+      }
+    }
+    return map;
+  }, [logs, categories]);
+
+  function cellColor(idx: number): string {
+    if (selected.has(idx)) return '#9AA3B2';
+    const filled = cellColorByIndex.get(idx);
+    if (filled) return filled;
+    return '#DCEBF7';
+  }
+
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
       start: new Date(dayStart.getTime() + lo * CELL_MINUTES * 60_000),
@@ -142,7 +165,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     measureTrack();
   }
 
-  if (loading) {
+  if (firstLoad) {
     return <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />;
   }
 
@@ -165,26 +188,11 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {logs.map((log) => {
-                const cat = log.category_id ? categoryById[log.category_id] : null;
-                const top = (minutesSinceMidnight(new Date(log.start_time), dayStart) / 60) * ROW_H;
-                const bottom = (minutesSinceMidnight(new Date(log.end_time), dayStart) / 60) * ROW_H;
-                const height = Math.max(2, bottom - top);
-                return (
-                  <View
-                    key={log.id}
-                    pointerEvents="none"
-                    style={[styles.block, { top, height, backgroundColor: cat?.color ?? colors.textMuted }]}
-                  />
-                );
-              })}
-
               {HOURS.map((h) => (
                 <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
                   {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
                     const idx = h * CELLS_PER_ROW + col;
-                    const on = selected.has(idx);
-                    return <View key={col} style={[styles.gridCell, on && styles.gridCellSelected]} />;
+                    return <View key={col} style={[styles.gridCell, { backgroundColor: cellColor(idx) }]} />;
                   })}
                 </View>
               ))}
@@ -215,11 +223,9 @@ const styles = StyleSheet.create({
   axisArea: { flex: 1, flexDirection: 'row' },
   hourCol: { width: 28 },
   hourLabel: { fontSize: 13, color: colors.textMuted },
-  trackCol: { flex: 1, position: 'relative', marginLeft: 6, backgroundColor: '#DCEBF7' },
-  block: { position: 'absolute', left: 0, right: 0, borderRadius: 3, borderWidth: 1, borderColor: '#fff' },
+  trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
   gridRow: { flexDirection: 'row' },
-  gridCell: { flex: 1, backgroundColor: 'transparent', borderWidth: 0.5, borderColor: '#fff' },
-  gridCellSelected: { backgroundColor: '#9AA3B2' },
+  gridCell: { flex: 1, borderWidth: 0.5, borderColor: '#fff' },
   palette: { width: 72, marginLeft: spacing.sm },
   paletteContent: { paddingBottom: spacing.sm, gap: spacing.xs },
   paletteChip: {
