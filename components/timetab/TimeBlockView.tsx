@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, spacing } from '../../constants/theme';
 import { applySelectionFill, fetchLogsForDate } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import type { TimeCategory, TimeLog } from '../../types';
@@ -20,6 +20,68 @@ const CELL_MINUTES = 5;
 
 function minutesSinceMidnight(date: Date, dayStart: Date): number {
   return Math.max(0, Math.min(24 * 60, (date.getTime() - dayStart.getTime()) / 60000));
+}
+
+interface PositionedLog extends TimeLog {
+  startMin: number;
+  endMin: number;
+  colIndex: number;
+  colCount: number;
+}
+
+/**
+ * 给每条记录分配左右分栏的列号：按开始时间扫描，只要跟当前簇里任一记录时间
+ * 重叠就并入同一簇，簇内用贪心列分配（跟已有列里最早结束的那列拼得上就复用，
+ * 拼不上就开新列），簇内所有记录共用这个簇算出来的总列数均分宽度。
+ */
+function layoutLogs(logs: TimeLog[], dayStart: Date): PositionedLog[] {
+  const items = logs
+    .map((log) => ({
+      ...log,
+      startMin: minutesSinceMidnight(new Date(log.start_time), dayStart),
+      endMin: minutesSinceMidnight(new Date(log.end_time), dayStart),
+    }))
+    .sort((a, b) => a.startMin - b.startMin);
+
+  const result: PositionedLog[] = [];
+  let cluster: (typeof items)[number][] = [];
+  let clusterEnd = -Infinity;
+
+  function flushCluster() {
+    if (cluster.length === 0) return;
+    const columnsEnd: number[] = [];
+    const withCol: { item: (typeof items)[number]; col: number }[] = [];
+    for (const item of cluster) {
+      let col = columnsEnd.findIndex((end) => end <= item.startMin);
+      if (col === -1) {
+        col = columnsEnd.length;
+        columnsEnd.push(item.endMin);
+      } else {
+        columnsEnd[col] = item.endMin;
+      }
+      withCol.push({ item, col });
+    }
+    const colCount = columnsEnd.length;
+    for (const { item, col } of withCol) {
+      result.push({ ...item, colIndex: col, colCount });
+    }
+    cluster = [];
+    clusterEnd = -Infinity;
+  }
+
+  for (const item of items) {
+    if (cluster.length === 0 || item.startMin < clusterEnd) {
+      cluster.push(item);
+      clusterEnd = Math.max(clusterEnd, item.endMin);
+    } else {
+      flushCluster();
+      cluster.push(item);
+      clusterEnd = item.endMin;
+    }
+  }
+  flushCluster();
+
+  return result;
 }
 
 interface TimeBlockViewProps {
@@ -105,15 +167,14 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return s;
   }, [anchor, current]);
 
-  // 选区范围转成绝对像素 top/height——用分钟数直接算，不靠格子行累加，不会有对不齐的问题
-  const selectionBox = useMemo(() => {
-    if (anchor == null || current == null || ROW_H <= 0) return null;
-    const lo = Math.min(anchor, current);
-    const hi = Math.max(anchor, current);
-    const top = ((lo * CELL_MINUTES) / 60) * ROW_H;
-    const height = (((hi - lo + 1) * CELL_MINUTES) / 60) * ROW_H;
-    return { top, height };
-  }, [anchor, current, ROW_H]);
+  // 底层格子颜色：选区灰 > 空蓝，记录的颜色由上层色块覆盖层负责，这里不再管
+  function cellColor(idx: number): string {
+    if (selected.has(idx)) return '#9AA3B2';
+    return '#DCEBF7';
+  }
+
+  // 按记录重叠关系分好列的色块列表——同一簇内左右分栏，互不重叠的各占满宽
+  const positionedLogs = useMemo(() => layoutLogs(logs, dayStart), [logs, dayStart]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -155,6 +216,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />;
   }
 
+  const minBlockHeight = ROW_H / CELLS_PER_ROW;
+
   return (
     <View style={styles.container}>
       <View style={styles.axisArea} onLayout={handleAreaLayout}>
@@ -174,44 +237,45 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {/* 底层：浅蓝空格子，只负责网格纹理和承接划选手势，不再逐格上色 */}
+              {/* 底层：网格，格子颜色只表示选区灰/空蓝，负责纹理和承接划选手势 */}
               {HOURS.map((h) => (
                 <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
-                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => (
-                    <View key={col} style={styles.gridCellEmpty} />
-                  ))}
+                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
+                    const idx = h * CELLS_PER_ROW + col;
+                    return <View key={col} style={[styles.gridCell, { backgroundColor: cellColor(idx) }]} />;
+                  })}
                 </View>
               ))}
 
-              {/* 上层：每条记录一个绝对定位的大色块，按分钟数直接算像素位置，跟底层格子互不影响对齐 */}
-              {logs.map((log) => {
+              {/* 上层：每条记录一个绝对定位的合并大色块，按分钟数直接算像素位置，
+                  跟底层格子互不影响对齐；同一时段有多条记录时左右分栏 */}
+              {positionedLogs.map((log) => {
                 const cat = log.category_id ? categoryById[log.category_id] : null;
-                const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
-                const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
-                const top = (startMin / 60) * ROW_H;
-                const height = Math.max(2, ((endMin - startMin) / 60) * ROW_H);
+                const top = (log.startMin / 60) * ROW_H;
+                const height = Math.max(minBlockHeight, ((log.endMin - log.startMin) / 60) * ROW_H);
+                const width = 100 / log.colCount;
+                const left = log.colIndex * width;
                 return (
                   <View
                     key={log.id}
-                    style={[styles.logBlock, { top, height, backgroundColor: cat?.color ?? colors.textMuted }]}
+                    style={[
+                      styles.logBlock,
+                      {
+                        top,
+                        height,
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        backgroundColor: cat?.color ?? colors.textMuted,
+                      },
+                    ]}
                     pointerEvents="none"
                   >
-                    {height >= 16 && (
-                      <Text style={styles.logBlockText} numberOfLines={1}>
-                        {cat?.name}
-                      </Text>
-                    )}
+                    <Text style={styles.logBlockText} numberOfLines={1}>
+                      {cat?.name}
+                    </Text>
                   </View>
                 );
               })}
-
-              {/* 划选中的灰色大块，同样按分钟数算位置 */}
-              {selectionBox && (
-                <View
-                  style={[styles.logBlock, { top: selectionBox.top, height: selectionBox.height, backgroundColor: '#9AA3B2' }]}
-                  pointerEvents="none"
-                />
-              )}
             </View>
           </>
         )}
@@ -239,29 +303,27 @@ const styles = StyleSheet.create({
   hourLabel: { fontSize: 13, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
   gridRow: { flexDirection: 'row' },
-  gridCellEmpty: { flex: 1, backgroundColor: '#DCEBF7', borderWidth: 0.5, borderColor: '#fff' },
+  gridCell: { flex: 1, borderWidth: 0.5, borderColor: '#fff' },
   logBlock: {
     position: 'absolute',
-    left: 0,
-    right: 0,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#fff',
-    paddingHorizontal: 6,
+    paddingLeft: 6,
     paddingTop: 2,
     overflow: 'hidden',
   },
-  logBlockText: { color: '#fff', fontSize: 12, fontWeight: '700', includeFontPadding: false },
+  logBlockText: { color: '#fff', fontSize: 11, fontWeight: '600', includeFontPadding: false },
   palette: { width: 72, marginLeft: spacing.sm },
-  paletteContent: { paddingBottom: spacing.sm, gap: spacing.xs },
+  paletteContent: { paddingBottom: spacing.sm, gap: 2 },
   paletteChip: {
-    borderRadius: radius.widget,
-    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    paddingVertical: 4,
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
-    marginBottom: spacing.xs,
+    minHeight: 36,
+    marginBottom: 2,
   },
   paletteChipText: { fontSize: fontSize.tiny, color: '#fff', fontWeight: '700', includeFontPadding: false },
 });
