@@ -46,7 +46,7 @@ export default function TimelogCategoriesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()}>
           <Text style={styles.backText}>‹ 时间</Text>
@@ -159,14 +159,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.widget,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 14,
     marginBottom: spacing.xs,
-    gap: spacing.sm,
+    gap: 14,
   },
   childRow: { marginLeft: spacing.lg, backgroundColor: colors.background },
   collapseIcon: { fontSize: 12, color: colors.textMuted, width: 14 },
-  dot: { width: 14, height: 14, borderRadius: 7 },
-  rowName: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary },
+  dot: { width: 18, height: 18, borderRadius: 9 },
+  rowName: { flex: 1, fontSize: 16, fontWeight: '500', color: colors.textPrimary },
   childCount: { fontSize: fontSize.tiny, color: colors.textMuted },
   empty: { textAlign: 'center', color: colors.textMuted, fontSize: fontSize.body, marginTop: spacing.xl },
 });

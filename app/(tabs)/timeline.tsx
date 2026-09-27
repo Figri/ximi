@@ -36,16 +36,9 @@ export default function TimelineScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>时间</Text>
-        <View style={styles.headerRight}>
-          {mode === 'day' && (
-            <Pressable style={styles.toggleBtn} onPress={() => setDayView((v) => (v === 'block' ? 'axis' : 'block'))}>
-              <Text style={styles.toggleBtnText}>{dayView === 'block' ? '☰' : '田'}</Text>
-            </Pressable>
-          )}
-          <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
-            <Text style={styles.menuButtonText}>⋮</Text>
-          </Pressable>
-        </View>
+        <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
+          <Text style={styles.menuButtonText}>⋮</Text>
+        </Pressable>
       </View>
 
       {mode === 'day' && <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} />}
@@ -68,6 +61,12 @@ export default function TimelineScreen() {
         />
       )}
       {mode === 'stats' && <StatsView />}
+
+      {mode === 'day' && (
+        <Pressable style={styles.viewToggleFab} onPress={() => setDayView((v) => (v === 'block' ? 'axis' : 'block'))}>
+          <Text style={styles.viewToggleFabText}>{dayView === 'block' ? '☰' : '田'}</Text>
+        </Pressable>
+      )}
     </SafeAreaView>
   );
 }
@@ -83,16 +82,23 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  toggleBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleBtnText: { fontSize: 16, color: colors.textSecondary },
   menuButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
+  viewToggleFab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.lg,
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: colors.purpleDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  viewToggleFabText: { color: '#fff', fontSize: 22 },
 });
