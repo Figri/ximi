@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, spacing } from '../../constants/theme';
@@ -22,23 +22,24 @@ export default function TimelineScreen() {
     setRefreshKey((k) => k + 1);
   }
 
-  function handleOpenMenu() {
-    Alert.alert('时间日志设置', undefined, [
-      { text: '取消', style: 'cancel' },
-      { text: '📁 分类管理', onPress: () => router.push('/timelog-categories') },
-      { text: '💭 情绪标签管理', onPress: () => router.push('/timelog-tags') },
-      { text: mode === 'day' ? '📅 月历' : '📆 日视图', onPress: () => setMode(mode === 'day' ? 'month' : 'day') },
-      { text: '📊 统计', onPress: () => setMode('stats') },
-    ]);
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>时间</Text>
-        <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
-          <Text style={styles.menuButtonText}>⋮</Text>
-        </Pressable>
+        <View style={styles.headerIcons}>
+          <Pressable style={styles.iconButton} onPress={() => router.push('/timelog-categories')}>
+            <Text style={styles.iconText}>🏷️</Text>
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={() => router.push('/timelog-tags')}>
+            <Text style={styles.iconText}>💬</Text>
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={() => setMode(mode === 'day' ? 'month' : 'day')}>
+            <Text style={styles.iconText}>{mode === 'day' ? '📅' : '📆'}</Text>
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={() => setMode('stats')}>
+            <Text style={styles.iconText}>📊</Text>
+          </Pressable>
+        </View>
       </View>
 
       {mode === 'day' && <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} />}
@@ -82,8 +83,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
-  menuButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
-  menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconButton: { paddingHorizontal: 6, paddingVertical: 4 },
+  iconText: { fontSize: 20 },
   viewToggleFab: {
     position: 'absolute',
     right: spacing.lg,

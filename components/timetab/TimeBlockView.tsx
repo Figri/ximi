@@ -22,68 +22,6 @@ function minutesSinceMidnight(date: Date, dayStart: Date): number {
   return Math.max(0, Math.min(24 * 60, (date.getTime() - dayStart.getTime()) / 60000));
 }
 
-interface PositionedLog extends TimeLog {
-  startMin: number;
-  endMin: number;
-  colIndex: number;
-  colCount: number;
-}
-
-/**
- * 给每条记录分配左右分栏的列号：按开始时间扫描，只要跟当前簇里任一记录时间
- * 重叠就并入同一簇，簇内用贪心列分配（跟已有列里最早结束的那列拼得上就复用，
- * 拼不上就开新列），簇内所有记录共用这个簇算出来的总列数均分宽度。
- */
-function layoutLogs(logs: TimeLog[], dayStart: Date): PositionedLog[] {
-  const items = logs
-    .map((log) => ({
-      ...log,
-      startMin: minutesSinceMidnight(new Date(log.start_time), dayStart),
-      endMin: minutesSinceMidnight(new Date(log.end_time), dayStart),
-    }))
-    .sort((a, b) => a.startMin - b.startMin);
-
-  const result: PositionedLog[] = [];
-  let cluster: (typeof items)[number][] = [];
-  let clusterEnd = -Infinity;
-
-  function flushCluster() {
-    if (cluster.length === 0) return;
-    const columnsEnd: number[] = [];
-    const withCol: { item: (typeof items)[number]; col: number }[] = [];
-    for (const item of cluster) {
-      let col = columnsEnd.findIndex((end) => end <= item.startMin);
-      if (col === -1) {
-        col = columnsEnd.length;
-        columnsEnd.push(item.endMin);
-      } else {
-        columnsEnd[col] = item.endMin;
-      }
-      withCol.push({ item, col });
-    }
-    const colCount = columnsEnd.length;
-    for (const { item, col } of withCol) {
-      result.push({ ...item, colIndex: col, colCount });
-    }
-    cluster = [];
-    clusterEnd = -Infinity;
-  }
-
-  for (const item of items) {
-    if (cluster.length === 0 || item.startMin < clusterEnd) {
-      cluster.push(item);
-      clusterEnd = Math.max(clusterEnd, item.endMin);
-    } else {
-      flushCluster();
-      cluster.push(item);
-      clusterEnd = item.endMin;
-    }
-  }
-  flushCluster();
-
-  return result;
-}
-
 interface TimeBlockViewProps {
   date: Date;
   refreshKey: number;
@@ -167,14 +105,59 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return s;
   }, [anchor, current]);
 
-  // 底层格子颜色：选区灰 > 空蓝，记录的颜色由上层色块覆盖层负责，这里不再管
+  // 每个格子的分类颜色
+  const cellColorByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const log of logs) {
+      const cat = log.category_id ? categoryById[log.category_id] : null;
+      const color = cat?.color ?? colors.textMuted;
+      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
+      const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
+      const loIdx = Math.floor(startMin / CELL_MINUTES);
+      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
+      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
+        if (i >= 0) map.set(i, color);
+      }
+    }
+    return map;
+  }, [logs, categories]);
+
+  // 每个格子属于哪个 category_id（用于判断相邻格子是否同一记录来决定是否画白线）
+  const cellCatIdByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const log of logs) {
+      if (!log.category_id) continue;
+      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
+      const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
+      const loIdx = Math.floor(startMin / CELL_MINUTES);
+      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
+      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
+        if (i >= 0) map.set(i, log.category_id);
+      }
+    }
+    return map;
+  }, [logs]);
+
+  // 每条记录起始格的文字标注
+  const cellTextByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const log of logs) {
+      const cat = log.category_id ? categoryById[log.category_id] : null;
+      if (!cat) continue;
+      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
+      const idx = Math.floor(startMin / CELL_MINUTES);
+      if (idx >= 0 && idx < 24 * CELLS_PER_ROW) {
+        map.set(idx, cat.name);
+      }
+    }
+    return map;
+  }, [logs, categories]);
+
+  // 格子颜色：选区灰 > 已填记录色 > 浅蓝空底，三选一
   function cellColor(idx: number): string {
     if (selected.has(idx)) return '#9AA3B2';
-    return '#DCEBF7';
+    return cellColorByIndex.get(idx) ?? '#DCEBF7';
   }
-
-  // 按记录重叠关系分好列的色块列表——同一簇内左右分栏，互不重叠的各占满宽
-  const positionedLogs = useMemo(() => layoutLogs(logs, dayStart), [logs, dayStart]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -216,8 +199,6 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />;
   }
 
-  const minBlockHeight = ROW_H / CELLS_PER_ROW;
-
   return (
     <View style={styles.container}>
       <View style={styles.axisArea} onLayout={handleAreaLayout}>
@@ -237,45 +218,49 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {/* 底层：网格，格子颜色只表示选区灰/空蓝，负责纹理和承接划选手势 */}
               {HOURS.map((h) => (
                 <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
                   {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
                     const idx = h * CELLS_PER_ROW + col;
-                    return <View key={col} style={[styles.gridCell, { backgroundColor: cellColor(idx) }]} />;
+                    const text = cellTextByIndex.get(idx);
+                    const myCatId = cellCatIdByIndex.get(idx);
+
+                    // 判断四个方向的相邻格子是否同一记录，同记录不画白线，让同一条记录的格子连成一片
+                    const leftIdx = col > 0 ? idx - 1 : -1;
+                    const topIdx = h > 0 ? idx - CELLS_PER_ROW : -1;
+                    const rightIdx = col < CELLS_PER_ROW - 1 ? idx + 1 : -1;
+                    const bottomIdx = h < 23 ? idx + CELLS_PER_ROW : -1;
+
+                    const sameLeft = leftIdx >= 0 && !!myCatId && cellCatIdByIndex.get(leftIdx) === myCatId;
+                    const sameTop = topIdx >= 0 && !!myCatId && cellCatIdByIndex.get(topIdx) === myCatId;
+                    const sameRight = rightIdx >= 0 && !!myCatId && cellCatIdByIndex.get(rightIdx) === myCatId;
+                    const sameBottom = bottomIdx >= 0 && !!myCatId && cellCatIdByIndex.get(bottomIdx) === myCatId;
+
+                    return (
+                      <View
+                        key={col}
+                        style={[
+                          styles.gridCell,
+                          {
+                            backgroundColor: cellColor(idx),
+                            borderLeftWidth: sameLeft ? 0 : 0.5,
+                            borderTopWidth: sameTop ? 0 : 0.5,
+                            borderRightWidth: sameRight ? 0 : 0.5,
+                            borderBottomWidth: sameBottom ? 0 : 0.5,
+                            borderColor: '#fff',
+                          },
+                        ]}
+                      >
+                        {text ? (
+                          <Text style={styles.cellText} numberOfLines={1}>
+                            {text}
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
                   })}
                 </View>
               ))}
-
-              {/* 上层：每条记录一个绝对定位的合并大色块，按分钟数直接算像素位置，
-                  跟底层格子互不影响对齐；同一时段有多条记录时左右分栏 */}
-              {positionedLogs.map((log) => {
-                const cat = log.category_id ? categoryById[log.category_id] : null;
-                const top = (log.startMin / 60) * ROW_H;
-                const height = Math.max(minBlockHeight, ((log.endMin - log.startMin) / 60) * ROW_H);
-                const width = 100 / log.colCount;
-                const left = log.colIndex * width;
-                return (
-                  <View
-                    key={log.id}
-                    style={[
-                      styles.logBlock,
-                      {
-                        top,
-                        height,
-                        left: `${left}%`,
-                        width: `${width}%`,
-                        backgroundColor: cat?.color ?? colors.textMuted,
-                      },
-                    ]}
-                    pointerEvents="none"
-                  >
-                    <Text style={styles.logBlockText} numberOfLines={1}>
-                      {cat?.name}
-                    </Text>
-                  </View>
-                );
-              })}
             </View>
           </>
         )}
@@ -303,17 +288,16 @@ const styles = StyleSheet.create({
   hourLabel: { fontSize: 13, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
   gridRow: { flexDirection: 'row' },
-  gridCell: { flex: 1, borderWidth: 0.5, borderColor: '#fff' },
-  logBlock: {
+  gridCell: { flex: 1, position: 'relative', overflow: 'visible' },
+  cellText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '600',
+    includeFontPadding: false,
     position: 'absolute',
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#fff',
-    paddingLeft: 6,
-    paddingTop: 2,
-    overflow: 'hidden',
+    left: 2,
+    top: 1,
   },
-  logBlockText: { color: '#fff', fontSize: 11, fontWeight: '600', includeFontPadding: false },
   palette: { width: 72, marginLeft: spacing.sm },
   paletteContent: { paddingBottom: spacing.sm, gap: 2 },
   paletteChip: {

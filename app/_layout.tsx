@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Updates from 'expo-updates';
 import { colors } from '../constants/theme';
 import { useDecayNotifications } from '../lib/useDecayNotifications';
 import { flushSync } from '../lib/timelogSync';
@@ -17,6 +18,22 @@ export default function RootLayout() {
       if (state === 'active') flushSync();
     });
     return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    async function silentUpdateCheck() {
+      if (__DEV__) return;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!result.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        Alert.alert('有新版本', '已下载完成，重启即可使用', [
+          { text: '稍后', style: 'cancel' },
+          { text: '立即重启', onPress: () => Updates.reloadAsync() },
+        ]);
+      } catch {}
+    }
+    silentUpdateCheck();
   }, []);
 
   return (
