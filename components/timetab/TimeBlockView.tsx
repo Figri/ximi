@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors, fontSize, spacing } from '../../constants/theme';
+import { colors, spacing } from '../../constants/theme';
 import { applySelectionFill, fetchLogsForDate } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import type { TimeCategory, TimeLog } from '../../types';
@@ -20,6 +20,29 @@ const CELL_MINUTES = 5;
 
 function minutesSinceMidnight(date: Date, dayStart: Date): number {
   return Math.max(0, Math.min(24 * 60, (date.getTime() - dayStart.getTime()) / 60000));
+}
+
+// react-native-web 的 Text 不认 ellipsizeMode="clip"——实测 numberOfLines={1}
+// 时无论 ellipsizeMode 传什么，react-native-web 生成的 computed CSS 都是
+// text-overflow: ellipsis（用 getComputedStyle 核对过），照样会冒出"…"。
+// 只能额外塞一个 web 专属的原始 CSS 覆盖它；原生端会忽略这两个未知 style key，无副作用
+const noEllipsisWebStyle = { textOverflow: 'clip', whiteSpace: 'nowrap' } as any;
+
+interface LogBlockRect {
+  key: string;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  color: string;
+  text?: string;
+}
+
+interface SelectionRect {
+  key: number;
+  top: number;
+  left: number;
+  opacity: number;
 }
 
 interface TimeBlockViewProps {
@@ -33,6 +56,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const [logs, setLogs] = useState<TimeLog[]>([]);
   const [firstLoad, setFirstLoad] = useState(true);
   const [areaHeight, setAreaHeight] = useState(0);
+  const [trackWidth, setTrackWidth] = useState(0);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [current, setCurrent] = useState<number | null>(null);
 
@@ -55,8 +79,15 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
 
-  // 时间轴容器自己实际分到的高度(onLayout量) ÷ 24 = 每小时行高，取整避免24行堆叠时的浮点累积误差
-  const ROW_H = areaHeight > 0 ? Math.floor(areaHeight / 24) : 0;
+  // 格子必须是正方形：默认用宽度算(trackWidth/12)，如果24行这个高度塞不进
+  // areaHeight，才改用高度算(Math.floor(areaHeight/24))，此时网格不占满
+  // 宽度、右侧留空——但依然是正方形，不会被拉成长方形
+  const rawCellFromWidth = trackWidth > 0 ? trackWidth / CELLS_PER_ROW : 0;
+  let cellSize = rawCellFromWidth;
+  if (areaHeight > 0 && rawCellFromWidth > 0 && areaHeight < 24 * rawCellFromWidth) {
+    cellSize = Math.floor(areaHeight / 24);
+  }
+  const ROW_H = cellSize;
 
   function measureTrack() {
     trackRef.current?.measureInWindow((x, y, w, h) => {
@@ -105,59 +136,70 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return s;
   }, [anchor, current]);
 
-  // 每个格子的分类颜色
-  const cellColorByIndex = useMemo(() => {
-    const map = new Map<number, string>();
+  // 每条记录的时间区间（分钟），只用来判断某一刻是不是被记录覆盖，给选区压暗判断深浅用
+  const logRanges = useMemo(
+    () =>
+      logs.map((log) => ({
+        startMin: minutesSinceMidnight(new Date(log.start_time), dayStart),
+        endMin: minutesSinceMidnight(new Date(log.end_time), dayStart),
+      })),
+    [logs, dayStart]
+  );
+
+  // 每条记录画成一个（或跨行时拆成几个）绝对定位的色块矩形，不再逐格填色
+  const logBlocks = useMemo<LogBlockRect[]>(() => {
+    if (cellSize <= 0) return [];
+    const pxPerMin = cellSize / CELL_MINUTES;
+    const rects: LogBlockRect[] = [];
     for (const log of logs) {
       const cat = log.category_id ? categoryById[log.category_id] : null;
       const color = cat?.color ?? colors.textMuted;
       const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
       const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
-      const loIdx = Math.floor(startMin / CELL_MINUTES);
-      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
-      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
-        if (i >= 0) map.set(i, color);
+      if (endMin <= startMin) continue;
+      let cursor = startMin;
+      let first = true;
+      while (cursor < endMin) {
+        const row = Math.floor(cursor / 60);
+        const rowStartMin = row * 60;
+        const rowEndMin = rowStartMin + 60;
+        const segEnd = Math.min(endMin, rowEndMin);
+        const left = (cursor - rowStartMin) * pxPerMin;
+        const width = (segEnd - cursor) * pxPerMin;
+        rects.push({
+          key: `${log.id}-${row}`,
+          top: row * ROW_H,
+          left,
+          width,
+          height: ROW_H,
+          color,
+          text: first ? (cat?.name ?? undefined) : undefined,
+        });
+        cursor = segEnd;
+        first = false;
       }
     }
-    return map;
-  }, [logs, categories]);
+    return rects;
+  }, [logs, categories, cellSize, ROW_H, dayStart]);
 
-  // 每个格子属于哪个 category_id（用于判断相邻格子是否同一记录来决定是否画白线）
-  const cellCatIdByIndex = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const log of logs) {
-      if (!log.category_id) continue;
-      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
-      const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
-      const loIdx = Math.floor(startMin / CELL_MINUTES);
-      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
-      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
-        if (i >= 0) map.set(i, log.category_id);
-      }
+  // 选中的格子：在原有内容上叠一层半透明黑——有色块盖着的深一点，空格子浅一点
+  const selectionRects = useMemo<SelectionRect[]>(() => {
+    if (cellSize <= 0 || selected.size === 0) return [];
+    const rects: SelectionRect[] = [];
+    for (const idx of selected) {
+      const row = Math.floor(idx / CELLS_PER_ROW);
+      const col = idx % CELLS_PER_ROW;
+      const cellStartMin = idx * CELL_MINUTES;
+      const filled = logRanges.some((r) => cellStartMin >= r.startMin && cellStartMin < r.endMin);
+      rects.push({
+        key: idx,
+        top: row * ROW_H,
+        left: col * cellSize,
+        opacity: filled ? 0.3 : 0.2,
+      });
     }
-    return map;
-  }, [logs]);
-
-  // 每条记录起始格的文字标注
-  const cellTextByIndex = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const log of logs) {
-      const cat = log.category_id ? categoryById[log.category_id] : null;
-      if (!cat) continue;
-      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
-      const idx = Math.floor(startMin / CELL_MINUTES);
-      if (idx >= 0 && idx < 24 * CELLS_PER_ROW) {
-        map.set(idx, cat.name);
-      }
-    }
-    return map;
-  }, [logs, categories]);
-
-  // 格子颜色：选区灰 > 已填记录色 > 浅蓝空底，三选一
-  function cellColor(idx: number): string {
-    if (selected.has(idx)) return '#9AA3B2';
-    return cellColorByIndex.get(idx) ?? '#DCEBF7';
-  }
+    return rects;
+  }, [selected, logRanges, cellSize, ROW_H]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -191,8 +233,9 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     setAreaHeight(e.nativeEvent.layout.height);
   }
 
-  function handleTrackLayout() {
+  function handleTrackLayout(e: LayoutChangeEvent) {
     measureTrack();
+    setTrackWidth(e.nativeEvent.layout.width);
   }
 
   if (firstLoad) {
@@ -218,48 +261,51 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
+              {/* 底层：正方形空格子，只做纹理背景和承接划选手势 */}
               {HOURS.map((h) => (
                 <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
-                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
-                    const idx = h * CELLS_PER_ROW + col;
-                    const text = cellTextByIndex.get(idx);
-                    const myCatId = cellCatIdByIndex.get(idx);
-
-                    // 判断四个方向的相邻格子是否同一记录，同记录不画白线，让同一条记录的格子连成一片
-                    const leftIdx = col > 0 ? idx - 1 : -1;
-                    const topIdx = h > 0 ? idx - CELLS_PER_ROW : -1;
-                    const rightIdx = col < CELLS_PER_ROW - 1 ? idx + 1 : -1;
-                    const bottomIdx = h < 23 ? idx + CELLS_PER_ROW : -1;
-
-                    const sameLeft = leftIdx >= 0 && !!myCatId && cellCatIdByIndex.get(leftIdx) === myCatId;
-                    const sameTop = topIdx >= 0 && !!myCatId && cellCatIdByIndex.get(topIdx) === myCatId;
-                    const sameRight = rightIdx >= 0 && !!myCatId && cellCatIdByIndex.get(rightIdx) === myCatId;
-                    const sameBottom = bottomIdx >= 0 && !!myCatId && cellCatIdByIndex.get(bottomIdx) === myCatId;
-
-                    return (
-                      <View
-                        key={col}
-                        style={[
-                          styles.gridCell,
-                          {
-                            backgroundColor: cellColor(idx),
-                            borderLeftWidth: sameLeft ? 0 : 0.5,
-                            borderTopWidth: sameTop ? 0 : 0.5,
-                            borderRightWidth: sameRight ? 0 : 0.5,
-                            borderBottomWidth: sameBottom ? 0 : 0.5,
-                            borderColor: '#fff',
-                          },
-                        ]}
-                      >
-                        {text ? (
-                          <Text style={styles.cellText} numberOfLines={1}>
-                            {text}
-                          </Text>
-                        ) : null}
-                      </View>
-                    );
-                  })}
+                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => (
+                    <View key={col} style={[styles.gridCell, { width: cellSize, height: ROW_H }]} />
+                  ))}
                 </View>
+              ))}
+
+              {/* 中层：每条记录一个（跨行拆成几个）绝对定位色块，不再逐格拼色 */}
+              {logBlocks.map((rect) => (
+                <View
+                  key={rect.key}
+                  style={[
+                    styles.logBlock,
+                    { top: rect.top, left: rect.left, width: rect.width, height: rect.height, backgroundColor: rect.color },
+                  ]}
+                  pointerEvents="none"
+                >
+                  {rect.text ? (
+                    <Text
+                      style={[styles.logBlockText, noEllipsisWebStyle]}
+                      numberOfLines={1}
+                      ellipsizeMode="clip"
+                    >
+                      {rect.text}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+
+              {/* 顶层：选中格子的压暗遮罩 */}
+              {selectionRects.map((rect) => (
+                <View
+                  key={rect.key}
+                  style={{
+                    position: 'absolute',
+                    top: rect.top,
+                    left: rect.left,
+                    width: cellSize,
+                    height: ROW_H,
+                    backgroundColor: `rgba(0,0,0,${rect.opacity})`,
+                  }}
+                  pointerEvents="none"
+                />
               ))}
             </View>
           </>
@@ -284,21 +330,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', paddingHorizontal: spacing.lg },
   axisArea: { flex: 1, flexDirection: 'row' },
-  hourCol: { width: 28 },
-  hourLabel: { fontSize: 13, color: colors.textMuted },
+  hourCol: { width: 20 },
+  hourLabel: { fontSize: 11, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
   gridRow: { flexDirection: 'row' },
-  gridCell: { flex: 1, position: 'relative', overflow: 'visible' },
-  cellText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '600',
-    includeFontPadding: false,
+  gridCell: { borderWidth: 0.5, borderColor: '#fff', borderRadius: 2, backgroundColor: '#DCEBF7' },
+  logBlock: {
     position: 'absolute',
-    left: 2,
-    top: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+    paddingLeft: 4,
+    paddingTop: 2,
   },
-  palette: { width: 72, marginLeft: spacing.sm },
+  logBlockText: { color: '#fff', fontSize: 10, fontWeight: '600', includeFontPadding: false },
+  palette: { width: 60, marginLeft: spacing.sm },
   paletteContent: { paddingBottom: spacing.sm, gap: 2 },
   paletteChip: {
     borderRadius: 8,
@@ -306,8 +351,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: 30,
     marginBottom: 2,
   },
-  paletteChipText: { fontSize: fontSize.tiny, color: '#fff', fontWeight: '700', includeFontPadding: false },
+  paletteChipText: { fontSize: 9, color: '#fff', fontWeight: '700', includeFontPadding: false },
 });
