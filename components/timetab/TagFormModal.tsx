@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addTag, archiveTag, updateTag } from '../../lib/timelog';
+import { genId } from '../../lib/timelogLocal';
+import { useTimeLogStore } from '../../lib/timelogStore';
 import { ColorSwatchPicker } from './ColorSwatchPicker';
 import type { TimeTag } from '../../types';
 
@@ -14,6 +26,7 @@ interface TagFormModalProps {
 
 export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalProps) {
   const isEdit = !!tag;
+  const { tags, upsertTag, removeTag } = useTimeLogStore();
   const [name, setName] = useState('');
   const [color, setColor] = useState('#8E73B3');
   const [saving, setSaving] = useState(false);
@@ -32,9 +45,16 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
     setSaving(true);
     try {
       if (isEdit && tag) {
-        await updateTag(tag.id, { name: name.trim(), color });
+        await upsertTag({ ...tag, name: name.trim(), color });
       } else {
-        await addTag({ name: name.trim(), color });
+        await upsertTag({
+          id: genId(),
+          name: name.trim(),
+          color,
+          sort_order: tags.length + 1,
+          archived: false,
+          created_at: new Date().toISOString(),
+        });
       }
       onSaved();
     } catch (err) {
@@ -44,15 +64,15 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
     }
   }
 
-  function handleArchive() {
+  function handleDelete() {
     if (!tag) return;
-    Alert.alert('归档这个标签？', tag.name, [
+    Alert.alert('删除这个标签？', tag.name, [
       { text: '取消', style: 'cancel' },
       {
-        text: '归档',
+        text: '删除',
         style: 'destructive',
         onPress: async () => {
-          await archiveTag(tag.id);
+          await removeTag(tag.id);
           onSaved();
         },
       },
@@ -61,37 +81,40 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <Text style={styles.title}>{isEdit ? '编辑情绪标签' : '新建情绪标签'}</Text>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.title}>{isEdit ? '编辑情绪标签' : '新建情绪标签'}</Text>
 
-          <Text style={styles.label}>名称</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：崩溃" placeholderTextColor={colors.textMuted} />
+            <Text style={styles.label}>名称</Text>
+            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：崩溃" placeholderTextColor={colors.textMuted} />
 
-          <Text style={styles.label}>颜色</Text>
-          <ColorSwatchPicker value={color} onChange={setColor} />
+            <Text style={styles.label}>颜色</Text>
+            <ColorSwatchPicker value={color} onChange={setColor} />
 
-          <View style={styles.actions}>
-            {isEdit && (
-              <Pressable style={styles.archiveButton} onPress={handleArchive}>
-                <Text style={styles.archiveButtonText}>归档</Text>
+            <View style={styles.actions}>
+              {isEdit && (
+                <Pressable style={styles.archiveButton} onPress={handleDelete}>
+                  <Text style={styles.archiveButtonText}>删除</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.cancelButton} onPress={onClose}>
+                <Text style={styles.cancelText}>取消</Text>
               </Pressable>
-            )}
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>取消</Text>
-            </Pressable>
-            <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
-            </Pressable>
-          </View>
-        </View>
-      </View>
+              <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'center', padding: spacing.xl },
+  avoider: { width: '100%' },
   sheet: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg },
   title: { fontSize: fontSize.cardName, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xs },

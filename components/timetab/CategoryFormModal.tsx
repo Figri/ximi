@@ -1,75 +1,100 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addCategory, archiveCategory, updateCategory } from '../../lib/timelog';
+import { genId } from '../../lib/timelogLocal';
+import { useTimeLogStore } from '../../lib/timelogStore';
 import { ColorSwatchPicker } from './ColorSwatchPicker';
 import type { TimeCategory } from '../../types';
 
 interface CategoryFormModalProps {
   visible: boolean;
   category?: TimeCategory | null; // 有值=编辑
-  defaultParentId?: string | null; // 新建次级分类时预填父级
-  topLevelCategories: TimeCategory[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function CategoryFormModal({
-  visible,
-  category,
-  defaultParentId,
-  topLevelCategories,
-  onClose,
-  onSaved,
-}: CategoryFormModalProps) {
+const COLOR_POOL = [
+  '#8B7BA8', '#8B5E2B', '#A78BCE', '#5CB88A', '#F5B841', '#E86F52',
+  '#2E6DB4', '#3E3A7A', '#1FA69A', '#E8D96F', '#8B5A2B', '#7A857D', '#9B3B3B',
+];
+
+function autoColor(name: string): string {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COLOR_POOL[h % COLOR_POOL.length];
+}
+
+export function CategoryFormModal({ visible, category, onClose, onSaved }: CategoryFormModalProps) {
   const isEdit = !!category;
-  const [isSub, setIsSub] = useState(false);
-  const [parentId, setParentId] = useState<string | null>(null);
+  const { categories, upsertCategory, removeCategory } = useTimeLogStore();
   const [name, setName] = useState('');
   const [defaultDescription, setDefaultDescription] = useState('');
   const [color, setColor] = useState('#A78BCE');
+  const [colorTouched, setColorTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     if (category) {
-      setIsSub(!!category.parent_id);
-      setParentId(category.parent_id);
       setName(category.name);
       setDefaultDescription(category.default_description ?? '');
       setColor(category.color);
+      setColorTouched(true);
     } else {
-      setIsSub(!!defaultParentId);
-      setParentId(defaultParentId ?? null);
       setName('');
       setDefaultDescription('');
-      setColor('#A78BCE');
+      setColor(autoColor(''));
+      setColorTouched(false);
     }
-  }, [visible, category, defaultParentId]);
+  }, [visible, category]);
+
+  // 新建时没手动选过色，名字变了颜色跟着按名字自动换；一旦手动碰过颜色就不再跟随
+  function handleNameChange(next: string) {
+    setName(next);
+    if (!isEdit && !colorTouched) setColor(autoColor(next));
+  }
+
+  function handleColorChange(next: string) {
+    setColor(next);
+    setColorTouched(true);
+  }
 
   async function handleSave() {
     if (!name.trim()) {
       Alert.alert('叫什么名字呢？', '分类名不能为空');
       return;
     }
-    if (isSub && !parentId) {
-      Alert.alert('选个一级分类', '次级分类要挂在某个一级分类下面');
-      return;
-    }
     setSaving(true);
     try {
       if (isEdit && category) {
-        await updateCategory(category.id, {
+        await upsertCategory({
+          ...category,
           name: name.trim(),
           color,
           default_description: defaultDescription.trim() || null,
         });
       } else {
-        await addCategory({
+        await upsertCategory({
+          id: genId(),
           name: name.trim(),
           color,
-          parent_id: isSub ? parentId : null,
           default_description: defaultDescription.trim() || null,
+          parent_id: null,
+          sort_order: categories.length + 1,
+          archived: false,
+          created_at: new Date().toISOString(),
         });
       }
       onSaved();
@@ -80,15 +105,15 @@ export function CategoryFormModal({
     }
   }
 
-  function handleArchive() {
+  function handleDelete() {
     if (!category) return;
-    Alert.alert('归档这个分类？', `${category.name}（归档后不会出现在选择列表里，历史记录不受影响）`, [
+    Alert.alert('删除这个分类？', `${category.name}（历史记录里已经记过的不受影响）`, [
       { text: '取消', style: 'cancel' },
       {
-        text: '归档',
+        text: '删除',
         style: 'destructive',
         onPress: async () => {
-          await archiveCategory(category.id);
+          await removeCategory(category.id);
           onSaved();
         },
       },
@@ -97,74 +122,57 @@ export function CategoryFormModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent}>
-          <Text style={styles.title}>{isEdit ? '编辑分类' : '新建分类'}</Text>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+              <Text style={styles.title}>{isEdit ? '编辑分类' : '新建分类'}</Text>
 
-          {!isEdit && (
-            <View style={styles.chipRow}>
-              <Pressable onPress={() => setIsSub(false)} style={[styles.chip, !isSub && styles.chipActive]}>
-                <Text style={[styles.chipText, !isSub && styles.chipTextActive]}>一级分类</Text>
-              </Pressable>
-              <Pressable onPress={() => setIsSub(true)} style={[styles.chip, isSub && styles.chipActive]}>
-                <Text style={[styles.chipText, isSub && styles.chipTextActive]}>次级分类</Text>
-              </Pressable>
-            </View>
-          )}
+              <Text style={styles.label}>分类名称</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={handleNameChange}
+                placeholder="请输入标题"
+                placeholderTextColor={colors.textMuted}
+              />
 
-          {isSub && !isEdit && (
-            <>
-              <Text style={styles.label}>挂在哪个一级分类下</Text>
-              <View style={styles.chipRow}>
-                {topLevelCategories.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => setParentId(c.id)}
-                    style={[styles.chip, { borderColor: c.color }, parentId === c.id && { backgroundColor: c.color }]}
-                  >
-                    <Text style={[styles.chipText, parentId === c.id && styles.chipTextActive]}>{c.name}</Text>
+              <Text style={styles.label}>默认描述</Text>
+              <TextInput
+                style={styles.input}
+                value={defaultDescription}
+                onChangeText={setDefaultDescription}
+                placeholder="建这类记录时自动预填的正文，不填就空着"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.label}>颜色</Text>
+              <ColorSwatchPicker value={color} onChange={handleColorChange} />
+
+              <View style={styles.actions}>
+                {isEdit && (
+                  <Pressable style={styles.archiveButton} onPress={handleDelete}>
+                    <Text style={styles.archiveButtonText}>删除</Text>
                   </Pressable>
-                ))}
+                )}
+                <Pressable style={styles.cancelButton} onPress={onClose}>
+                  <Text style={styles.cancelText}>取消</Text>
+                </Pressable>
+                <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
+                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
+                </Pressable>
               </View>
-            </>
-          )}
-
-          <Text style={styles.label}>分类名称</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="请输入标题" placeholderTextColor={colors.textMuted} />
-
-          <Text style={styles.label}>默认描述</Text>
-          <TextInput
-            style={styles.input}
-            value={defaultDescription}
-            onChangeText={setDefaultDescription}
-            placeholder="建这类记录时自动预填的正文，不填就空着"
-            placeholderTextColor={colors.textMuted}
-          />
-
-          <Text style={styles.label}>颜色</Text>
-          <ColorSwatchPicker value={color} onChange={setColor} />
-
-          <View style={styles.actions}>
-            {isEdit && (
-              <Pressable style={styles.archiveButton} onPress={handleArchive}>
-                <Text style={styles.archiveButtonText}>归档</Text>
-              </Pressable>
-            )}
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>取消</Text>
-            </Pressable>
-            <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </View>
+            </ScrollView>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'flex-end' },
+  avoider: { width: '100%' },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.card,
@@ -174,11 +182,6 @@ const styles = StyleSheet.create({
   sheetContent: { padding: spacing.lg, paddingBottom: spacing.xl },
   title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.button, borderWidth: 1.5, borderColor: colors.card, backgroundColor: colors.background },
-  chipActive: { backgroundColor: colors.purple },
-  chipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  chipTextActive: { color: '#fff', fontWeight: '700' },
   input: {
     backgroundColor: colors.background,
     borderRadius: radius.widget,

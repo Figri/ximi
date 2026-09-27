@@ -105,29 +105,15 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return s;
   }, [anchor, current]);
 
-  // 把当天 logs 摊平成 Map<cellIndex, color>，格子只有一套、只查一次颜色，不再叠两层定位
-  const cellColorByIndex = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const log of logs) {
-      const cat = log.category_id ? categoryById[log.category_id] : null;
-      const color = cat?.color ?? colors.textMuted;
-      const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
-      const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
-      const loIdx = Math.floor(startMin / CELL_MINUTES);
-      const hiIdx = Math.ceil(endMin / CELL_MINUTES) - 1;
-      for (let i = loIdx; i <= hiIdx && i < 24 * CELLS_PER_ROW; i++) {
-        if (i >= 0) map.set(i, color);
-      }
-    }
-    return map;
-  }, [logs, categories]);
-
-  function cellColor(idx: number): string {
-    if (selected.has(idx)) return '#9AA3B2';
-    const filled = cellColorByIndex.get(idx);
-    if (filled) return filled;
-    return '#DCEBF7';
-  }
+  // 选区范围转成绝对像素 top/height——用分钟数直接算，不靠格子行累加，不会有对不齐的问题
+  const selectionBox = useMemo(() => {
+    if (anchor == null || current == null || ROW_H <= 0) return null;
+    const lo = Math.min(anchor, current);
+    const hi = Math.max(anchor, current);
+    const top = ((lo * CELL_MINUTES) / 60) * ROW_H;
+    const height = (((hi - lo + 1) * CELL_MINUTES) / 60) * ROW_H;
+    return { top, height };
+  }, [anchor, current, ROW_H]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -188,14 +174,44 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
+              {/* 底层：浅蓝空格子，只负责网格纹理和承接划选手势，不再逐格上色 */}
               {HOURS.map((h) => (
                 <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
-                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => {
-                    const idx = h * CELLS_PER_ROW + col;
-                    return <View key={col} style={[styles.gridCell, { backgroundColor: cellColor(idx) }]} />;
-                  })}
+                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => (
+                    <View key={col} style={styles.gridCellEmpty} />
+                  ))}
                 </View>
               ))}
+
+              {/* 上层：每条记录一个绝对定位的大色块，按分钟数直接算像素位置，跟底层格子互不影响对齐 */}
+              {logs.map((log) => {
+                const cat = log.category_id ? categoryById[log.category_id] : null;
+                const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
+                const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
+                const top = (startMin / 60) * ROW_H;
+                const height = Math.max(2, ((endMin - startMin) / 60) * ROW_H);
+                return (
+                  <View
+                    key={log.id}
+                    style={[styles.logBlock, { top, height, backgroundColor: cat?.color ?? colors.textMuted }]}
+                    pointerEvents="none"
+                  >
+                    {height >= 16 && (
+                      <Text style={styles.logBlockText} numberOfLines={1}>
+                        {cat?.name}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* 划选中的灰色大块，同样按分钟数算位置 */}
+              {selectionBox && (
+                <View
+                  style={[styles.logBlock, { top: selectionBox.top, height: selectionBox.height, backgroundColor: '#9AA3B2' }]}
+                  pointerEvents="none"
+                />
+              )}
             </View>
           </>
         )}
@@ -203,15 +219,13 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 
       <View style={styles.palette}>
         <ScrollView contentContainerStyle={styles.paletteContent}>
-          {categories
-            .filter((c) => !c.parent_id)
-            .map((c) => (
-              <Pressable key={c.id} style={[styles.paletteChip, { backgroundColor: c.color }]} onPress={() => fillWith(c)}>
-                <Text style={styles.paletteChipText} numberOfLines={1}>
-                  {c.name}
-                </Text>
-              </Pressable>
-            ))}
+          {categories.map((c) => (
+            <Pressable key={c.id} style={[styles.paletteChip, { backgroundColor: c.color }]} onPress={() => fillWith(c)}>
+              <Text style={styles.paletteChipText} numberOfLines={1}>
+                {c.name}
+              </Text>
+            </Pressable>
+          ))}
         </ScrollView>
       </View>
     </View>
@@ -225,7 +239,19 @@ const styles = StyleSheet.create({
   hourLabel: { fontSize: 13, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
   gridRow: { flexDirection: 'row' },
-  gridCell: { flex: 1, borderWidth: 0.5, borderColor: '#fff' },
+  gridCellEmpty: { flex: 1, backgroundColor: '#DCEBF7', borderWidth: 0.5, borderColor: '#fff' },
+  logBlock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#fff',
+    paddingHorizontal: 6,
+    paddingTop: 2,
+    overflow: 'hidden',
+  },
+  logBlockText: { color: '#fff', fontSize: 12, fontWeight: '700', includeFontPadding: false },
   palette: { width: 72, marginLeft: spacing.sm },
   paletteContent: { paddingBottom: spacing.sm, gap: spacing.xs },
   paletteChip: {

@@ -1,48 +1,57 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
 import { CategoryFormModal } from '../components/timetab/CategoryFormModal';
 import { useTimeLogStore } from '../lib/timelogStore';
 import type { TimeCategory } from '../types';
 
 export default function TimelogCategoriesScreen() {
-  const { categories, loading, fetchAll } = useTimeLogStore();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { categories, loading, fetchAll, upsertCategory } = useTimeLogStore();
   const [editing, setEditing] = useState<TimeCategory | null>(null);
-  const [creatingUnderParent, setCreatingUnderParent] = useState<string | null | undefined>(undefined);
+  const [creating, setCreating] = useState(false);
+  const [order, setOrder] = useState<TimeCategory[]>([]);
 
   useEffect(() => {
     fetchAll();
   }, []);
 
-  const topLevel = categories.filter((c) => !c.parent_id);
-  const childrenByParent: Record<string, TimeCategory[]> = {};
-  for (const c of categories) {
-    if (c.parent_id) {
-      childrenByParent[c.parent_id] = childrenByParent[c.parent_id] ?? [];
-      childrenByParent[c.parent_id].push(c);
-    }
-  }
-
-  function handleRowLongPress(cat: TimeCategory) {
-    const isTopLevel = !cat.parent_id;
-    Alert.alert(
-      cat.name,
-      undefined,
-      [
-        { text: '取消', style: 'cancel' as const },
-        { text: '编辑', onPress: () => setEditing(cat) },
-        ...(isTopLevel ? [{ text: '新建次级分类', onPress: () => setCreatingUnderParent(cat.id) }] : []),
-      ]
-    );
-  }
+  useEffect(() => {
+    setOrder([...categories].sort((a, b) => a.sort_order - b.sort_order));
+  }, [categories]);
 
   function handleModalSaved() {
     setEditing(null);
-    setCreatingUnderParent(undefined);
-    fetchAll();
+    setCreating(false);
+  }
+
+  // store.upsertCategory 会同步更新内存+落库，拖完直接按新顺序逐个写 sort_order 即可
+  async function handleDragEnd({ data }: { data: TimeCategory[] }) {
+    setOrder(data);
+    // 必须逐个await：并发触发多个upsertCategory会对store里的同一份categories数组
+    // 做并发的读-改-写，后写的set()会把先写的整个覆盖掉，导致排序基本没生效
+    for (let i = 0; i < data.length; i++) {
+      await upsertCategory({ ...data[i], sort_order: i + 1 });
+    }
+  }
+
+  function renderItem({ item, drag, isActive }: RenderItemParams<TimeCategory>) {
+    return (
+      <ScaleDecorator>
+        <Pressable
+          style={[styles.row, isActive && styles.rowActive]}
+          onPress={() => setEditing(item)}
+          onLongPress={drag}
+          delayLongPress={150}
+        >
+          <View style={[styles.dot, { backgroundColor: item.color }]} />
+          <Text style={styles.rowName}>{item.name}</Text>
+          <Text style={styles.dragHandle}>≡</Text>
+        </Pressable>
+      </ScaleDecorator>
+    );
   }
 
   return (
@@ -52,12 +61,12 @@ export default function TimelogCategoriesScreen() {
           <Text style={styles.backText}>‹ 时间</Text>
         </Pressable>
         <Text style={styles.pageTitle}>分类管理</Text>
-        <Pressable style={styles.addButton} onPress={() => setCreatingUnderParent(null)}>
+        <Pressable style={styles.addButton} onPress={() => setCreating(true)}>
           <Text style={styles.addButtonText}>＋</Text>
         </Pressable>
       </View>
       <View style={styles.hintRow}>
-        <Text style={styles.hint}>长按分类可以编辑或加次级分类</Text>
+        <Text style={styles.hint}>长按拖动排序，点击编辑</Text>
         <Pressable onPress={() => router.push('/timelog-tags')}>
           <Text style={styles.crossLink}>💭 情绪标签 ›</Text>
         </Pressable>
@@ -65,57 +74,24 @@ export default function TimelogCategoriesScreen() {
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.purpleDark} />
+      ) : order.length === 0 ? (
+        <Text style={styles.empty}>还没有分类，点右上角＋建一个</Text>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {topLevel.map((cat) => {
-            const children = childrenByParent[cat.id] ?? [];
-            const isCollapsed = collapsed[cat.id];
-            return (
-              <View key={cat.id}>
-                <Pressable
-                  style={styles.row}
-                  onPress={() => setEditing(cat)}
-                  onLongPress={() => handleRowLongPress(cat)}
-                >
-                  {children.length > 0 && (
-                    <Pressable
-                      hitSlop={8}
-                      onPress={() => setCollapsed((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }))}
-                    >
-                      <Text style={styles.collapseIcon}>{isCollapsed ? '▶' : '▼'}</Text>
-                    </Pressable>
-                  )}
-                  <View style={[styles.dot, { backgroundColor: cat.color }]} />
-                  <Text style={styles.rowName}>{cat.name}</Text>
-                  {children.length > 0 && <Text style={styles.childCount}>{children.length}</Text>}
-                </Pressable>
-                {!isCollapsed &&
-                  children.map((child) => (
-                    <Pressable
-                      key={child.id}
-                      style={[styles.row, styles.childRow]}
-                      onPress={() => setEditing(child)}
-                      onLongPress={() => handleRowLongPress(child)}
-                    >
-                      <View style={[styles.dot, { backgroundColor: child.color }]} />
-                      <Text style={styles.rowName}>{child.name}</Text>
-                    </Pressable>
-                  ))}
-              </View>
-            );
-          })}
-          {topLevel.length === 0 && <Text style={styles.empty}>还没有分类，点右上角＋建一个</Text>}
-        </ScrollView>
+        <DraggableFlatList
+          data={order}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onDragEnd={handleDragEnd}
+          contentContainerStyle={styles.content}
+        />
       )}
 
       <CategoryFormModal
-        visible={!!editing || creatingUnderParent !== undefined}
+        visible={!!editing || creating}
         category={editing}
-        defaultParentId={creatingUnderParent ?? null}
-        topLevelCategories={topLevel}
         onClose={() => {
           setEditing(null);
-          setCreatingUnderParent(undefined);
+          setCreating(false);
         }}
         onSaved={handleModalSaved}
       />
@@ -163,10 +139,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     gap: 14,
   },
-  childRow: { marginLeft: spacing.lg, backgroundColor: colors.background },
-  collapseIcon: { fontSize: 12, color: colors.textMuted, width: 14 },
+  rowActive: { opacity: 0.85 },
   dot: { width: 18, height: 18, borderRadius: 9 },
   rowName: { flex: 1, fontSize: 16, fontWeight: '500', color: colors.textPrimary },
-  childCount: { fontSize: fontSize.tiny, color: colors.textMuted },
+  dragHandle: { fontSize: 18, color: colors.textMuted },
   empty: { textAlign: 'center', color: colors.textMuted, fontSize: fontSize.body, marginTop: spacing.xl },
 });
