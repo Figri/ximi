@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from '../constants/theme';
@@ -17,6 +18,23 @@ export default function RootLayout() {
       if (state === 'active') flushSync();
     });
     return () => sub.remove();
+  }, []);
+
+  // 启动时静默检查 OTA 更新，下载好了再问要不要重启
+  useEffect(() => {
+    async function silentUpdateCheck() {
+      if (__DEV__) return;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!result.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        Alert.alert('有新版本', '已下载完成，重启即可使用', [
+          { text: '稍后', style: 'cancel' },
+          { text: '立即重启', onPress: () => Updates.reloadAsync() },
+        ]);
+      } catch {}
+    }
+    silentUpdateCheck();
   }, []);
 
   return (

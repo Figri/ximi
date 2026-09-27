@@ -6,7 +6,6 @@ import {
   Modal,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -273,9 +272,13 @@ export function AddLogModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider}>
+        <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 30 }}
+            >
               <Text style={styles.title}>{isEdit ? '编辑记录' : '记一笔'}</Text>
 
               <Text style={styles.label}>分类</Text>
@@ -363,14 +366,16 @@ export function AddLogModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'flex-end' },
-  avoider: { width: '100%' },
+  // 90% 上限挂在 KAV 上（相对整屏）：挂在 sheet 上时百分比是相对 KAV 算的，而 KAV 高度又由 sheet
+  // 撑出来，结果 sheet 被压成自身内容的 90%，底部按钮被截掉。键盘弹出时 KAV 加 paddingBottom，sheet 跟着收缩、内部滚动
+  avoider: { width: '100%', maxHeight: '90%' },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.card,
     borderTopRightRadius: radius.card,
     padding: spacing.lg,
     paddingBottom: spacing.xl,
-    maxHeight: '85%',
+    flexShrink: 1,
   },
   title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xs },
@@ -429,7 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   tagChipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, marginBottom: 20 },
   deleteButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: 'center' },
   deleteButtonText: { color: colors.redDark, fontSize: fontSize.body },
   cancelButton: {
