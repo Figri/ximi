@@ -10,16 +10,22 @@ const PRESET_COLORS = [
 interface ColorSwatchPickerProps {
   value: string;
   onChange: (color: string) => void;
+  compact?: boolean; // 弹窗不能滚动时用，缩小色块尺寸让一屏放得下
 }
 
-export function ColorSwatchPicker({ value, onChange }: ColorSwatchPickerProps) {
+export function ColorSwatchPicker({ value, onChange, compact }: ColorSwatchPickerProps) {
+  const swatchSize = compact ? 24 : 32;
   return (
     <View>
-      <View style={styles.grid}>
+      <View style={[styles.grid, compact && styles.gridCompact]}>
         {PRESET_COLORS.map((c) => (
           <Pressable
             key={c}
-            style={[styles.swatch, { backgroundColor: c }, value === c && styles.swatchActive]}
+            style={[
+              styles.swatch,
+              { width: swatchSize, height: swatchSize, backgroundColor: c },
+              value === c && styles.swatchActive,
+            ]}
             onPress={() => onChange(c)}
           />
         ))}
@@ -43,6 +49,7 @@ export function ColorSwatchPicker({ value, onChange }: ColorSwatchPickerProps) {
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  gridCompact: { gap: 6 },
   swatch: { width: 32, height: 32, borderRadius: radius.avatar, borderWidth: 2, borderColor: 'transparent' },
   swatchActive: { borderColor: colors.textPrimary },
   customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },

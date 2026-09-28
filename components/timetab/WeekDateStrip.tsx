@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { fetchLogCountsForRange } from '../../lib/timelog';
+
+const SWIPE_THRESHOLD = 50;
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -44,8 +46,39 @@ export function WeekDateStrip({ date, onDateChange, refreshKey }: WeekDateStripP
     fetchLogCountsForRange(days).then(setCounts);
   }, [weekStart.getTime(), refreshKey]);
 
+  // 不去真的抢responder（一直return false），完全不影响Pressable的点击。
+  // 真实测试发现：onMoveShouldSetPanResponder的gesture.dx从触摸起点开始
+  // 正确累计，但一旦某个view claim成responder，onPanResponderMove报的dx
+  // 会从claim那一刻重新算起、后续move事件在react-native-web上也经常
+  // 干脆不再触发——responder转移这一步在web上不可靠。干脆不转移，直接
+  // 在shouldSet这个"每次move都会被问一遍"的回调里做判断和触发副作用，
+  // triggeredRef保证一次滑动只切一周，下次触摸开始时复位。
+  const triggeredRef = useRef(false);
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => {
+      triggeredRef.current = false;
+      return false;
+    },
+    onMoveShouldSetPanResponder: (_, gesture) => {
+      if (!triggeredRef.current && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5) {
+        if (gesture.dx <= -SWIPE_THRESHOLD) {
+          triggeredRef.current = true;
+          const next = new Date(date);
+          next.setDate(next.getDate() + 7);
+          onDateChange(next);
+        } else if (gesture.dx >= SWIPE_THRESHOLD) {
+          triggeredRef.current = true;
+          const next = new Date(date);
+          next.setDate(next.getDate() - 7);
+          onDateChange(next);
+        }
+      }
+      return false;
+    },
+  });
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       <View style={styles.dateRow}>
         <Text style={styles.dateLabel}>
           {date.getMonth() + 1}月{date.getDate()}日

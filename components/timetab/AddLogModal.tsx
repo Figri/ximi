@@ -274,11 +274,7 @@ export function AddLogModal({
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 30 }}
-            >
+            <View>
               <Text style={styles.title}>{isEdit ? '编辑记录' : '记一笔'}</Text>
 
               <Text style={styles.label}>分类</Text>
@@ -356,7 +352,7 @@ export function AddLogModal({
                   {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
                 </Pressable>
               </View>
-            </ScrollView>
+            </View>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
@@ -372,11 +368,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.card,
     borderTopRightRadius: radius.card,
     padding: spacing.lg,
-    paddingBottom: spacing.xl,
-    maxHeight: '90%',
+    paddingBottom: spacing.md,
   },
-  title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
-  label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xs },
+  title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
+  label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: 6, marginBottom: 4 },
   catScroll: { maxHeight: 40 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   catChip: {
@@ -421,7 +416,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: fontSize.body,
     color: colors.textPrimary,
-    minHeight: 56,
+    minHeight: 40,
     textAlignVertical: 'top',
   },
   tagChip: {
@@ -432,7 +427,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   tagChipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, marginBottom: 20 },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   deleteButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: 'center' },
   deleteButtonText: { color: colors.redDark, fontSize: fontSize.body },
   cancelButton: {

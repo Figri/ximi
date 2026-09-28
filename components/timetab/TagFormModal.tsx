@@ -4,7 +4,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -82,7 +81,7 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider}>
+        <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.title}>{isEdit ? '编辑情绪标签' : '新建情绪标签'}</Text>
 
@@ -90,7 +89,7 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：崩溃" placeholderTextColor={colors.textMuted} />
 
             <Text style={styles.label}>颜色</Text>
-            <ColorSwatchPicker value={color} onChange={setColor} />
+            <ColorSwatchPicker value={color} onChange={setColor} compact />
 
             <View style={styles.actions}>
               {isEdit && (

@@ -4,9 +4,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -123,9 +121,9 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider}>
+        <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <View style={styles.sheetContent}>
               <Text style={styles.title}>{isEdit ? '编辑分类' : '新建分类'}</Text>
 
               <Text style={styles.label}>分类名称</Text>
@@ -147,7 +145,7 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
               />
 
               <Text style={styles.label}>颜色</Text>
-              <ColorSwatchPicker value={color} onChange={handleColorChange} />
+              <ColorSwatchPicker value={color} onChange={handleColorChange} compact />
 
               <View style={styles.actions}>
                 {isEdit && (
@@ -162,7 +160,7 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
                   {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
                 </Pressable>
               </View>
-            </ScrollView>
+            </View>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
@@ -177,9 +175,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.card,
     borderTopRightRadius: radius.card,
-    maxHeight: '88%',
   },
-  sheetContent: { padding: spacing.lg, paddingBottom: spacing.xl },
+  sheetContent: { padding: spacing.lg, paddingBottom: spacing.lg },
   title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
   input: {
