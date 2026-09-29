@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSize, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { TimeBlockView } from '../../components/timetab/TimeBlockView';
 import { TimeAxisView } from '../../components/timetab/TimeAxisView';
@@ -27,17 +27,17 @@ export default function TimelineScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>时间</Text>
         <View style={styles.headerIcons}>
-          <Pressable style={styles.iconButton} onPress={() => router.push('/timelog-categories')}>
-            <Text style={styles.iconText}>🏷️</Text>
+          <Pressable style={styles.textButton} onPress={() => router.push('/timelog-categories')}>
+            <Text style={styles.textButtonLabel}>分类</Text>
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => router.push('/timelog-tags')}>
-            <Text style={styles.iconText}>💬</Text>
+          <Pressable style={styles.textButton} onPress={() => router.push('/timelog-tags')}>
+            <Text style={styles.textButtonLabel}>标签</Text>
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => setMode(mode === 'day' ? 'month' : 'day')}>
-            <Text style={styles.iconText}>{mode === 'day' ? '📅' : '📆'}</Text>
+          <Pressable style={styles.textButton} onPress={() => setMode(mode === 'day' ? 'month' : 'day')}>
+            <Text style={styles.textButtonLabel}>{mode === 'day' ? '月' : '日'}</Text>
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => setMode('stats')}>
-            <Text style={styles.iconText}>📊</Text>
+          <Pressable style={styles.textButton} onPress={() => setMode('stats')}>
+            <Text style={styles.textButtonLabel}>统计</Text>
           </Pressable>
         </View>
       </View>
@@ -84,8 +84,17 @@ const styles = StyleSheet.create({
   },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  iconButton: { paddingHorizontal: 6, paddingVertical: 4 },
-  iconText: { fontSize: 20 },
+  textButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.button,
+    backgroundColor: colors.purpleLight,
+  },
+  textButtonLabel: {
+    fontSize: fontSize.tiny,
+    color: colors.purpleDark,
+    fontWeight: '600',
+  },
   viewToggleFab: {
     position: 'absolute',
     right: spacing.lg,

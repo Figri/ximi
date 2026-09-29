@@ -59,6 +59,10 @@ export async function scheduleDecayNotification(
   const decay = getActionDecay(action, lastCompletedAt);
   if (decay.status === 'green') return;
 
+  // 权限请求挪到这里"真的要发通知了才问"，不在app一启动就弹系统权限框
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+
   const title = decay.status === 'red' ? `${card.name} 超时了` : `${card.name} 该做了`;
   const body = `${action.name} · ${decay.timeLeft}`;
 
@@ -76,6 +80,8 @@ export async function cancelActionNotification(actionId: string): Promise<void> 
 /** 工具箱计时器用：N 秒后本地提醒一次（响铃+震动），返回 identifier 方便中途取消 */
 export async function scheduleTimerNotification(label: string, seconds: number): Promise<string> {
   const identifier = `${TIMER_IDENTIFIER_PREFIX}${Date.now()}`;
+  const granted = await ensureNotificationPermission();
+  if (!granted) return identifier; // 没给权限就不响铃，identifier正常返回让调用方能照常取消计时器
   await Notifications.scheduleNotificationAsync({
     identifier,
     content: {

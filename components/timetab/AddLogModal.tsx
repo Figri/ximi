@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,7 +13,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addLog, deleteLog, updateLog } from '../../lib/timelog';
+import { addLog, deleteLog, formatLogDuration, updateLog } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import type { TimeLog } from '../../types';
 
@@ -30,132 +28,34 @@ interface AddLogModalProps {
   onDeleted?: () => void;
 }
 
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
 function formatMD(d: Date): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return a.toDateString() === b.toDateString();
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
-function categoryLabel(cat: { name: string; parent_id: string | null }, byId: Record<string, { name: string }>): string {
-  if (cat.parent_id && byId[cat.parent_id]) return `${byId[cat.parent_id].name}·${cat.name}`;
-  return cat.name;
+function digitsOnly(v: string): string {
+  return v.replace(/[^\d]/g, '').slice(0, 2);
 }
 
-const WHEEL_ITEM_HEIGHT = 34;
-const WHEEL_VISIBLE_ROWS = 3;
-
-/** 简易滚轮列：用ScrollView+snapToInterval做吸附，不引入原生picker依赖，保持纯OTA */
-function WheelColumn({
-  items,
-  selectedIndex,
-  onChange,
-  width,
-}: {
-  items: string[];
-  selectedIndex: number;
-  onChange: (index: number) => void;
-  width: number;
-}) {
-  // contentOffset在react-native-web上对ScrollView不生效（实测scrollTop恒为0），
-  // 改成挂载后用ref命令式滚到初始选中位置
-  const scrollRef = useRef<ScrollView>(null);
-  const initialIndex = useRef(selectedIndex).current;
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y: initialIndex * WHEEL_ITEM_HEIGHT, animated: false });
-    });
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  // onMomentumScrollEnd/onScrollEndDrag在react-native-web上不可靠（实测鼠标滚轮
-  // 驱动的滚动完全不触发），改成onScroll+自己防抖：停止滚动~150ms后才提交，
-  // 这个写法在web和原生上都成立，不依赖某个平台特定的"滚动动量结束"事件
-  function handleScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const y = e.nativeEvent.contentOffset.y;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const idx = Math.max(0, Math.min(items.length - 1, Math.round(y / WHEEL_ITEM_HEIGHT)));
-      onChange(idx);
-    }, 150);
-  }
-
-  return (
-    <ScrollView
-      ref={scrollRef}
-      style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS, width }}
-      contentContainerStyle={{ paddingVertical: WHEEL_ITEM_HEIGHT }}
-      showsVerticalScrollIndicator={false}
-      snapToInterval={WHEEL_ITEM_HEIGHT}
-      decelerationRate="fast"
-      scrollEventThrottle={16}
-      onScroll={handleScroll}
-    >
-      {items.map((label, i) => (
-        <View key={i} style={{ height: WHEEL_ITEM_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={[styles.wheelText, i === selectedIndex && styles.wheelTextSelected]}>{label}</Text>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
-
-/** 一组「日期|时|分」滚轮，代表一个时间点（开始或结束） */
-function TimeWheelGroup({ label, value, onChange }: { label: string; value: Date; onChange: (d: Date) => void }) {
-  const dateOptions = useRef(
-    Array.from({ length: 9 }, (_, i) => {
-      const d = new Date(value);
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + (i - 4));
-      return d;
-    })
-  ).current;
-  const hourOptions = Array.from({ length: 24 }, (_, i) => i);
-  const minuteOptions = Array.from({ length: 60 }, (_, i) => i);
-
-  const foundDateIdx = dateOptions.findIndex((d) => isSameDay(d, value));
-  const dateIdx = foundDateIdx === -1 ? 4 : foundDateIdx;
-  const hourIdx = value.getHours();
-  const minuteIdx = value.getMinutes();
-
-  function commit(newDateIdx: number, newHour: number, newMinute: number) {
-    const base = dateOptions[newDateIdx] ?? dateOptions[dateIdx];
-    const next = new Date(base);
-    next.setHours(newHour, newMinute, 0, 0);
-    onChange(next);
-  }
-
-  return (
-    <View style={styles.wheelGroup}>
-      <View style={styles.wheelGroupLabelBadge}>
-        <Text style={styles.wheelGroupLabelText}>{label}</Text>
-      </View>
-      <View style={styles.wheelRow}>
-        <WheelColumn items={dateOptions.map(formatMD)} selectedIndex={dateIdx} width={64} onChange={(i) => commit(i, hourIdx, minuteIdx)} />
-        <WheelColumn
-          items={hourOptions.map((h) => String(h).padStart(2, '0'))}
-          selectedIndex={hourIdx}
-          width={44}
-          onChange={(i) => commit(dateIdx, i, minuteIdx)}
-        />
-        <WheelColumn
-          items={minuteOptions.map((m) => String(m).padStart(2, '0'))}
-          selectedIndex={minuteIdx}
-          width={44}
-          onChange={(i) => commit(dateIdx, hourIdx, i)}
-        />
-      </View>
-    </View>
-  );
+/** 「MM/DD」+ 时 + 分 三个输入框的值都合法时才拼出一个新 Date，年份沿用 base 的年份 */
+function tryParseDatePart(base: Date, dateStr: string, hourStr: string, minuteStr: string): Date | null {
+  const m = dateStr.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const month = parseInt(m[1], 10);
+  const day = parseInt(m[2], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (!/^\d{1,2}$/.test(hourStr) || !/^\d{1,2}$/.test(minuteStr)) return null;
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minuteStr, 10);
+  if (hour > 23 || minute > 59) return null;
+  const next = new Date(base);
+  next.setMonth(month - 1, day);
+  if (next.getMonth() !== month - 1) return null; // 比如02/30会进位到3月，判定这个日期非法
+  next.setHours(hour, minute, 0, 0);
+  return next;
 }
 
 export function AddLogModal({
@@ -169,84 +69,137 @@ export function AddLogModal({
   onDeleted,
 }: AddLogModalProps) {
   const { categories, tags } = useTimeLogStore();
-  const isEdit = !!log;
+  const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
+  const sortedTags = [...tags].sort((a, b) => a.sort_order - b.sort_order);
+
+  // activeLog跟log prop初始一致，但「继续添加」保存一次后会变成null——
+  // 之后的保存操作就变成新建而不是反复改同一条，配合表单一起重置成"新建"态
+  const [activeLog, setActiveLog] = useState<TimeLog | null | undefined>(log);
+  const isEdit = !!activeLog;
 
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [start, setStart] = useState(new Date());
   const [end, setEnd] = useState(new Date());
   const [description, setDescription] = useState('');
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [editingTime, setEditingTime] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
+
+  const [startDateStr, setStartDateStr] = useState('');
+  const [startHourStr, setStartHourStr] = useState('');
+  const [startMinuteStr, setStartMinuteStr] = useState('');
+  const [endDateStr, setEndDateStr] = useState('');
+  const [endHourStr, setEndHourStr] = useState('');
+  const [endMinuteStr, setEndMinuteStr] = useState('');
 
   useEffect(() => {
     if (!visible) return;
+    setActiveLog(log);
+    let s: Date;
+    let e: Date;
     if (log) {
       setCategoryId(log.category_id);
-      setStart(new Date(log.start_time));
-      setEnd(new Date(log.end_time));
+      s = new Date(log.start_time);
+      e = new Date(log.end_time);
       setDescription(log.description ?? '');
       setTagIds(log.tag_ids ?? []);
     } else {
       setCategoryId(initialCategoryId ?? null);
-      setStart(initialStart ?? new Date());
-      setEnd(initialEnd ?? new Date());
+      s = initialStart ?? new Date();
+      e = initialEnd ?? new Date();
       const cat = categories.find((c) => c.id === initialCategoryId);
       setDescription(cat?.default_description ?? '');
       setTagIds([]);
     }
-    setEditingTime(false);
+    setStart(s);
+    setEnd(e);
+    setStartDateStr(formatMD(s));
+    setStartHourStr(pad2(s.getHours()));
+    setStartMinuteStr(pad2(s.getMinutes()));
+    setEndDateStr(formatMD(e));
+    setEndHourStr(pad2(e.getHours()));
+    setEndMinuteStr(pad2(e.getMinutes()));
+    setCategoryPanelOpen(false);
   }, [visible, log, initialCategoryId, initialStart, initialEnd]);
 
-  const categoryById: Record<string, { name: string }> = {};
-  for (const c of categories) categoryById[c.id] = c;
+  const selectedCategory = categoryId ? categories.find((c) => c.id === categoryId) ?? null : null;
 
-  // 滚轮拖到哪就是哪，不静默拒绝（否则视觉位置和实际值会对不上）；
-  // 只在会导致时长<=0时才把另一头顺带推开，保证至少5分钟时长
-  function handleStartChange(next: Date) {
-    setStart(next);
-    setEnd((prevEnd) => (next.getTime() >= prevEnd.getTime() ? new Date(next.getTime() + 5 * 60_000) : prevEnd));
+  function commitStart(dateStr: string, hourStr: string, minuteStr: string) {
+    const d = tryParseDatePart(start, dateStr, hourStr, minuteStr);
+    if (d) setStart(d);
   }
-
-  function handleEndChange(next: Date) {
-    setEnd(next);
-    setStart((prevStart) => (next.getTime() <= prevStart.getTime() ? new Date(next.getTime() - 5 * 60_000) : prevStart));
+  function commitEnd(dateStr: string, hourStr: string, minuteStr: string) {
+    const d = tryParseDatePart(end, dateStr, hourStr, minuteStr);
+    if (d) setEnd(d);
   }
 
   function toggleTag(id: string) {
     setTagIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
   }
 
-  function handleManagePress() {
+  function selectCategory(id: string) {
+    setCategoryId(id);
+    setCategoryPanelOpen(false);
+  }
+
+  function handleManageCategoriesPress() {
     onClose();
     router.push('/timelog-categories');
   }
+  function handleManageTagsPress() {
+    onClose();
+    router.push('/timelog-tags');
+  }
 
-  async function handleSave() {
+  // 保存时兜底：如果这会儿end<=start（编辑时手滑打出不合理的数），静默拉到start+5分钟，
+  // 不当场打断用户输入
+  function clampedEnd(): Date {
+    return end.getTime() > start.getTime() ? end : new Date(start.getTime() + 5 * 60_000);
+  }
+
+  async function persist(): Promise<boolean> {
     if (!categoryId) {
       Alert.alert('选个分类吧', '这段时间是做什么的？');
-      return;
+      return false;
     }
+    const payload = {
+      category_id: categoryId,
+      start_time: start.toISOString(),
+      end_time: clampedEnd().toISOString(),
+      description: description.trim() || null,
+      tag_ids: tagIds,
+    };
+    if (activeLog) {
+      await updateLog(activeLog.id, payload);
+    } else {
+      await addLog(payload);
+    }
+    return true;
+  }
+
+  async function handleSave() {
     setSaving(true);
     try {
-      if (isEdit && log) {
-        await updateLog(log.id, {
-          category_id: categoryId,
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
-          description: description.trim() || null,
-          tag_ids: tagIds,
-        });
-      } else {
-        await addLog({
-          category_id: categoryId,
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
-          description: description.trim() || null,
-          tag_ids: tagIds,
-        });
+      const ok = await persist();
+      if (ok) onSaved();
+    } catch (err) {
+      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // 继续添加：把当前这条存掉，但不关弹窗——清空描述/标签，保留分类和时间段，
+  // 并把activeLog置空，让下一次保存变成新建而不是反复覆盖同一条
+  async function handleSaveAndContinue() {
+    setSaving(true);
+    try {
+      const ok = await persist();
+      if (ok) {
+        setActiveLog(null);
+        setDescription('');
+        setTagIds([]);
       }
-      onSaved();
     } catch (err) {
       Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
     } finally {
@@ -255,77 +208,162 @@ export function AddLogModal({
   }
 
   function handleDelete() {
-    if (!log) return;
+    if (!activeLog) return;
     Alert.alert('删除这条记录？', description || undefined, [
       { text: '取消', style: 'cancel' },
       {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
-          await deleteLog(log.id);
+          await deleteLog(activeLog.id);
           onDeleted?.();
         },
       },
     ]);
   }
 
+  const durationMin = Math.max(0, (clampedEnd().getTime() - start.getTime()) / 60000);
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <View>
-              <Text style={styles.title}>{isEdit ? '编辑记录' : '记一笔'}</Text>
-
-              <Text style={styles.label}>分类</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                <View style={styles.chipRow}>
-                  {categories.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => setCategoryId(c.id)}
-                      style={[styles.catChip, { borderColor: c.color }, categoryId === c.id && { backgroundColor: c.color }]}
-                    >
-                      <Text style={[styles.catChipText, categoryId === c.id && styles.catChipTextActive]}>
-                        {categoryLabel(c, categoryById)}
-                      </Text>
-                    </Pressable>
-                  ))}
-                  <Pressable style={styles.manageChip} onPress={handleManagePress}>
-                    <Text style={styles.manageChipText}>⚙ 管理</Text>
-                  </Pressable>
-                </View>
-              </ScrollView>
-
-              <View style={styles.timeRow}>
-                <Text style={styles.timeText}>
-                  时间：{formatTime(start)} — {formatTime(end)}
-                </Text>
-                <Pressable onPress={() => setEditingTime((v) => !v)}>
-                  <Text style={styles.timeEditButton}>改{editingTime ? '▲' : '▼'}</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.topRow}>
+                <Pressable style={styles.catTrigger} onPress={() => setCategoryPanelOpen((v) => !v)}>
+                  <View style={[styles.catDot, { backgroundColor: selectedCategory?.color ?? colors.textMuted }]} />
+                  <Text style={styles.catTriggerText} numberOfLines={1}>
+                    {selectedCategory?.name ?? '选分类'}
+                  </Text>
+                  <Text style={styles.catTriggerArrow}>{categoryPanelOpen ? '▲' : '▼'}</Text>
                 </Pressable>
+                <View style={styles.durationPill}>
+                  <Text style={styles.durationPillText}>{formatLogDuration(durationMin)}</Text>
+                </View>
               </View>
-              {editingTime && (
-                <View style={styles.wheelsRow}>
-                  <TimeWheelGroup label="上尾" value={start} onChange={handleStartChange} />
-                  <View style={styles.wheelsDivider} />
-                  <TimeWheelGroup label="下始" value={end} onChange={handleEndChange} />
+
+              <View style={styles.timeGroupsRow}>
+                <View style={styles.timeGroup}>
+                  <Text style={styles.timeGroupLabel}>上尾</Text>
+                  <View style={styles.timeInputRow}>
+                    <TextInput
+                      style={styles.dateInput}
+                      value={startDateStr}
+                      onChangeText={(v) => {
+                        setStartDateStr(v);
+                        commitStart(v, startHourStr, startMinuteStr);
+                      }}
+                      placeholder="MM/DD"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <TextInput
+                      style={styles.hmInput}
+                      value={startHourStr}
+                      onChangeText={(v) => {
+                        const d = digitsOnly(v);
+                        setStartHourStr(d);
+                        commitStart(startDateStr, d, startMinuteStr);
+                      }}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                    <Text style={styles.colon}>:</Text>
+                    <TextInput
+                      style={styles.hmInput}
+                      value={startMinuteStr}
+                      onChangeText={(v) => {
+                        const d = digitsOnly(v);
+                        setStartMinuteStr(d);
+                        commitStart(startDateStr, startHourStr, d);
+                      }}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+                <View style={styles.timeGroup}>
+                  <Text style={styles.timeGroupLabel}>下始</Text>
+                  <View style={styles.timeInputRow}>
+                    <TextInput
+                      style={styles.dateInput}
+                      value={endDateStr}
+                      onChangeText={(v) => {
+                        setEndDateStr(v);
+                        commitEnd(v, endHourStr, endMinuteStr);
+                      }}
+                      placeholder="MM/DD"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <TextInput
+                      style={styles.hmInput}
+                      value={endHourStr}
+                      onChangeText={(v) => {
+                        const d = digitsOnly(v);
+                        setEndHourStr(d);
+                        commitEnd(endDateStr, d, endMinuteStr);
+                      }}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                    <Text style={styles.colon}>:</Text>
+                    <TextInput
+                      style={styles.hmInput}
+                      value={endMinuteStr}
+                      onChangeText={(v) => {
+                        const d = digitsOnly(v);
+                        setEndMinuteStr(d);
+                        commitEnd(endDateStr, endHourStr, d);
+                      }}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {categoryPanelOpen && (
+                <View style={styles.catPanel}>
+                  <View style={styles.catPanelGrid}>
+                    {sortedCategories.map((c) => {
+                      const active = categoryId === c.id;
+                      return (
+                        <Pressable
+                          key={c.id}
+                          onPress={() => selectCategory(c.id)}
+                          style={[styles.catPanelChip, active ? { backgroundColor: c.color } : styles.catPanelChipInactive]}
+                        >
+                          <Text style={[styles.catPanelChipText, active && styles.catPanelChipTextActive]}>{c.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.catPanelDivider} />
+                  <Pressable onPress={handleManageCategoriesPress}>
+                    <Text style={styles.catPanelManage}>⚙ 管理</Text>
+                  </Pressable>
                 </View>
               )}
 
-              <Text style={styles.label}>正文</Text>
+              <Text style={styles.label}>描述</Text>
               <TextInput
-                style={styles.input}
+                style={styles.descInput}
                 value={description}
                 onChangeText={setDescription}
                 placeholder="发生了什么"
                 placeholderTextColor={colors.textMuted}
                 multiline
+                textAlignVertical="top"
               />
 
-              <Text style={styles.label}>情绪</Text>
-              <View style={styles.chipRow}>
-                {tags.map((t) => {
+              <View style={styles.tagHeaderRow}>
+                <Text style={styles.label}>标签</Text>
+                <Pressable onPress={handleManageTagsPress}>
+                  <Text style={styles.tagManageLink}>管理 ›</Text>
+                </Pressable>
+              </View>
+              <View style={styles.tagRow}>
+                {sortedTags.map((t) => {
                   const active = tagIds.includes(t.id);
                   return (
                     <Pressable
@@ -333,26 +371,37 @@ export function AddLogModal({
                       onPress={() => toggleTag(t.id)}
                       style={[styles.tagChip, { borderColor: t.color }, active && { backgroundColor: t.color }]}
                     >
-                      <Text style={[styles.tagChipText, active && styles.catChipTextActive]}>{t.name}</Text>
+                      <Text style={[styles.tagChipText, { color: active ? '#fff' : t.color }]}>{t.name}</Text>
                     </Pressable>
                   );
                 })}
               </View>
 
               <View style={styles.actions}>
-                {isEdit && (
-                  <Pressable style={styles.deleteButton} onPress={handleDelete}>
-                    <Text style={styles.deleteButtonText}>删除</Text>
-                  </Pressable>
+                {isEdit ? (
+                  <>
+                    <Pressable style={styles.deleteButton} onPress={handleDelete}>
+                      <Text style={styles.deleteButtonText}>删除</Text>
+                    </Pressable>
+                    <Pressable style={styles.outlineButton} onPress={handleSaveAndContinue} disabled={saving}>
+                      <Text style={styles.outlineButtonText}>继续添加</Text>
+                    </Pressable>
+                    <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>修改</Text>}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable style={styles.outlineButton} onPress={onClose}>
+                      <Text style={styles.outlineButtonText}>取消</Text>
+                    </Pressable>
+                    <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>保存</Text>}
+                    </Pressable>
+                  </>
                 )}
-                <Pressable style={styles.cancelButton} onPress={onClose}>
-                  <Text style={styles.cancelText}>取消</Text>
-                </Pressable>
-                <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>保存</Text>}
-                </Pressable>
               </View>
-            </View>
+            </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
@@ -361,89 +410,96 @@ export function AddLogModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'center' },
   avoider: { width: '100%' },
   sheet: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
+    borderRadius: 16,
+    marginHorizontal: 16,
     padding: spacing.lg,
-    paddingBottom: spacing.md,
+    maxHeight: '85%',
   },
-  title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  catTrigger: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  catDot: { width: 14, height: 14, borderRadius: 7 },
+  catTriggerText: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  catTriggerArrow: { fontSize: 11, color: colors.textMuted, marginLeft: 2 },
+  durationPill: { backgroundColor: colors.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  durationPillText: { fontSize: fontSize.tiny, color: colors.textSecondary, fontWeight: '600' },
+
+  timeGroupsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  // minWidth:0是关键——flex子项默认min-width是内容的intrinsic宽度不是0，
+  // <input>有个天生的最小宽度，光flex:1不会让它真的缩到可用空间以内，
+  // 实测两组时间并排时右边那组会被撑到裁到屏幕外面去
+  timeGroup: { flex: 1, minWidth: 0 },
+  timeGroupLabel: { fontSize: fontSize.tiny, color: colors.textMuted, marginBottom: 4 },
+  timeInputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dateInput: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: fontSize.body,
+    color: colors.textPrimary,
+  },
+  hmInput: {
+    width: 44,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: fontSize.body,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  colon: { fontSize: fontSize.body, color: colors.textSecondary },
+
+  catPanel: { backgroundColor: colors.background, borderRadius: 12, padding: spacing.sm, marginBottom: spacing.sm },
+  catPanelGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  catPanelChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.button },
+  catPanelChipInactive: { borderWidth: 1, borderColor: colors.textMuted },
+  catPanelChipText: { fontSize: fontSize.body, color: colors.textSecondary },
+  catPanelChipTextActive: { color: '#fff', fontWeight: '600' },
+  catPanelDivider: { height: 1, backgroundColor: colors.card, marginVertical: spacing.sm },
+  catPanelManage: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '600', textAlign: 'center' },
+
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: 6, marginBottom: 4 },
-  catScroll: { maxHeight: 40 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  catChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.button,
-    borderWidth: 1.5,
-    backgroundColor: colors.background,
-  },
-  catChipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  catChipTextActive: { color: '#fff', fontWeight: '700' },
-  manageChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.button,
-    borderWidth: 1.5,
-    borderColor: colors.textMuted,
-    backgroundColor: colors.background,
-  },
-  manageChipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
-  timeText: { fontSize: fontSize.secondary, color: colors.textSecondary, flex: 1 },
-  timeEditButton: { fontSize: fontSize.secondary, color: colors.blueDark },
-  wheelsRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: spacing.xs, gap: spacing.sm },
-  wheelsDivider: { width: 1, backgroundColor: colors.background, alignSelf: 'stretch' },
-  wheelGroup: { flex: 1, alignItems: 'center' },
-  wheelGroupLabelBadge: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: radius.button,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    marginBottom: 4,
-  },
-  wheelGroupLabelText: { fontSize: fontSize.tiny, color: '#fff', fontWeight: '700' },
-  wheelRow: { flexDirection: 'row', gap: 4 },
-  wheelText: { fontSize: fontSize.body, color: colors.textMuted },
-  wheelTextSelected: { color: colors.textPrimary, fontWeight: '700', fontSize: fontSize.cardName },
-  input: {
+  descInput: {
     backgroundColor: colors.background,
     borderRadius: radius.widget,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: fontSize.body,
     color: colors.textPrimary,
-    minHeight: 40,
-    textAlignVertical: 'top',
+    minHeight: 72,
   },
-  tagChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.button,
-    borderWidth: 1.5,
-    backgroundColor: colors.background,
-  },
-  tagChipText: { fontSize: fontSize.body, color: colors.textSecondary },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+
+  tagHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  tagManageLink: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4 },
+  tagChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.button, borderWidth: 1 },
+  tagChipText: { fontSize: fontSize.body, fontWeight: '500' },
+
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   deleteButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: 'center' },
   deleteButtonText: { color: colors.redDark, fontSize: fontSize.body },
-  cancelButton: {
+  outlineButton: {
     flex: 1,
     paddingVertical: spacing.md,
-    borderRadius: radius.button,
-    backgroundColor: colors.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
     alignItems: 'center',
   },
-  cancelText: { color: colors.textSecondary, fontSize: fontSize.body },
-  saveButton: {
-    flex: 2,
+  outlineButtonText: { color: colors.textSecondary, fontSize: fontSize.body, fontWeight: '600' },
+  solidButton: {
+    flex: 1,
     paddingVertical: spacing.md,
-    borderRadius: radius.button,
+    borderRadius: 10,
     backgroundColor: colors.purpleDark,
     alignItems: 'center',
   },
-  saveText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
+  solidButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
 });

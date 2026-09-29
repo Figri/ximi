@@ -75,6 +75,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 
   const categoryById: Record<string, TimeCategory> = {};
   for (const c of categories) categoryById[c.id] = c;
+  const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
 
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
@@ -314,7 +315,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 
       <View style={styles.palette}>
         <ScrollView contentContainerStyle={styles.paletteContent}>
-          {categories.map((c) => (
+          {sortedCategories.map((c) => (
             <Pressable key={c.id} style={[styles.paletteChip, { backgroundColor: c.color }]} onPress={() => fillWith(c)}>
               <Text style={styles.paletteChipText} numberOfLines={1}>
                 {c.name}

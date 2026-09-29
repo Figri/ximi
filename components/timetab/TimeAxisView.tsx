@@ -100,11 +100,7 @@ export function TimeAxisView({ date, refreshKey, onChanged }: TimeAxisViewProps)
                         <Text style={styles.catBadgeText}>{cat?.name ?? '未分类'}</Text>
                       </View>
                     </View>
-                    {log.description && (
-                      <Text style={styles.descText} numberOfLines={3}>
-                        {log.description}
-                      </Text>
-                    )}
+                    {log.description && <Text style={styles.descText}>{log.description}</Text>}
                     {log.tag_ids.length > 0 && (
                       <View style={styles.tagRow}>
                         {log.tag_ids.map((tid) => {

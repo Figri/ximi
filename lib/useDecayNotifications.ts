@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { getActionDecay } from './decay';
-import { cancelActionNotification, ensureNotificationPermission, scheduleDecayNotification } from './notifications';
+import { cancelActionNotification, scheduleDecayNotification } from './notifications';
 import { useCardStore } from './store';
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15分钟
@@ -15,8 +15,8 @@ export function useDecayNotifications() {
   const lastRemindedAt = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    ensureNotificationPermission();
-
+    // 权限请求不在这里提前问——挪到scheduleDecayNotification/scheduleTimerNotification
+    // 里"真的要发通知了才问"，避免一打开app就弹系统权限框
     const check = async () => {
       let { cards, actions, lastCompletions } = useCardStore.getState();
       if (cards.length === 0) {
