@@ -27,10 +27,6 @@ function minutesSinceMidnight(date: Date, dayStart: Date): number {
 // text-overflow: ellipsis（用 getComputedStyle 核对过），照样会冒出"…"。
 // 只能额外塞一个 web 专属的原始 CSS 覆盖它；原生端会忽略这两个未知 style key，无副作用
 const noEllipsisWebStyle = { textOverflow: 'clip', whiteSpace: 'nowrap' } as any;
-// 同一个react-native-web坑：小时数字("20"/"23")偶尔会在窄列里被当成可换行文本，
-// 换行后第二行被固定高度的行容器裁掉，看着就像只剩一个字符——加numberOfLines
-// 之外再叠一个web专属nowrap兜底
-const noWrapWebStyle = { whiteSpace: 'nowrap' } as any;
 
 interface LogBlockRect {
   key: string;
@@ -84,15 +80,14 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
 
-  // 格子必须是正方形：默认用宽度算(trackWidth/12)，如果24行这个高度塞不进
-  // areaHeight，才改用高度算(Math.floor(areaHeight/24))，此时网格不占满
-  // 宽度、右侧留空——但依然是正方形，不会被拉成长方形
-  const rawCellFromWidth = trackWidth > 0 ? trackWidth / CELLS_PER_ROW : 0;
-  let cellSize = rawCellFromWidth;
-  if (areaHeight > 0 && rawCellFromWidth > 0 && areaHeight < 24 * rawCellFromWidth) {
-    cellSize = Math.floor(areaHeight / 24);
-  }
-  const ROW_H = cellSize;
+  // 格子高度按轨道实测高度精确铺满24行，不追求正方形——这是最早交接文档就
+  // 定下的规矩："格子高度＝轨道容器实测高度÷24，让24小时正好铺满一屏不留白"。
+  // 之前"正方形优先"的写法（宽度算出的格子比高度算的小时，改按高度算导致
+  // 24行摞不到可用高度的底）破坏了这条规矩，原app截图里的格子本身也不是
+  // 正方形、是稍扁的长方形，铺满比方正更重要
+  const ROW_H = areaHeight > 0 ? areaHeight / 24 : 0;
+  // 格子宽度单独按轨道实测宽度算，不再跟高度绑定成正方形
+  const cellWidth = trackWidth > 0 ? trackWidth / CELLS_PER_ROW : 0;
 
   function measureTrack() {
     trackRef.current?.measureInWindow((x, y, w, h) => {
@@ -153,8 +148,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 
   // 每条记录画成一个（或跨行时拆成几个）绝对定位的色块矩形，不再逐格填色
   const logBlocks = useMemo<LogBlockRect[]>(() => {
-    if (cellSize <= 0) return [];
-    const pxPerMin = cellSize / CELL_MINUTES;
+    if (ROW_H <= 0 || cellWidth <= 0) return [];
+    const pxPerMin = cellWidth / CELL_MINUTES;
     const rects: LogBlockRect[] = [];
     for (const log of logs) {
       const cat = log.category_id ? categoryById[log.category_id] : null;
@@ -185,11 +180,11 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
       }
     }
     return rects;
-  }, [logs, categories, cellSize, ROW_H, dayStart]);
+  }, [logs, categories, cellWidth, ROW_H, dayStart]);
 
   // 选中的格子：在原有内容上叠一层半透明黑——有色块盖着的深一点，空格子浅一点
   const selectionRects = useMemo<SelectionRect[]>(() => {
-    if (cellSize <= 0 || selected.size === 0) return [];
+    if (ROW_H <= 0 || cellWidth <= 0 || selected.size === 0) return [];
     const rects: SelectionRect[] = [];
     for (const idx of selected) {
       const row = Math.floor(idx / CELLS_PER_ROW);
@@ -199,12 +194,12 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
       rects.push({
         key: idx,
         top: row * ROW_H,
-        left: col * cellSize,
+        left: col * cellWidth,
         opacity: filled ? 0.3 : 0.2,
       });
     }
     return rects;
-  }, [selected, logRanges, cellSize, ROW_H]);
+  }, [selected, logRanges, cellWidth, ROW_H]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -254,8 +249,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
           <>
             <View style={styles.hourCol}>
               {HOURS.map((h) => (
-                <View key={h} style={{ height: ROW_H, alignItems: 'flex-end', paddingRight: 6 }}>
-                  <Text style={[styles.hourLabel, noWrapWebStyle]} numberOfLines={1}>
+                <View key={h} style={{ height: ROW_H, alignItems: 'flex-end', paddingRight: 2 }}>
+                  <Text style={styles.hourLabel} numberOfLines={1}>
                     {h}
                   </Text>
                 </View>
@@ -303,7 +298,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
                     position: 'absolute',
                     top: rect.top,
                     left: rect.left,
-                    width: cellSize,
+                    width: cellWidth,
                     height: ROW_H,
                     backgroundColor: `rgba(0,0,0,${rect.opacity})`,
                   }}
@@ -331,11 +326,16 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: 'row', paddingHorizontal: spacing.lg },
+  // 外边距/小时列/色卡列这几处加起来是网格能用宽度的主要"税"——缩窄它们
+  // 才能让网格贴近原app的宽度比例
+  container: { flex: 1, flexDirection: 'row', paddingHorizontal: 6 },
   axisArea: { flex: 1, flexDirection: 'row' },
   hourCol: { width: 20 },
-  hourLabel: { fontSize: 11, color: colors.textMuted },
-  trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
+  // fontSize 10 + paddingRight 2 时，两位数(含"08"/"20"/"23"这类)的实测宽度
+  // 都在 20px 列宽内，不会触发默认的 numberOfLines 截断出"…"——这条必须是
+  // RN 组件的真实宽度/字号，css专属的nowrap/ellipsis覆盖在原生端不生效
+  hourLabel: { fontSize: 10, color: colors.textMuted },
+  trackCol: { flex: 1, position: 'relative', marginLeft: 3 },
   gridBackground: { width: '100%', backgroundColor: '#DCEBF7', borderRadius: 4 },
   logBlock: {
     position: 'absolute',
@@ -345,12 +345,12 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   logBlockText: { color: '#fff', fontSize: 10, fontWeight: '600', includeFontPadding: false },
-  palette: { width: 60, marginLeft: spacing.sm },
+  palette: { width: 42, marginLeft: 4 },
   paletteContent: { paddingBottom: spacing.sm, gap: 2 },
   paletteChip: {
     borderRadius: 8,
     paddingVertical: 4,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 30,

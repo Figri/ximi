@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -60,6 +61,14 @@ export function AddLogModal({
   const { categories, tags } = useTimeLogStore();
   const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
   const sortedTags = [...tags].sort((a, b) => a.sort_order - b.sort_order);
+
+  // sheet的高度上限改用useWindowDimensions算出的实际像素值，不再用CSS百分比
+  // 字符串——sheet的父级(KeyboardAvoidingView的avoider)本身没有明确的高度
+  // (只设了width:'100%')，百分比maxHeight在没有明确高度的祖先上，原生Yoga
+  // 布局引擎跟react-native-web的解析方式不一致：web上表现正常，但在真机上
+  // 会导致sheet算出的高度过小，把标签这类靠后的内容直接压扁挤没
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetMaxHeight = windowHeight * 0.92;
 
   // activeLog跟log prop初始一致，但「继续添加」保存一次后会变成null——
   // 之后的保存操作就变成新建而不是反复改同一条，配合表单一起重置成"新建"态
@@ -213,7 +222,7 @@ export function AddLogModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.sheet, { maxHeight: sheetMaxHeight }]} onPress={(e) => e.stopPropagation()}>
             <ScrollView
               style={styles.scrollArea}
               keyboardShouldPersistTaps="handled"
@@ -386,7 +395,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginHorizontal: 16,
     padding: spacing.lg,
-    maxHeight: '85%',
   },
   // flexShrink让ScrollView在sheet被maxHeight限高时自己收缩出内部滚动，
   // 而不是把actions一起挤出maxHeight顶到不可见——actions是ScrollView的
@@ -400,7 +408,7 @@ const styles = StyleSheet.create({
   durationPill: { backgroundColor: colors.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   durationPillText: { fontSize: fontSize.tiny, color: colors.textSecondary, fontWeight: '600' },
 
-  timeGroupsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  timeGroupsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: 6 },
   timeGroup: { flex: 1 },
   timeGroupLabel: { fontSize: fontSize.tiny, color: colors.textMuted, marginBottom: 4 },
   timeInputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -433,7 +441,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: fontSize.body,
     color: colors.textPrimary,
-    minHeight: 72,
+    minHeight: 60,
   },
 
   tagHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
