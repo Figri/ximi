@@ -22,7 +22,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function silentUpdateCheck() {
-      if (__DEV__) return;
+      // 不再跳过开发模式——西米平时测试装的就是开发模式包，跳过会导致这段
+      // 自动检查从来跑不起来，只能靠设置页手动按钮
       try {
         const result = await Updates.checkForUpdateAsync();
         if (!result.isAvailable) return;

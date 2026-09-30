@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,9 +17,20 @@ export default function TimelineScreen() {
   const [dayView, setDayView] = useState<DayView>('block');
   const [date, setDate] = useState(new Date());
   const [refreshKey, setRefreshKey] = useState(0);
+  // 记住进统计页之前停在哪个视图，"统计"按钮变开关：再点一次回到那个视图
+  const preStatsMode = useRef<'day' | 'month'>('day');
 
   function bumpRefresh() {
     setRefreshKey((k) => k + 1);
+  }
+
+  function handleStatsPress() {
+    if (mode === 'stats') {
+      setMode(preStatsMode.current);
+    } else {
+      preStatsMode.current = mode === 'month' ? 'month' : 'day';
+      setMode('stats');
+    }
   }
 
   return (
@@ -36,7 +47,7 @@ export default function TimelineScreen() {
           <Pressable style={styles.textButton} onPress={() => setMode(mode === 'day' ? 'month' : 'day')}>
             <Text style={styles.textButtonLabel}>{mode === 'day' ? '月' : '日'}</Text>
           </Pressable>
-          <Pressable style={styles.textButton} onPress={() => setMode('stats')}>
+          <Pressable style={styles.textButton} onPress={handleStatsPress}>
             <Text style={styles.textButtonLabel}>统计</Text>
           </Pressable>
         </View>

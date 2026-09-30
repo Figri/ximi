@@ -27,6 +27,10 @@ function minutesSinceMidnight(date: Date, dayStart: Date): number {
 // text-overflow: ellipsis（用 getComputedStyle 核对过），照样会冒出"…"。
 // 只能额外塞一个 web 专属的原始 CSS 覆盖它；原生端会忽略这两个未知 style key，无副作用
 const noEllipsisWebStyle = { textOverflow: 'clip', whiteSpace: 'nowrap' } as any;
+// 同一个react-native-web坑：小时数字("20"/"23")偶尔会在窄列里被当成可换行文本，
+// 换行后第二行被固定高度的行容器裁掉，看着就像只剩一个字符——加numberOfLines
+// 之外再叠一个web专属nowrap兜底
+const noWrapWebStyle = { whiteSpace: 'nowrap' } as any;
 
 interface LogBlockRect {
   key: string;
@@ -251,7 +255,9 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
             <View style={styles.hourCol}>
               {HOURS.map((h) => (
                 <View key={h} style={{ height: ROW_H, alignItems: 'flex-end', paddingRight: 6 }}>
-                  <Text style={styles.hourLabel}>{h}</Text>
+                  <Text style={[styles.hourLabel, noWrapWebStyle]} numberOfLines={1}>
+                    {h}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -262,14 +268,10 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {/* 底层：正方形空格子，只做纹理背景和承接划选手势 */}
-              {HOURS.map((h) => (
-                <View key={h} style={[styles.gridRow, { height: ROW_H }]} pointerEvents="none">
-                  {Array.from({ length: CELLS_PER_ROW }, (_, col) => (
-                    <View key={col} style={[styles.gridCell, { width: cellSize, height: ROW_H }]} />
-                  ))}
-                </View>
-              ))}
+              {/* 底层：单一矩形的干净浅色背景——不再逐格描边填色。贴合原app"空白
+                  时段是一片干净背景"的视觉，同时天然避免12等分逐格取整误差累计
+                  导致右侧留白条的问题（一整块矩形没有"拼不齐"这回事） */}
+              <View style={[styles.gridBackground, { height: 24 * ROW_H }]} pointerEvents="none" />
 
               {/* 中层：每条记录一个（跨行拆成几个）绝对定位色块，不再逐格拼色 */}
               {logBlocks.map((rect) => (
@@ -334,8 +336,7 @@ const styles = StyleSheet.create({
   hourCol: { width: 20 },
   hourLabel: { fontSize: 11, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 6 },
-  gridRow: { flexDirection: 'row' },
-  gridCell: { borderWidth: 0.5, borderColor: '#fff', borderRadius: 2, backgroundColor: '#DCEBF7' },
+  gridBackground: { width: '100%', backgroundColor: '#DCEBF7', borderRadius: 4 },
   logBlock: {
     position: 'absolute',
     borderRadius: 4,

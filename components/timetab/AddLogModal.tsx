@@ -28,10 +28,6 @@ interface AddLogModalProps {
   onDeleted?: () => void;
 }
 
-function formatMD(d: Date): string {
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -40,20 +36,13 @@ function digitsOnly(v: string): string {
   return v.replace(/[^\d]/g, '').slice(0, 2);
 }
 
-/** 「MM/DD」+ 时 + 分 三个输入框的值都合法时才拼出一个新 Date，年份沿用 base 的年份 */
-function tryParseDatePart(base: Date, dateStr: string, hourStr: string, minuteStr: string): Date | null {
-  const m = dateStr.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (!m) return null;
-  const month = parseInt(m[1], 10);
-  const day = parseInt(m[2], 10);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+/** 时+分都合法时才拼出一个新 Date，年月日沿用 base 的年月日——弹窗里不再让改日期 */
+function tryParseTimePart(base: Date, hourStr: string, minuteStr: string): Date | null {
   if (!/^\d{1,2}$/.test(hourStr) || !/^\d{1,2}$/.test(minuteStr)) return null;
   const hour = parseInt(hourStr, 10);
   const minute = parseInt(minuteStr, 10);
   if (hour > 23 || minute > 59) return null;
   const next = new Date(base);
-  next.setMonth(month - 1, day);
-  if (next.getMonth() !== month - 1) return null; // 比如02/30会进位到3月，判定这个日期非法
   next.setHours(hour, minute, 0, 0);
   return next;
 }
@@ -85,10 +74,8 @@ export function AddLogModal({
   const [saving, setSaving] = useState(false);
   const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
 
-  const [startDateStr, setStartDateStr] = useState('');
   const [startHourStr, setStartHourStr] = useState('');
   const [startMinuteStr, setStartMinuteStr] = useState('');
-  const [endDateStr, setEndDateStr] = useState('');
   const [endHourStr, setEndHourStr] = useState('');
   const [endMinuteStr, setEndMinuteStr] = useState('');
 
@@ -113,10 +100,8 @@ export function AddLogModal({
     }
     setStart(s);
     setEnd(e);
-    setStartDateStr(formatMD(s));
     setStartHourStr(pad2(s.getHours()));
     setStartMinuteStr(pad2(s.getMinutes()));
-    setEndDateStr(formatMD(e));
     setEndHourStr(pad2(e.getHours()));
     setEndMinuteStr(pad2(e.getMinutes()));
     setCategoryPanelOpen(false);
@@ -124,12 +109,12 @@ export function AddLogModal({
 
   const selectedCategory = categoryId ? categories.find((c) => c.id === categoryId) ?? null : null;
 
-  function commitStart(dateStr: string, hourStr: string, minuteStr: string) {
-    const d = tryParseDatePart(start, dateStr, hourStr, minuteStr);
+  function commitStart(hourStr: string, minuteStr: string) {
+    const d = tryParseTimePart(start, hourStr, minuteStr);
     if (d) setStart(d);
   }
-  function commitEnd(dateStr: string, hourStr: string, minuteStr: string) {
-    const d = tryParseDatePart(end, dateStr, hourStr, minuteStr);
+  function commitEnd(hourStr: string, minuteStr: string) {
+    const d = tryParseTimePart(end, hourStr, minuteStr);
     if (d) setEnd(d);
   }
 
@@ -229,7 +214,11 @@ export function AddLogModal({
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.scrollArea}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.topRow}>
                 <Pressable style={styles.catTrigger} onPress={() => setCategoryPanelOpen((v) => !v)}>
                   <View style={[styles.catDot, { backgroundColor: selectedCategory?.color ?? colors.textMuted }]} />
@@ -248,22 +237,12 @@ export function AddLogModal({
                   <Text style={styles.timeGroupLabel}>上尾</Text>
                   <View style={styles.timeInputRow}>
                     <TextInput
-                      style={styles.dateInput}
-                      value={startDateStr}
-                      onChangeText={(v) => {
-                        setStartDateStr(v);
-                        commitStart(v, startHourStr, startMinuteStr);
-                      }}
-                      placeholder="MM/DD"
-                      placeholderTextColor={colors.textMuted}
-                    />
-                    <TextInput
                       style={styles.hmInput}
                       value={startHourStr}
                       onChangeText={(v) => {
                         const d = digitsOnly(v);
                         setStartHourStr(d);
-                        commitStart(startDateStr, d, startMinuteStr);
+                        commitStart(d, startMinuteStr);
                       }}
                       keyboardType="number-pad"
                       maxLength={2}
@@ -275,7 +254,7 @@ export function AddLogModal({
                       onChangeText={(v) => {
                         const d = digitsOnly(v);
                         setStartMinuteStr(d);
-                        commitStart(startDateStr, startHourStr, d);
+                        commitStart(startHourStr, d);
                       }}
                       keyboardType="number-pad"
                       maxLength={2}
@@ -286,22 +265,12 @@ export function AddLogModal({
                   <Text style={styles.timeGroupLabel}>下始</Text>
                   <View style={styles.timeInputRow}>
                     <TextInput
-                      style={styles.dateInput}
-                      value={endDateStr}
-                      onChangeText={(v) => {
-                        setEndDateStr(v);
-                        commitEnd(v, endHourStr, endMinuteStr);
-                      }}
-                      placeholder="MM/DD"
-                      placeholderTextColor={colors.textMuted}
-                    />
-                    <TextInput
                       style={styles.hmInput}
                       value={endHourStr}
                       onChangeText={(v) => {
                         const d = digitsOnly(v);
                         setEndHourStr(d);
-                        commitEnd(endDateStr, d, endMinuteStr);
+                        commitEnd(d, endMinuteStr);
                       }}
                       keyboardType="number-pad"
                       maxLength={2}
@@ -313,7 +282,7 @@ export function AddLogModal({
                       onChangeText={(v) => {
                         const d = digitsOnly(v);
                         setEndMinuteStr(d);
-                        commitEnd(endDateStr, endHourStr, d);
+                        commitEnd(endHourStr, d);
                       }}
                       keyboardType="number-pad"
                       maxLength={2}
@@ -376,32 +345,32 @@ export function AddLogModal({
                   );
                 })}
               </View>
-
-              <View style={styles.actions}>
-                {isEdit ? (
-                  <>
-                    <Pressable style={styles.deleteButton} onPress={handleDelete}>
-                      <Text style={styles.deleteButtonText}>删除</Text>
-                    </Pressable>
-                    <Pressable style={styles.outlineButton} onPress={handleSaveAndContinue} disabled={saving}>
-                      <Text style={styles.outlineButtonText}>继续添加</Text>
-                    </Pressable>
-                    <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
-                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>修改</Text>}
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Pressable style={styles.outlineButton} onPress={onClose}>
-                      <Text style={styles.outlineButtonText}>取消</Text>
-                    </Pressable>
-                    <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
-                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>保存</Text>}
-                    </Pressable>
-                  </>
-                )}
-              </View>
             </ScrollView>
+
+            <View style={styles.actions}>
+              {isEdit ? (
+                <>
+                  <Pressable style={styles.deleteButton} onPress={handleDelete}>
+                    <Text style={styles.deleteButtonText}>删除</Text>
+                  </Pressable>
+                  <Pressable style={styles.outlineButton} onPress={handleSaveAndContinue} disabled={saving}>
+                    <Text style={styles.outlineButtonText}>继续添加</Text>
+                  </Pressable>
+                  <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>修改</Text>}
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable style={styles.outlineButton} onPress={onClose}>
+                    <Text style={styles.outlineButtonText}>取消</Text>
+                  </Pressable>
+                  <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>保存</Text>}
+                  </Pressable>
+                </>
+              )}
+            </View>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
@@ -419,6 +388,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     maxHeight: '85%',
   },
+  // flexShrink让ScrollView在sheet被maxHeight限高时自己收缩出内部滚动，
+  // 而不是把actions一起挤出maxHeight顶到不可见——actions是ScrollView的
+  // 兄弟节点而不是滚动内容的一部分，才能保证它始终贴底可见
+  scrollArea: { flexShrink: 1 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   catTrigger: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   catDot: { width: 14, height: 14, borderRadius: 7 },
@@ -428,22 +401,9 @@ const styles = StyleSheet.create({
   durationPillText: { fontSize: fontSize.tiny, color: colors.textSecondary, fontWeight: '600' },
 
   timeGroupsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  // minWidth:0是关键——flex子项默认min-width是内容的intrinsic宽度不是0，
-  // <input>有个天生的最小宽度，光flex:1不会让它真的缩到可用空间以内，
-  // 实测两组时间并排时右边那组会被撑到裁到屏幕外面去
-  timeGroup: { flex: 1, minWidth: 0 },
+  timeGroup: { flex: 1 },
   timeGroupLabel: { fontSize: fontSize.tiny, color: colors.textMuted, marginBottom: 4 },
   timeInputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  dateInput: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: fontSize.body,
-    color: colors.textPrimary,
-  },
   hmInput: {
     width: 44,
     backgroundColor: colors.background,
