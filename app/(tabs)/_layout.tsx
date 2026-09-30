@@ -4,6 +4,7 @@ import { colors } from '../../constants/theme';
 
 const TAB_ICONS: Record<string, string> = {
   index: '🕐',
+  todo: '✅',
   checkin: '📌',
   chat: '💬',
   notes: '📁',
@@ -28,6 +29,7 @@ export default function TabsLayout() {
       })}
     >
       <Tabs.Screen name="index" options={{ title: '时间' }} />
+      <Tabs.Screen name="todo" options={{ title: '事项' }} />
       <Tabs.Screen name="checkin" options={{ title: '打卡' }} />
       <Tabs.Screen name="notes" options={{ title: '笔记' }} />
       <Tabs.Screen name="chat" options={{ title: '聊天', href: null }} />

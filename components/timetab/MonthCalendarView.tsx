@@ -1,38 +1,36 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { fetchMonthSummaries } from '../../lib/timeline';
-import { fetchMonthStats } from '../../lib/timelog';
 
 interface MonthCalendarViewProps {
   month: Date; // 任意一天代表这个月
   onMonthChange: (month: Date) => void;
   onSelectDate: (date: Date) => void;
-  refreshKey: number;
+  // 下面三个都是调用方按dateKey('YYYY-MM-DD')算好传进来的展示数据——这个组件
+  // 只管月历骨架(导航/星期行/周网格)，不跟任何一个模块的具体数据源绑死，
+  // 时间日志模块传分类主导色+AI总结摘要，事项模块传"这天有事项就点个小点"
+  cellBackgroundColors?: Record<string, string>;
+  cellExtraText?: Record<string, string>;
+  cellDots?: Record<string, boolean>;
 }
 
 const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
-function toDateKey(date: Date): string {
+export function toMonthDateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
-export function MonthCalendarView({ month, onMonthChange, onSelectDate, refreshKey }: MonthCalendarViewProps) {
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
-  const [dominantColors, setDominantColors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    fetchMonthSummaries(month.getFullYear(), month.getMonth()).then(setSummaries);
-    fetchMonthStats(month.getFullYear(), month.getMonth()).then((stats) => {
-      const colorsByDay: Record<string, string> = {};
-      for (const [day, v] of Object.entries(stats)) colorsByDay[day] = v.color;
-      setDominantColors(colorsByDay);
-    });
-  }, [month, refreshKey]);
-
+export function MonthCalendarView({
+  month,
+  onMonthChange,
+  onSelectDate,
+  cellBackgroundColors,
+  cellExtraText,
+  cellDots,
+}: MonthCalendarViewProps) {
   const weeks = useMemo(() => {
     const year = month.getFullYear();
     const m = month.getMonth();
@@ -78,23 +76,20 @@ export function MonthCalendarView({ month, onMonthChange, onSelectDate, refreshK
           {week.map((day, j) => {
             if (!day) return <View key={j} style={styles.cell} />;
             const isToday = day.toDateString() === today.toDateString();
-            const summary = summaries[toDateKey(day)];
-            const dominantColor = dominantColors[toDateKey(day)];
+            const key = toMonthDateKey(day);
+            const bgColor = cellBackgroundColors?.[key];
+            const extraText = cellExtraText?.[key];
+            const showDot = cellDots?.[key];
             return (
               <Pressable key={j} style={styles.cell} onPress={() => onSelectDate(day)}>
-                <View
-                  style={[
-                    styles.cellInner,
-                    dominantColor ? { backgroundColor: dominantColor + '38' } : null,
-                    isToday && styles.cellToday,
-                  ]}
-                >
+                <View style={[styles.cellInner, bgColor ? { backgroundColor: bgColor } : null, isToday && styles.cellToday]}>
                   <Text style={[styles.dayNumber, isToday && styles.dayNumberToday]}>{day.getDate()}</Text>
-                  {summary && (
+                  {extraText && (
                     <Text style={styles.summaryText} numberOfLines={2}>
-                      {summary}
+                      {extraText}
                     </Text>
                   )}
+                  {showDot && <View style={styles.dayDot} />}
                 </View>
               </Pressable>
             );
@@ -130,4 +125,5 @@ const styles = StyleSheet.create({
   dayNumber: { fontSize: fontSize.secondary, color: colors.textPrimary, fontWeight: '600' },
   dayNumberToday: { color: colors.purpleDark },
   summaryText: { fontSize: 9, lineHeight: 11, color: colors.textSecondary, marginTop: 2, includeFontPadding: false },
+  dayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.purpleDark, marginTop: 3, alignSelf: 'center' },
 });

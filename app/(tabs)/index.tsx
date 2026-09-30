@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,8 @@ import { TimeBlockView } from '../../components/timetab/TimeBlockView';
 import { TimeAxisView } from '../../components/timetab/TimeAxisView';
 import { MonthCalendarView } from '../../components/timetab/MonthCalendarView';
 import { StatsView } from '../../components/timetab/StatsView';
+import { fetchLogCountsForRange, fetchMonthStats } from '../../lib/timelog';
+import { fetchMonthSummaries } from '../../lib/timeline';
 
 type ViewMode = 'day' | 'month' | 'stats';
 type DayView = 'block' | 'axis'; // block=时间块, axis=时间轴
@@ -19,6 +21,21 @@ export default function TimelineScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   // 记住进统计页之前停在哪个视图，"统计"按钮变开关：再点一次回到那个视图
   const preStatsMode = useRef<'day' | 'month'>('day');
+
+  // 月历格子的底色/摘要——MonthCalendarView本身不跟任何数据源绑死，
+  // 数据在这个页面自己算好再传下去
+  const [monthColors, setMonthColors] = useState<Record<string, string>>({});
+  const [monthSummaries, setMonthSummaries] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (mode !== 'month') return;
+    fetchMonthSummaries(date.getFullYear(), date.getMonth()).then(setMonthSummaries);
+    fetchMonthStats(date.getFullYear(), date.getMonth()).then((stats) => {
+      const colorsByDay: Record<string, string> = {};
+      for (const [day, v] of Object.entries(stats)) colorsByDay[day] = v.color + '38';
+      setMonthColors(colorsByDay);
+    });
+  }, [mode, date.getFullYear(), date.getMonth(), refreshKey]);
 
   function bumpRefresh() {
     setRefreshKey((k) => k + 1);
@@ -53,7 +70,9 @@ export default function TimelineScreen() {
         </View>
       </View>
 
-      {mode === 'day' && <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} />}
+      {mode === 'day' && (
+        <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} fetchCounts={fetchLogCountsForRange} />
+      )}
 
       {mode === 'day' &&
         (dayView === 'block' ? (
@@ -69,7 +88,8 @@ export default function TimelineScreen() {
             setDate(d);
             setMode('day');
           }}
-          refreshKey={refreshKey}
+          cellBackgroundColors={monthColors}
+          cellExtraText={monthSummaries}
         />
       )}
       {mode === 'stats' && <StatsView />}

@@ -248,6 +248,43 @@ export interface Note {
   updated_at: string;
 }
 
+// ---- 事项待办（独立分类体系，不跟时间日志共用） ----
+
+export type TodoRepeatType = 'none' | 'daily' | 'weekly' | 'monthly';
+
+export interface TodoCategory {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  archived: boolean;
+  created_at: string;
+}
+
+export interface TodoItem {
+  id: string;
+  content: string;
+  category_id: string | null;
+  important: boolean;
+  date: string; // 'YYYY-MM-DD'，重复事项的起算点
+  repeat_type: TodoRepeatType;
+  repeat_weekdays: number[] | null; // repeat_type='weekly'时用，0=周日...6=周六(JS Date.getDay()约定)
+  repeat_day_of_month: number | null; // repeat_type='monthly'时用，1-31；0表示"最后一天"
+  reminder_enabled: boolean;
+  reminder_time: string | null; // 'HH:MM'
+  done: boolean; // 只对repeat_type='none'的事项有意义
+  completed_at: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface TodoCompletion {
+  id: string;
+  todo_id: string;
+  date: string; // 'YYYY-MM-DD'，重复事项这一天完成了就有一条
+  created_at: string;
+}
+
 // ---- 派生/UI类型 ----
 
 export interface DecayResult {

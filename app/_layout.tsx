@@ -7,10 +7,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Updates from 'expo-updates';
 import { colors } from '../constants/theme';
 import { useDecayNotifications } from '../lib/useDecayNotifications';
+import { useTodoReminders } from '../lib/useTodoReminders';
 import { flushSync } from '../lib/timelogSync';
 
 export default function RootLayout() {
   useDecayNotifications();
+  useTodoReminders();
 
   useEffect(() => {
     flushSync();
@@ -90,6 +92,7 @@ export default function RootLayout() {
           />
           <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import type { Action, Card } from '../types';
+import type { Action, Card, TodoItem } from '../types';
 import { getActionDecay } from './decay';
 
 const TIMER_IDENTIFIER_PREFIX = 'ximi-timer-';
@@ -101,4 +101,32 @@ export async function scheduleTimerNotification(label: string, seconds: number):
 
 export async function cancelTimerNotification(identifier: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+}
+
+const todoNotificationIdKey = (todoId: string) => `ximi-todo-${todoId}`;
+
+/**
+ * 事项提醒：调用方(useTodoReminders)算好"下一次该提醒的具体时间点"传进来，
+ * 这里只管调度一次性DATE trigger。重复事项的"下一次"由调用方周期性重算并
+ * 重新调用这个函数来实现，不在这里做原生的daily/weekly/monthly trigger——
+ * 这样"每月最后一天"这种原生trigger类型表达不了的场景也能用同一套机制处理。
+ */
+export async function scheduleTodoReminder(item: TodoItem, occurrence: Date): Promise<void> {
+  const identifier = todoNotificationIdKey(item.id);
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier,
+    content: {
+      title: '该做了',
+      body: item.content,
+      ...(Platform.OS === 'android' ? { channelId: 'ximi-default' } : {}),
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: occurrence },
+  });
+}
+
+export async function cancelTodoReminder(todoId: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(todoNotificationIdKey(todoId)).catch(() => {});
 }

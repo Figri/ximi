@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { fetchLogCountsForRange } from '../../lib/timelog';
 
 const SWIPE_THRESHOLD = 50;
 
@@ -30,9 +29,12 @@ interface WeekDateStripProps {
   date: Date;
   onDateChange: (date: Date) => void;
   refreshKey: number;
+  // 这周7天各自的"有几条"数字，不传就不显示——time模块传time_logs条数，
+  // todo模块传当天事项数，让这个组件不跟任何一个模块的数据源绑死
+  fetchCounts: (dates: Date[]) => Promise<Record<string, number>>;
 }
 
-export function WeekDateStrip({ date, onDateChange, refreshKey }: WeekDateStripProps) {
+export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts }: WeekDateStripProps) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const today = new Date();
   const weekStart = startOfWeek(date);
@@ -43,7 +45,7 @@ export function WeekDateStrip({ date, onDateChange, refreshKey }: WeekDateStripP
   });
 
   useEffect(() => {
-    fetchLogCountsForRange(days).then(setCounts);
+    fetchCounts(days).then(setCounts);
   }, [weekStart.getTime(), refreshKey]);
 
   // 不去真的抢responder（一直return false），完全不影响Pressable的点击。
