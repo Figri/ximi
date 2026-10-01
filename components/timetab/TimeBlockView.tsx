@@ -182,6 +182,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return rects;
   }, [logs, categories, cellWidth, ROW_H, dayStart]);
 
+  // 网格分隔线位置：行线/列线的坐标直接用 ROW_H/cellWidth 单独算，不靠一个个
+  // 格子的宽度首尾相接拼出来——12列累计取整误差拼不齐导致右边缘留白条，就是
+  // 栽在"拼接"这个方式上。背景本身还是一整块100%宽的矩形（没有拼接），线条只是
+  // 叠在它上面的装饰，每条线独立计算位置，不存在谁得为前面的误差买单
+  const colDividers = useMemo(() => {
+    if (cellWidth <= 0) return [];
+    return Array.from({ length: CELLS_PER_ROW - 1 }, (_, i) => (i + 1) * cellWidth);
+  }, [cellWidth]);
+
+  const rowDividers = useMemo(() => {
+    if (ROW_H <= 0) return [];
+    return Array.from({ length: 24 - 1 }, (_, i) => (i + 1) * ROW_H);
+  }, [ROW_H]);
+
   // 选中的格子：在原有内容上叠一层半透明黑——有色块盖着的深一点，空格子浅一点
   const selectionRects = useMemo<SelectionRect[]>(() => {
     if (ROW_H <= 0 || cellWidth <= 0 || selected.size === 0) return [];
@@ -263,10 +277,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {/* 底层：单一矩形的干净浅色背景——不再逐格描边填色。贴合原app"空白
-                  时段是一片干净背景"的视觉，同时天然避免12等分逐格取整误差累计
-                  导致右侧留白条的问题（一整块矩形没有"拼不齐"这回事） */}
+              {/* 底层：一整块矩形背景（不是288个拼接的小格子，右边缘天然不会留白条），
+                  上面叠24行×12列的浅色分隔线做格子纹理——这是产品钉死的效果，不能因为
+                  别的理由（比如"贴合原app干净背景"）被偷偷换掉 */}
               <View style={[styles.gridBackground, { height: 24 * ROW_H }]} pointerEvents="none" />
+              {rowDividers.map((y, i) => (
+                <View key={`rd${i}`} style={[styles.gridLineH, { top: y }]} pointerEvents="none" />
+              ))}
+              {colDividers.map((x, i) => (
+                <View
+                  key={`cd${i}`}
+                  style={[styles.gridLineV, { left: x, height: 24 * ROW_H }]}
+                  pointerEvents="none"
+                />
+              ))}
 
               {/* 中层：每条记录一个（跨行拆成几个）绝对定位色块，不再逐格拼色 */}
               {logBlocks.map((rect) => (
@@ -337,6 +361,8 @@ const styles = StyleSheet.create({
   hourLabel: { fontSize: 10, color: colors.textMuted },
   trackCol: { flex: 1, position: 'relative', marginLeft: 3 },
   gridBackground: { width: '100%', backgroundColor: '#DCEBF7', borderRadius: 4 },
+  gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
+  gridLineV: { position: 'absolute', top: 0, width: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
   logBlock: {
     position: 'absolute',
     borderRadius: 4,
