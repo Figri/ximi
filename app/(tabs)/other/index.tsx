@@ -231,6 +231,10 @@ export default function OtherScreen() {
         <View style={styles.sectionDivider} />
 
         <Text style={styles.sectionLabel}>设置</Text>
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/schedule-template')}>
+          <Text style={styles.templateLinkText}>📅 日常作息模板</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
         <Text style={styles.intro}>
           每个 key 只存在这台手机本地（系统安全存储），不会传到 Supabase 或者任何服务器。换 APP/清数据要重新填。
         </Text>
@@ -346,6 +350,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   intro: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: 18 },
+  templateLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  templateLinkText: { fontSize: fontSize.body, color: colors.textPrimary },
+  moreArrow: { fontSize: fontSize.cardName, color: colors.textMuted },
   providerCard: { backgroundColor: colors.card, borderRadius: radius.card, marginBottom: spacing.sm, overflow: 'hidden' },
   providerRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm },
   radio: { width: 16, height: 16, borderRadius: radius.avatar, borderWidth: 2, borderColor: colors.textMuted },

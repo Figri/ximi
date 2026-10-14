@@ -285,6 +285,52 @@ export interface TodoCompletion {
   created_at: string;
 }
 
+// ---- 日程模块（v1.2）----
+
+export type ScheduleSlot = 'allday' | '08' | '10' | '12' | '14' | '16' | '18' | '20' | '22';
+
+export interface ScheduleTemplateVersion {
+  id: string;
+  effective_from: string; // 'YYYY-MM-DD'，改模板=新建一个effective_from=明天的版本，不覆盖旧版本
+  created_at: string;
+}
+
+export interface ScheduleTemplateItem {
+  id: string;
+  version_id: string;
+  slot: ScheduleSlot;
+  title: string;
+  sort: number;
+}
+
+export interface ScheduleItem {
+  id: string;
+  date: string; // 'YYYY-MM-DD'，重复事项的起算点，不重复就是它归属的那天
+  slot: ScheduleSlot | null;
+  title: string;
+  starred: boolean;
+  remind_at: string | null;
+  recurring_rule: string | null; // null=单个事项；'weekly:1,5'=每周一五；'monthly:7,22'=每月7/22号
+  sort: number;
+  created_at: string;
+}
+
+export type ScheduleCheckSource = 'template' | 'item';
+
+export interface ScheduleCheck {
+  id: string;
+  date: string; // 'YYYY-MM-DD'
+  source: ScheduleCheckSource;
+  ref_id: string; // source='template'指向ScheduleTemplateItem.id，source='item'指向ScheduleItem.id
+  title_snapshot: string;
+  done_at: string;
+}
+
+export interface ScheduleDiary {
+  date: string; // 'YYYY-MM-DD'，主键
+  content: string;
+}
+
 // ---- 派生/UI类型 ----
 
 export interface DecayResult {

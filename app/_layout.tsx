@@ -83,6 +83,16 @@ export default function RootLayout() {
           <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
           <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />
+          <Stack.Screen
+            name="schedule-template"
+            options={{
+              headerShown: true,
+              title: '日常作息模板',
+              presentation: 'modal',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.textPrimary,
+            }}
+          />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -29,6 +29,7 @@ export const FEATURES: Feature[] = [
   { key: 'chat', label: '聊天', icon: '💬', screenName: 'chat', route: '/chat', otherRoute: '/other/chat', fixed: false },
   { key: 'record', label: '记录', icon: '📋', screenName: 'record', route: '/record', otherRoute: '/other/record', fixed: false },
   { key: 'data', label: '数据', icon: '📊', screenName: 'data', route: '/data', otherRoute: '/other/data', fixed: false },
+  { key: 'schedule', label: '日程', icon: '🗓️', screenName: 'schedule', route: '/schedule', otherRoute: '/other/schedule', fixed: false },
   { key: 'other', label: '其他', icon: '⋯', screenName: 'other', route: '/other', otherRoute: '/other', fixed: true },
 ];
 

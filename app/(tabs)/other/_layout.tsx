@@ -23,6 +23,7 @@ export default function OtherLayout() {
       <Stack.Screen name="chat" options={{ title: '聊天' }} />
       <Stack.Screen name="record" options={{ title: '记录' }} />
       <Stack.Screen name="data" options={{ title: '数据' }} />
+      <Stack.Screen name="schedule" options={{ title: '日程' }} />
     </Stack>
   );
 }
