@@ -92,7 +92,7 @@ export default function ChatScreen() {
       { text: `切换模型（当前：${currentLabel}）`, onPress: handleModelCycle },
       { text: '🌙 手动做梦（生成今日总结）', onPress: handleManualDream },
       { text: 'AI 记忆', onPress: () => router.push('/memory') },
-      { text: '设置', onPress: () => router.push('/settings') },
+      { text: '设置', onPress: () => router.push('/other') },
       { text: '取消', style: 'cancel' },
     ]);
   }

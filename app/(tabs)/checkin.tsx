@@ -26,9 +26,6 @@ export default function CheckinScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>打卡</Text>
         <View style={styles.headerButtons}>
-          <Pressable style={styles.iconButton} onPress={() => router.push('/settings')}>
-            <Text style={styles.iconButtonText}>⚙️</Text>
-          </Pressable>
           <Pressable style={styles.addButton} onPress={() => router.push('/habit/new')}>
             <Text style={styles.addButtonText}>＋</Text>
           </Pressable>

@@ -71,16 +71,6 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
-            name="settings"
-            options={{
-              headerShown: true,
-              title: '设置',
-              presentation: 'modal',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.textPrimary,
-            }}
-          />
-          <Stack.Screen
             name="memory"
             options={{
               headerShown: true,
