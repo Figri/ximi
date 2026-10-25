@@ -7,6 +7,7 @@ import { addFragment, deleteFragment } from './fragments';
 import { addStateEvent, STATE_WORDS, type StateWord } from './states';
 import { queueIdea, removeIdea, removeStateEvent } from './notion/sync';
 import { loadLingSettings } from './ling/settings';
+import { linkTodoToCats } from './catTodos';
 import { dateKeyOf, describeParsed, parseCapture, type CaptureKind, type ParsedCapture, type ParseContext } from './captureParse';
 
 // 右下角 ＋ 记下的一句话：按规则归到对的地方（captureParse.ts），存好，结果显示成小标签；
@@ -22,7 +23,6 @@ export interface SavedCapture {
 }
 
 const K_DRAFT = 'capture_draft_v1';
-const K_TODO_CATS = 'todo_cat_links_v1';
 
 export async function captureContext(now = new Date()): Promise<ParseContext> {
   const [settings, cats, categories] = await Promise.all([
@@ -45,18 +45,12 @@ export async function analyze(text: string, now = new Date()): Promise<{ parsed:
   return { parsed, label: describeParsed(parsed, now, ctx.dayStartHour) };
 }
 
-/** 事项提到了哪只猫：先记在本地，猫咪页（第四期）按这个把事项挂到猫身上 */
+/** 事项提到了哪只猫：挂到猫身上，猫咪页能看到 */
 async function linkTodoCats(todoId: string, catNames: string[]): Promise<void> {
   if (!catNames.length) return;
   const cats = await fetchCats().catch(() => []);
   const ids = cats.filter((c) => catNames.includes(c.name)).map((c) => c.id);
-  if (!ids.length) return;
-  try {
-    const raw = await AsyncStorage.getItem(K_TODO_CATS);
-    const map: Record<string, string[]> = raw ? JSON.parse(raw) : {};
-    map[todoId] = ids;
-    await AsyncStorage.setItem(K_TODO_CATS, JSON.stringify(map));
-  } catch {}
+  await linkTodoToCats(todoId, ids).catch(() => {});
 }
 
 export async function saveParsed(p: ParsedCapture, now = new Date()): Promise<SavedCapture> {

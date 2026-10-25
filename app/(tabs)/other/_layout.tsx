@@ -25,6 +25,10 @@ export default function OtherLayout() {
       <Stack.Screen name="record" options={{ title: '记录' }} />
       <Stack.Screen name="data" options={{ title: '数据' }} />
       <Stack.Screen name="schedule" options={{ title: '日程' }} />
+      {/* 这三页自己带标题和返回（components/common/PageTitle），不用系统标题栏 */}
+      <Stack.Screen name="review" options={{ headerShown: false }} />
+      <Stack.Screen name="cats" options={{ headerShown: false }} />
+      <Stack.Screen name="body" options={{ headerShown: false }} />
     </Stack>
   );
 }

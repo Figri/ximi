@@ -82,7 +82,7 @@ export interface Cat {
   created_at: string;
 }
 
-export type CatEventType = '绝育' | '疫苗' | '看医生' | '体重' | '其他';
+export type CatEventType = '绝育' | '疫苗' | '驱虫' | '看医生' | '体重' | '其他';
 
 export interface CatEvent {
   id: string;

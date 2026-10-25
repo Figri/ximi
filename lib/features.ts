@@ -32,6 +32,10 @@ export const FEATURES: Feature[] = [
   { key: 'record', label: '记录', icon: '📋', screenName: 'record', route: '/record', otherRoute: '/other/record', fixed: false },
   { key: 'data', label: '数据', icon: '📊', screenName: 'data', route: '/data', otherRoute: '/other/data', fixed: false },
   { key: 'schedule', label: '日程', icon: '🗓️', screenName: 'schedule', route: '/schedule', otherRoute: '/other/schedule', fixed: false },
+  // 2.0 第四期：本周（取代「数据」）、猫咪、身体
+  { key: 'review', label: '本周', icon: '📅', screenName: 'review', route: '/review', otherRoute: '/other/review', fixed: false },
+  { key: 'cats', label: '猫咪', icon: '🐱', screenName: 'cats', route: '/cats', otherRoute: '/other/cats', fixed: false },
+  { key: 'body', label: '身体', icon: '🌙', screenName: 'body', route: '/body', otherRoute: '/other/body', fixed: false },
   { key: 'other', label: '其他', icon: '⋯', screenName: 'other', route: '/other', otherRoute: '/other', fixed: true },
 ];
 

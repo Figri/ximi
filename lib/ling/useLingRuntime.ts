@@ -7,6 +7,7 @@ import { cancelLegacyNotifications, deliverDue, dropOutboxItem, refreshDrafts, r
 import { useLingSettings } from './settings';
 import { useLingThread } from './thread';
 import { syncAll } from '../notion/sync';
+import { useLingLock } from './lock';
 
 const K_LEGACY_CANCELLED = 'ling_legacy_cancelled_v1';
 const DRAFT_REFRESH_MS = 3 * 3600 * 1000;
@@ -46,7 +47,11 @@ export function useLingRuntime() {
 
     const appSub = AppState.addEventListener('change', (state) => {
       if (state === 'active') onActive();
-      else if (state === 'background') rescheduleAll().catch(() => {});
+      else if (state === 'background') {
+        rescheduleAll().catch(() => {});
+        // 灵空间锁：一离开 App 就重新锁上
+        useLingLock.getState().lock();
+      }
     });
 
     const timer = setInterval(() => {

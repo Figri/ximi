@@ -34,6 +34,9 @@ import { useLingThread } from '../lib/ling/thread';
 import { pendingOutbox, rescheduleAll, sendTestNotification, type OutboxItem } from '../lib/ling/proactive';
 import { KIND_LABEL } from '../lib/ling/templates';
 import { pushInOsToNotion } from '../lib/notion/sync';
+import { useLingLock } from '../lib/ling/lock';
+import { LingLockGate } from '../components/ling/LingLockGate';
+import { PinPad } from '../components/ling/PinPad';
 
 type SampleKind = 'miss_you' | 'mention' | 'reminder' | 'catch';
 const SAMPLE_KINDS: SampleKind[] = ['miss_you', 'catch', 'reminder', 'mention'];
@@ -57,6 +60,14 @@ function Seg<T extends string | number>({ value, options, onChange }: { value: T
 }
 
 export default function LingSettingsScreen() {
+  return (
+    <LingLockGate>
+      <LingSettingsBody />
+    </LingLockGate>
+  );
+}
+
+function LingSettingsBody() {
   const { settings, model, load, update, setModel } = useLingSettings();
   const messages = useLingThread((s) => s.messages);
   const [layers, setLayers] = useState<Layers>({});
@@ -71,6 +82,9 @@ export default function LingSettingsScreen() {
   const [quiet, setQuiet] = useState({ start: settings.quietStart, end: settings.quietEnd });
   const [pending, setPending] = useState<OutboxItem[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  /** 灵空间锁：set = 设新密码，off = 关之前先输现在的，change = 改之前先输现在的 */
+  const [pinFlow, setPinFlow] = useState<'set' | 'off' | 'change' | null>(null);
+  const lock = useLingLock();
 
   const refresh = useCallback(async () => {
     const s = await load();
@@ -259,6 +273,32 @@ export default function LingSettingsScreen() {
           </View>
         </View>
 
+        <Text style={styles.section}>隐私</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>灵空间锁{lock.enabled ? '（开着）' : ''}</Text>
+            {lock.enabled ? (
+              <View style={styles.inlineLinks}>
+                <Pressable onPress={() => setPinFlow('change')} hitSlop={8}>
+                  <Text style={styles.link}>改密码</Text>
+                </Pressable>
+                <Pressable onPress={() => setPinFlow('off')} hitSlop={8} testID="lock-off">
+                  <Text style={styles.link}>关掉</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => setPinFlow('set')} hitSlop={8} testID="lock-set">
+                <Text style={styles.link}>设密码</Text>
+              </Pressable>
+            )}
+          </View>
+          <Text style={styles.hint}>进「灵」和这一页要先输 4 位密码；App 一到后台就重新锁上。忘了密码可以在密码盘上点「忘了」，等 60 秒锁就关掉。</Text>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>对话每月存进 Notion</Text>
+            <Switch value={settings.archiveChatToNotion} onValueChange={(v) => update({ archiveChatToNotion: v })} testID="archive-switch" />
+          </View>
+        </View>
+
         <Text style={styles.section}>接下来排了什么</Text>
         <View style={styles.card}>
           {pending.length === 0 ? <Text style={styles.muted}>现在没排。离开 App 时会按规矩排好。</Text> : null}
@@ -403,12 +443,45 @@ export default function LingSettingsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal visible={pinFlow != null} animationType="fade" onRequestClose={() => setPinFlow(null)}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+          {pinFlow === 'set' ? (
+            <PinPad
+              key="set"
+              mode="set"
+              onCancel={() => setPinFlow(null)}
+              onDone={async (pin) => {
+                await lock.setPin(pin);
+                setPinFlow(null);
+                flash('锁好了，下次进来要输密码');
+              }}
+            />
+          ) : pinFlow ? (
+            <PinPad
+              key="verify"
+              mode="verify"
+              onCancel={() => setPinFlow(null)}
+              onDone={async () => {
+                if (pinFlow === 'off') {
+                  await lock.clearPin();
+                  setPinFlow(null);
+                  flash('锁关掉了');
+                } else {
+                  setPinFlow('set');
+                }
+              }}
+            />
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: room.bg },
+  inlineLinks: { flexDirection: 'row', gap: 16 },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   back: { color: room.accent, fontSize: 14 },

@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { room } from '../../constants/room';
 import { MessageSheet } from '../../components/ling/MessageSheet';
+import { LingLockGate } from '../../components/ling/LingLockGate';
 import { useLingThread, type LingMessage } from '../../lib/ling/thread';
 import { replyTo, NoKeyError, currentBrain } from '../../lib/ling/brain';
 import { executeLingActions } from '../../lib/ling/actions';
@@ -46,6 +47,14 @@ function hhmm(iso: string): string {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function LingScreen() {
+  return (
+    <LingLockGate>
+      <LingRoom />
+    </LingLockGate>
+  );
+}
+
+function LingRoom() {
   const { messages, loaded, typing, load, add, setTyping, feedback } = useLingThread();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
