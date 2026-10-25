@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -27,6 +26,8 @@ interface AddLogModalProps {
   onClose: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
+  /** 长按格子打开时：直接把光标放进「描述」、弹出键盘 */
+  focusDescription?: boolean;
 }
 
 function pad2(n: number): string {
@@ -57,6 +58,7 @@ export function AddLogModal({
   onClose,
   onSaved,
   onDeleted,
+  focusDescription,
 }: AddLogModalProps) {
   const { categories, tags } = useTimeLogStore();
   const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
@@ -82,6 +84,11 @@ export function AddLogModal({
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
+
+  // 不弹系统框：没选分类在底下说一句；删除点一下变「再点一次删除」
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const descRef = useRef<TextInput>(null);
 
   const [startHourStr, setStartHourStr] = useState('');
   const [startMinuteStr, setStartMinuteStr] = useState('');
@@ -114,7 +121,16 @@ export function AddLogModal({
     setEndHourStr(pad2(e.getHours()));
     setEndMinuteStr(pad2(e.getMinutes()));
     setCategoryPanelOpen(false);
+    setError(null);
+    setConfirmDelete(false);
   }, [visible, log, initialCategoryId, initialStart, initialEnd]);
+
+  // 弹窗刚出来时输入框可能还没挂上，autoFocus 在安卓弹窗里不一定生效：稍等一下再手动聚焦一次
+  useEffect(() => {
+    if (!visible || !focusDescription) return;
+    const t = setTimeout(() => descRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [visible, focusDescription]);
 
   const selectedCategory = categoryId ? categories.find((c) => c.id === categoryId) ?? null : null;
 
@@ -153,9 +169,11 @@ export function AddLogModal({
 
   async function persist(): Promise<boolean> {
     if (!categoryId) {
-      Alert.alert('选个分类吧', '这段时间是做什么的？');
+      setError('选个分类吧：这段时间是做什么的？');
+      setCategoryPanelOpen(true);
       return false;
     }
+    setError(null);
     const payload = {
       category_id: categoryId,
       start_time: start.toISOString(),
@@ -177,7 +195,7 @@ export function AddLogModal({
       const ok = await persist();
       if (ok) onSaved();
     } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -195,25 +213,20 @@ export function AddLogModal({
         setTagIds([]);
       }
     } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!activeLog) return;
-    Alert.alert('删除这条记录？', description || undefined, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteLog(activeLog.id);
-          onDeleted?.();
-        },
-      },
-    ]);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    await deleteLog(activeLog.id);
+    onDeleted?.();
   }
 
   const durationMin = Math.max(0, (clampedEnd().getTime() - start.getTime()) / 60000);
@@ -332,6 +345,9 @@ export function AddLogModal({
                 placeholderTextColor={colors.textMuted}
                 multiline
                 textAlignVertical="top"
+                ref={descRef}
+                autoFocus={!!focusDescription}
+                testID="log-desc"
               />
 
               <View style={styles.tagHeaderRow}>
@@ -356,16 +372,17 @@ export function AddLogModal({
               </View>
             </ScrollView>
 
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <View style={styles.actions}>
               {isEdit ? (
                 <>
-                  <Pressable style={styles.deleteButton} onPress={handleDelete}>
-                    <Text style={styles.deleteButtonText}>删除</Text>
+                  <Pressable style={styles.deleteButton} onPress={handleDelete} testID="log-delete">
+                    <Text style={styles.deleteButtonText}>{confirmDelete ? '再点删除' : '删除'}</Text>
                   </Pressable>
                   <Pressable style={styles.outlineButton} onPress={handleSaveAndContinue} disabled={saving}>
                     <Text style={styles.outlineButtonText}>继续添加</Text>
                   </Pressable>
-                  <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+                  <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving} testID="log-save">
                     {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>修改</Text>}
                   </Pressable>
                 </>
@@ -388,6 +405,7 @@ export function AddLogModal({
 }
 
 const styles = StyleSheet.create({
+  errorText: { fontSize: fontSize.secondary, color: colors.redDark, marginTop: spacing.sm },
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'center' },
   avoider: { width: '100%' },
   sheet: {

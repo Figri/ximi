@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PageTitle } from '../../components/common/PageTitle';
@@ -86,7 +86,7 @@ export default function BodyScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <PageTitle title="身体" />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.card}>
             <Text style={styles.cardTitle}>体重</Text>

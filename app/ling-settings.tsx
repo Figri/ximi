@@ -3,7 +3,6 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -383,7 +382,7 @@ function LingSettingsBody() {
 
       <Modal visible={editing != null} animationType="slide" onRequestClose={() => setEditing(null)}>
         <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoidingView style={styles.flex} behavior="padding">
             <View style={styles.header}>
               <Pressable onPress={() => setEditing(null)} hitSlop={10}>
                 <Text style={styles.back}>取消</Text>

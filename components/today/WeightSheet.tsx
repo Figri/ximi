@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { addWeight, latestWeight, type BodyRecord } from '../../lib/body';
 import { addCatEvent, fetchLastCatWeights } from '../../lib/cats';
@@ -111,7 +111,7 @@ export function WeightSheet({ visible, cats, title, onClose, onSaved }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} testID="weight-backdrop">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.avoider}>
+        <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
               <Text style={styles.title}>⚖️ {title ?? '记体重'}</Text>

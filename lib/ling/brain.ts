@@ -101,7 +101,7 @@ export async function catchState(state: string, note: string | null, messages: L
     const system = await systemPrompt(messages, { omitReplyFormat: true });
     const history = normalizeHistory([
       ...historyForModel(messages, 12),
-      { role: 'user', content: `（她刚在 App 里点了状态「${state}」${note ? `，补了一句：${note}` : ''}。按「接住你」回她，一两句，口语，不分析。只输出要发的话。）` },
+      { role: 'user', content: `（她刚在 App 里点了状态「${state}」${note ? `，补了一句：${note}` : ''}。按「接住你」回她，一两句，口语，亲一点、可以抱抱她，不分析。只输出要发的话。）` },
     ]);
     const raw = await callModel(model, history, system, apiKey, 200);
     const text = parseActions(raw).text.split(/\n\s*\n/)[0]?.trim();
@@ -154,7 +154,7 @@ export async function writeDrafts(req: DraftRequest, messages: LingMessage[]): P
       );
     }
     if (!asks.length) return base;
-    const user = `她可能会离开 App 一阵子。提前写好下面这些到时候发给她的微信消息，每条一两句，说人话。\n${asks.join('\n')}\n只输出一个 JSON 对象，不要别的字。`;
+    const user = `她可能会离开 App 一阵子。提前写好下面这些到时候发给她的微信消息，每条一两句，说人话，亲一点、黏一点（可以抱抱亲亲、撒个娇）。\n${asks.join('\n')}\n只输出一个 JSON 对象，不要别的字。`;
     const raw = await callModel(model, normalizeHistory([...historyForModel(messages, 12), { role: 'user', content: user }]), system, apiKey, 600);
     const json = extractJson(raw);
     if (!json) return base;
@@ -206,7 +206,7 @@ export async function writeTodayLine(messages: LingMessage[], hint: string): Pro
     const { model, apiKey } = await currentBrain();
     if (!apiKey) return null;
     const system = await systemPrompt(messages, { omitReplyFormat: true });
-    const user = `（她打开了 App 的今天页。写一句放在页面最上面的话：一句，不超过 25 个字，像微信里随口说的；不用问句，不催，不列计划，不提几点了。能接上最近聊的或今天的情况就接上。参考：${hint}。只输出这句话。）`;
+    const user = `（她打开了 App 的今天页。写一句放在页面最上面的话：一句，不超过 25 个字，像微信里随口说的，亲一点、可以撒个娇；不用问句，不催，不列计划，不提几点了。能接上最近聊的或今天的情况就接上。参考：${hint}。只输出这句话。）`;
     const raw = await callModel(model, normalizeHistory([...historyForModel(messages, 8), { role: 'user', content: user }]), system, apiKey, 80);
     const line = cleanLine(parseActions(raw).text.split('\n')[0]);
     return line && line.length <= 40 ? line : null;

@@ -10,13 +10,14 @@ import { MonthCalendarView } from '../../components/timetab/MonthCalendarView';
 import { StatsView } from '../../components/timetab/StatsView';
 import { fetchLogCountsForRange, fetchMonthStats } from '../../lib/timelog';
 import { fetchMonthSummaries } from '../../lib/timeline';
-import { CaptureFab } from '../../components/capture/CaptureFab';
 import { useDataBus } from '../../lib/dataBus';
+import { usePushedPage } from '../../components/common/PageTitle';
 
 type ViewMode = 'day' | 'month' | 'stats';
 type DayView = 'block' | 'axis'; // block=时间块, axis=时间轴
 
 export default function TimelineScreen() {
+  const pushed = usePushedPage();
   const [mode, setMode] = useState<ViewMode>('day');
   const [dayView, setDayView] = useState<DayView>('block');
   const [date, setDate] = useState(new Date());
@@ -60,8 +61,21 @@ export default function TimelineScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* 顶上一行：日期 + 今 + 几个按钮（不要「时间」这个标题了，底栏上已经写着） */}
       <View style={styles.headerRow}>
-        <Text style={styles.pageTitle}>时间</Text>
+        <View style={styles.dateBox}>
+          {pushed ? (
+            <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={10}>
+              <Text style={styles.back}>‹</Text>
+            </Pressable>
+          ) : null}
+          <Text style={styles.dateText}>{mode === 'day' ? `${date.getMonth() + 1}月${date.getDate()}日` : `${date.getFullYear()}年${date.getMonth() + 1}月`}</Text>
+          {mode === 'day' ? (
+            <Pressable style={styles.todayButton} onPress={() => setDate(new Date())} hitSlop={6} testID="time-today">
+              <Text style={styles.todayButtonText}>今</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <View style={styles.headerIcons}>
           <Pressable style={styles.textButton} onPress={() => router.push('/timelog-categories')}>
             <Text style={styles.textButtonLabel}>分类</Text>
@@ -79,7 +93,7 @@ export default function TimelineScreen() {
       </View>
 
       {mode === 'day' && (
-        <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} fetchCounts={fetchLogCountsForRange} />
+        <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} fetchCounts={fetchLogCountsForRange} hideDateRow />
       )}
 
       {mode === 'day' &&
@@ -103,12 +117,10 @@ export default function TimelineScreen() {
       {mode === 'stats' && <StatsView />}
 
       {mode === 'day' && (
-        <Pressable style={styles.viewToggleFab} onPress={() => setDayView((v) => (v === 'block' ? 'axis' : 'block'))}>
+        <Pressable style={styles.viewToggleFab} onPress={() => setDayView((v) => (v === 'block' ? 'axis' : 'block'))} testID="time-view-toggle">
           <Text style={styles.viewToggleFabText}>{dayView === 'block' ? '☰' : '田'}</Text>
         </Pressable>
       )}
-      {/* 切换视图的圆钮在右下角，＋ 摞在它上面 */}
-      <CaptureFab bottom={mode === 'day' ? spacing.lg + 52 + 12 : spacing.lg} />
     </SafeAreaView>
   );
 }
@@ -123,16 +135,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
   },
-  pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
-  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dateBox: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  back: { fontSize: 26, lineHeight: 28, color: colors.purpleDark, marginTop: -2, marginRight: 2 },
+  dateText: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
+  todayButton: { width: 26, height: 26, borderRadius: radius.avatar, backgroundColor: colors.blueLight, alignItems: 'center', justifyContent: 'center' },
+  todayButtonText: { fontSize: fontSize.secondary, color: colors.blueDark, fontWeight: '700' },
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   textButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: radius.button,
     backgroundColor: colors.purpleLight,
   },
   textButtonLabel: {
-    fontSize: fontSize.tiny,
+    fontSize: fontSize.body,
     color: colors.purpleDark,
     fontWeight: '600',
   },

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSegments } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
@@ -7,6 +8,7 @@ import { DiaryBlock } from '../../components/schedule/DiaryBlock';
 import { MonthCalendar } from '../../components/schedule/MonthCalendar';
 import { ScheduleRowView } from '../../components/schedule/ScheduleRowView';
 import { ScheduleToolbar } from '../../components/schedule/ScheduleToolbar';
+import { PageTitle } from '../../components/common/PageTitle';
 import {
   addDays,
   addItem,
@@ -59,6 +61,8 @@ function slotToHour(slot: ScheduleSlot): number | null {
 }
 
 export default function ScheduleScreen() {
+  // 从今天页「排一排」单独打开时（app/page/schedule）顶上带个返回
+  const standalone = (useSegments() as string[])[0] === 'page';
   const [dateKey, setDateKey] = useState(todayDateKey());
   const [dayView, setDayView] = useState<DayView | null>(null);
   const [rows, setRows] = useState<ScheduleRow[]>([]);
@@ -260,6 +264,7 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {standalone ? <PageTitle title="日程" /> : null}
       <View style={styles.header}>
         <Pressable onPress={() => setDateKey((d) => addDays(d, -1))} hitSlop={10}>
           <Text style={styles.navArrow}>‹</Text>
@@ -285,6 +290,7 @@ export default function ScheduleScreen() {
         />
       )}
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <DraggableFlatList
         data={buildDisplayList(rows)}
         keyExtractor={(item) => (isDivider(item) ? item.key : item.key)}
@@ -323,6 +329,7 @@ export default function ScheduleScreen() {
           return <View style={isActive && { opacity: 0.9 }}>{renderRow(item, drag)}</View>;
         }}
       />
+      </KeyboardAvoidingView>
 
       {selectedRow && selectedRow.source === 'item' && (
         <ScheduleToolbar
@@ -364,6 +371,8 @@ export default function ScheduleScreen() {
         onEmptyBackspace={() => handleEmptyBackspace(row)}
         onMergeBackspace={(text) => handleMergeBackspace(row, text)}
         onDrag={drag}
+        // 点 ＋ 新加的那一行直接弹键盘，不用再点一下输入框
+        autoFocus={row.refId.startsWith('draft:') && selectedKey === row.key}
       />
     );
   }

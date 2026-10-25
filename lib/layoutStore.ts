@@ -73,9 +73,13 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
   },
 }));
 
-/** 打开某个功能：在底栏里就切过去，不在就从「其他」里推进去（返回回到「其他」） */
+/**
+ * 从别的页面打开某个功能：在底栏里就切过去；不在底栏就开成一页盖在上面（app/page/<key>），返回回到原来那页。
+ * 「其他」列表里点进去的还是走 otherRoute（在「其他」那一栏里，返回回列表）。
+ */
 export function routeForFeature(key: string): string {
   const f = FEATURE_BY_KEY[key];
   if (!f) return '/';
-  return useLayoutStore.getState().topKeys.includes(key) ? f.route : f.otherRoute;
+  if (useLayoutStore.getState().topKeys.includes(key)) return f.route;
+  return key === 'today' ? '/' : `/page/${key}`;
 }

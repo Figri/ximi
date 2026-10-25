@@ -6,7 +6,7 @@ import { createCard, deleteCard, fetchCats } from './cards';
 import { addFragment, deleteFragment } from './fragments';
 import { addStateEvent, STATE_WORDS, type StateWord } from './states';
 import { queueIdea, removeIdea, removeStateEvent } from './notion/sync';
-import { loadLingSettings } from './ling/settings';
+import { lingDayKey, loadLingSettings } from './ling/settings';
 import { linkTodoToCats } from './catTodos';
 import { dateKeyOf, describeParsed, parseCapture, type CaptureKind, type ParsedCapture, type ParseContext } from './captureParse';
 
@@ -103,6 +103,29 @@ export async function saveParsed(p: ParsedCapture, now = new Date()): Promise<Sa
       return done('fragments', f.id);
     }
   }
+}
+
+/**
+ * 今天页「作息和事项」里直接写的一句：一律记成事项，不用先点 ＋。
+ * 认得出的日期、钟点照样用上（「周三 10点 带猫打疫苗」）；「每周三」「每隔 3 天」这种还是记成例行；
+ * 没写日期的记在正在看的那天；写成时间段的（14:00-16:00 写简历）记成那天 14:00 的事项。
+ */
+export async function quickAddTodo(text: string, dayKey: string, now = new Date()): Promise<SavedCapture> {
+  const ctx = await captureContext(now);
+  const p = parseCapture(text, ctx);
+  if (p.kind === 'routine') return saveParsed(p, now);
+  const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const todayKey = lingDayKey(now, ctx.dayStartHour);
+  if (p.kind === 'todo') {
+    // 没说哪天：记在正在看的那天（今天页上翻到了周三，就记周三）
+    const saidDay = p.date !== todayKey || /今天|今晚|今早|今儿/.test(text);
+    return saveParsed(saidDay ? p : { ...p, date: dayKey }, now);
+  }
+  const asTodo: ParsedCapture =
+    p.kind === 'timeblock' && p.start
+      ? { ...p, kind: 'todo', text: p.text || p.raw, date: dateKeyOf(p.start), time: hm(p.start), start: undefined, end: undefined }
+      : { ...p, kind: 'todo', text: p.raw, date: dayKey, time: p.at ? hm(p.at) : null, at: undefined };
+  return saveParsed(asTodo, now);
 }
 
 /** 撤销 / 改成别的之前，把刚存的那条删掉 */

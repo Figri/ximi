@@ -12,7 +12,13 @@ import {
 import { colors, spacing } from '../../constants/theme';
 import { applySelectionFill, fetchLogsForDate } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
+import { AddLogModal } from './AddLogModal';
 import type { TimeCategory, TimeLog } from '../../types';
+
+/** 按住不动这么久算长按：已经记了的格子长按直接打开编辑（光标在描述里） */
+const LONG_PRESS_MS = 450;
+/** 手指挪了这么多就是在拖选区，不算长按 */
+const MOVE_SLOP = 8;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const CELLS_PER_ROW = 12; // 每行12格，每格5分钟，写死
@@ -39,9 +45,10 @@ interface LogBlockRect {
 }
 
 interface SelectionRect {
-  key: number;
+  key: string;
   top: number;
   left: number;
+  width: number;
   opacity: number;
 }
 
@@ -59,6 +66,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const [trackWidth, setTrackWidth] = useState(0);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [current, setCurrent] = useState<number | null>(null);
+  const [editing, setEditing] = useState<TimeLog | null>(null);
+  const press = useRef<{ timer: ReturnType<typeof setTimeout> | null; moved: boolean }>({ timer: null, moved: false });
 
   const trackRef = useRef<View>(null);
   const trackRect = useRef({ x: 0, y: 0, w: 0, h: 0 });
@@ -107,24 +116,60 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return row * CELLS_PER_ROW + col;
   }
 
+  /** 这一格（5 分钟）落在哪条记录里：有好几条叠着的取后记的那条 */
+  function logAtCell(idx: number): TimeLog | null {
+    const m = idx * CELL_MINUTES;
+    let hit: TimeLog | null = null;
+    for (const log of logs) {
+      const a = minutesSinceMidnight(new Date(log.start_time), dayStart);
+      const b = minutesSinceMidnight(new Date(log.end_time), dayStart);
+      if (m >= a && m < b) hit = log;
+    }
+    return hit;
+  }
+
+  function clearPress() {
+    if (press.current.timer) clearTimeout(press.current.timer);
+    press.current.timer = null;
+  }
+
   // 每次渲染都重建，避免回调闭包锁死在首次渲染的状态上
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (evt) => {
       const i = cellFromTouch(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+      clearPress();
+      press.current.moved = false;
       if (i != null) {
         setAnchor(i);
         setCurrent(i);
+        // 按在已经记了的格子上、一直不动：打开这条记录来改
+        const log = logAtCell(i);
+        if (log) {
+          press.current.timer = setTimeout(() => {
+            press.current.timer = null;
+            if (press.current.moved) return;
+            setAnchor(null);
+            setCurrent(null);
+            setEditing(log);
+          }, LONG_PRESS_MS);
+        }
       }
     },
-    onPanResponderMove: (evt) => {
+    onPanResponderMove: (evt, g) => {
+      if (Math.abs(g.dx) > MOVE_SLOP || Math.abs(g.dy) > MOVE_SLOP) {
+        press.current.moved = true;
+        clearPress();
+      }
       const i = cellFromTouch(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
-      if (i != null) setCurrent(i);
+      if (i != null && !editing) setCurrent(i);
     },
-    onPanResponderRelease: () => {},
-    onPanResponderTerminate: () => {},
+    onPanResponderRelease: clearPress,
+    onPanResponderTerminate: clearPress,
   });
+
+  useEffect(() => clearPress, []);
 
   // 选区 = anchor..current 之间所有 index（连续区间，实心矩形，不是涂抹出来的散点）
   const selected = useMemo(() => {
@@ -166,6 +211,8 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
         const segEnd = Math.min(endMin, rowEndMin);
         const left = (cursor - rowStartMin) * pxPerMin;
         const width = (segEnd - cursor) * pxPerMin;
+        // 格子上写「分类-描述」，没描述就只写分类
+        const label = cat ? (log.description?.trim() ? `${cat.name}-${log.description.trim()}` : cat.name) : log.description?.trim() || undefined;
         rects.push({
           key: `${log.id}-${row}`,
           top: row * ROW_H,
@@ -173,7 +220,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
           width,
           height: ROW_H,
           color,
-          text: first ? (cat?.name ?? undefined) : undefined,
+          text: first ? label : undefined,
         });
         cursor = segEnd;
         first = false;
@@ -196,22 +243,34 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     return Array.from({ length: 24 - 1 }, (_, i) => (i + 1) * ROW_H);
   }, [ROW_H]);
 
-  // 选中的格子：在原有内容上叠一层半透明黑——有色块盖着的深一点，空格子浅一点
+  // 选中的格子：在原有内容上叠一层半透明黑——有色块盖着的深一点，空格子浅一点。
+  // 同一行里挨着的、深浅一样的并成一条矩形，不再一格一个：一格一个的话，相邻两块半透明叠在
+  // 小数像素的接缝上会多出一道深色细线（格子缝一会儿白一会儿黑就是这么来的）
   const selectionRects = useMemo<SelectionRect[]>(() => {
     if (ROW_H <= 0 || cellWidth <= 0 || selected.size === 0) return [];
+    const idxs = Array.from(selected).sort((a, b) => a - b);
+    const filledAt = (idx: number) => {
+      const m = idx * CELL_MINUTES;
+      return logRanges.some((r) => m >= r.startMin && m < r.endMin);
+    };
     const rects: SelectionRect[] = [];
-    for (const idx of selected) {
-      const row = Math.floor(idx / CELLS_PER_ROW);
-      const col = idx % CELLS_PER_ROW;
-      const cellStartMin = idx * CELL_MINUTES;
-      const filled = logRanges.some((r) => cellStartMin >= r.startMin && cellStartMin < r.endMin);
-      rects.push({
-        key: idx,
-        top: row * ROW_H,
-        left: col * cellWidth,
-        opacity: filled ? 0.3 : 0.2,
-      });
+    let runStart = idxs[0];
+    let prev = idxs[0];
+    const flush = (a: number, b: number) => {
+      const row = Math.floor(a / CELLS_PER_ROW);
+      const col = a % CELLS_PER_ROW;
+      rects.push({ key: `${a}-${b}`, top: row * ROW_H, left: col * cellWidth, width: (b - a + 1) * cellWidth, opacity: filledAt(a) ? 0.3 : 0.2 });
+    };
+    for (let k = 1; k < idxs.length; k++) {
+      const i = idxs[k];
+      const sameRow = Math.floor(i / CELLS_PER_ROW) === Math.floor(prev / CELLS_PER_ROW);
+      if (i !== prev + 1 || !sameRow || filledAt(i) !== filledAt(prev)) {
+        flush(runStart, prev);
+        runStart = i;
+      }
+      prev = i;
     }
+    flush(runStart, prev);
     return rects;
   }, [selected, logRanges, cellWidth, ROW_H]);
 
@@ -277,10 +336,38 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
               onLayout={handleTrackLayout}
               {...panResponder.panHandlers}
             >
-              {/* 底层：一整块矩形背景（不是288个拼接的小格子，右边缘天然不会留白条），
-                  上面叠24行×12列的浅色分隔线做格子纹理——这是产品钉死的效果，不能因为
-                  别的理由（比如"贴合原app干净背景"）被偷偷换掉 */}
+              {/* 底层：一整块矩形背景（不是288个拼接的小格子，右边缘天然不会留白条） */}
               <View style={[styles.gridBackground, { height: 24 * ROW_H }]} pointerEvents="none" />
+
+              {/* 色块：每条记录一个（跨行拆成几个）绝对定位矩形，不再逐格拼色 */}
+              {logBlocks.map((rect) => (
+                <View
+                  key={rect.key}
+                  style={[
+                    styles.logBlock,
+                    { top: rect.top, left: rect.left, width: rect.width, height: rect.height, backgroundColor: rect.color },
+                  ]}
+                  pointerEvents="none"
+                />
+              ))}
+
+              {/* 选中的格子：压暗遮罩（一行里挨着的并成一块） */}
+              {selectionRects.map((rect) => (
+                <View
+                  key={rect.key}
+                  style={{
+                    position: 'absolute',
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: ROW_H,
+                    backgroundColor: `rgba(0,0,0,${rect.opacity})`,
+                  }}
+                  pointerEvents="none"
+                />
+              ))}
+
+              {/* 24行×12列的格子线画在最上面：空格子、记了的、选中的，缝都是一样的白 */}
               {rowDividers.map((y, i) => (
                 <View key={`rd${i}`} style={[styles.gridLineH, { top: y }]} pointerEvents="none" />
               ))}
@@ -292,43 +379,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
                 />
               ))}
 
-              {/* 中层：每条记录一个（跨行拆成几个）绝对定位色块，不再逐格拼色 */}
-              {logBlocks.map((rect) => (
-                <View
-                  key={rect.key}
-                  style={[
-                    styles.logBlock,
-                    { top: rect.top, left: rect.left, width: rect.width, height: rect.height, backgroundColor: rect.color },
-                  ]}
-                  pointerEvents="none"
-                >
-                  {rect.text ? (
-                    <Text
-                      style={[styles.logBlockText, noEllipsisWebStyle]}
-                      numberOfLines={1}
-                      ellipsizeMode="clip"
-                    >
+              {/* 字压在格子线上面，不被线切断 */}
+              {logBlocks.map((rect) =>
+                rect.text ? (
+                  <View
+                    key={`t-${rect.key}`}
+                    style={[styles.logLabelBox, { top: rect.top, left: rect.left, width: rect.width, height: rect.height }]}
+                    pointerEvents="none"
+                  >
+                    <Text style={[styles.logBlockText, noEllipsisWebStyle]} numberOfLines={1} ellipsizeMode="clip">
                       {rect.text}
                     </Text>
-                  ) : null}
-                </View>
-              ))}
-
-              {/* 顶层：选中格子的压暗遮罩 */}
-              {selectionRects.map((rect) => (
-                <View
-                  key={rect.key}
-                  style={{
-                    position: 'absolute',
-                    top: rect.top,
-                    left: rect.left,
-                    width: cellWidth,
-                    height: ROW_H,
-                    backgroundColor: `rgba(0,0,0,${rect.opacity})`,
-                  }}
-                  pointerEvents="none"
-                />
-              ))}
+                  </View>
+                ) : null
+              )}
             </View>
           </>
         )}
@@ -337,7 +401,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
       <View style={styles.palette}>
         <ScrollView contentContainerStyle={styles.paletteContent}>
           {sortedCategories.map((c) => (
-            <Pressable key={c.id} style={[styles.paletteChip, { backgroundColor: c.color }]} onPress={() => fillWith(c)}>
+            <Pressable key={c.id} style={[styles.paletteChip, { backgroundColor: c.color }]} onPress={() => fillWith(c)} testID={`palette-${c.name}`}>
               <Text style={styles.paletteChipText} numberOfLines={1}>
                 {c.name}
               </Text>
@@ -345,6 +409,21 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
           ))}
         </ScrollView>
       </View>
+
+      <AddLogModal
+        visible={!!editing}
+        log={editing}
+        focusDescription
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          onChanged();
+        }}
+        onDeleted={() => {
+          setEditing(null);
+          onChanged();
+        }}
+      />
     </View>
   );
 }
@@ -352,35 +431,30 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 const styles = StyleSheet.create({
   // 外边距/小时列/色卡列这几处加起来是网格能用宽度的主要"税"——缩窄它们
   // 才能让网格贴近原app的宽度比例
-  container: { flex: 1, flexDirection: 'row', paddingHorizontal: 6 },
+  container: { flex: 1, flexDirection: 'row', paddingLeft: 2, paddingRight: 6 },
   axisArea: { flex: 1, flexDirection: 'row' },
-  hourCol: { width: 20 },
+  hourCol: { width: 16 },
   // fontSize 10 + paddingRight 2 时，两位数(含"08"/"20"/"23"这类)的实测宽度
   // 都在 20px 列宽内，不会触发默认的 numberOfLines 截断出"…"——这条必须是
   // RN 组件的真实宽度/字号，css专属的nowrap/ellipsis覆盖在原生端不生效
   hourLabel: { fontSize: 10, color: colors.textMuted },
-  trackCol: { flex: 1, position: 'relative', marginLeft: 3 },
+  trackCol: { flex: 1, position: 'relative', marginLeft: 2 },
   gridBackground: { width: '100%', backgroundColor: '#DCEBF7', borderRadius: 4 },
   gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
   gridLineV: { position: 'absolute', top: 0, width: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
-  logBlock: {
-    position: 'absolute',
-    borderRadius: 4,
-    overflow: 'hidden',
-    paddingLeft: 4,
-    paddingTop: 2,
-  },
+  logBlock: { position: 'absolute', borderRadius: 4 },
+  logLabelBox: { position: 'absolute', overflow: 'hidden', paddingLeft: 4, paddingTop: 2 },
   logBlockText: { color: '#fff', fontSize: 10, fontWeight: '600', includeFontPadding: false },
-  palette: { width: 42, marginLeft: 4 },
-  paletteContent: { paddingBottom: spacing.sm, gap: 2 },
+  palette: { width: 58, marginLeft: 6 },
+  paletteContent: { paddingBottom: spacing.sm, gap: 4 },
   paletteChip: {
-    borderRadius: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 30,
+    minHeight: 40,
     marginBottom: 2,
   },
-  paletteChipText: { fontSize: 9, color: '#fff', fontWeight: '700', includeFontPadding: false },
+  paletteChipText: { fontSize: 13, color: '#fff', fontWeight: '700', includeFontPadding: false },
 });

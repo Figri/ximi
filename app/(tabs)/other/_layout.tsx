@@ -5,6 +5,9 @@ import { colors } from '../../../constants/theme';
 // 从列表点进未展示功能时 push 进这个栈里的子页面——因为还在"其他"这个
 // Tabs.Screen 内部，底栏高亮不会变成被点开的那个功能，物理返回/头部返回键
 // 回的也是 index 列表页，不是上一个 tab，正好对应文档第7节的两条跳转规则。
+// 直接跳到某个子页面时，底下也垫着列表页：返回回列表，不会一下子跳出「其他」
+export const unstable_settings = { initialRouteName: 'index' };
+
 export default function OtherLayout() {
   return (
     <Stack

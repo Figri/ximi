@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
@@ -232,6 +232,7 @@ export default function HabitDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.pageTitle}>{isNew ? '新建习惯' : '编辑习惯'}</Text>
 
@@ -376,6 +377,7 @@ export default function HabitDetailScreen() {
           </Pressable>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

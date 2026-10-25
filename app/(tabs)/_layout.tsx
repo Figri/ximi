@@ -57,7 +57,8 @@ export default function TabsLayout() {
             />
           );
         })}
-        <Tabs.Screen name="other" options={{ title: '其他' }} />
+        {/* 离开「其他」就回到列表：以前点进日程再切走，下次点「其他」看到的还是日程 */}
+        <Tabs.Screen name="other" options={{ title: '其他', popToTopOnBlur: true }} />
       </Tabs>
       {/* 右下角 ＋ 的面板全局只有一个，哪个页面的 ＋ 都打开它 */}
       <CaptureSheet />

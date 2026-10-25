@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,6 +25,7 @@ import { getPlaySession } from '../../lib/play';
 import { useDataBus } from '../../lib/dataBus';
 import { useCardStore } from '../../lib/store';
 import { useTodoStore } from '../../lib/todoStore';
+import { quickAddTodo, removeSaved } from '../../lib/capture';
 import { routeForFeature } from '../../lib/layoutStore';
 import { getNotionToken } from '../../lib/notion/client';
 import { completeNextStep, loadNextSteps, loadSyncStatus, syncAll, syncStatesSoon, type NextStep } from '../../lib/notion/sync';
@@ -348,6 +349,21 @@ export default function TodayScreen() {
     });
   }
 
+  /** 「作息和事项」里直接写的一句 → 事项（记在正在看的那天；说了哪天就记哪天），给 5 秒撤销 */
+  async function onQuickAddTodo(text: string) {
+    const saved = await quickAddTodo(text, dayKey);
+    await loadAgendaFor(dayKey);
+    rescheduleAll().catch(() => []);
+    showToast({
+      text: `加好了：${saved.label}`,
+      undo: async () => {
+        await removeSaved(saved);
+        await loadAgendaFor(dayKey);
+        rescheduleAll().catch(() => []);
+      },
+    });
+  }
+
   async function onAddFragment(text: string) {
     const f = await addFragment(text);
     setFragments((prev) => [...prev, f]);
@@ -439,6 +455,7 @@ export default function TodayScreen() {
           return out;
         }}
       />
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {isToday ? (
           <Pressable style={styles.lingLine} onPress={() => router.push(routeForFeature('chat') as any)} testID="today-line">
@@ -495,6 +512,7 @@ export default function TodayScreen() {
           <AgendaSection
             rows={agenda}
             onToggle={onToggle}
+            onQuickAdd={onQuickAddTodo}
             onEdit={(row) => {
               if (!row.todo) return;
               fetchTodoMeta();
@@ -545,6 +563,7 @@ export default function TodayScreen() {
         ) : null}
         <View style={{ height: 96 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {toast ? (
         <View style={styles.toast}>
@@ -590,6 +609,7 @@ export default function TodayScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xs },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   headerSub: { fontSize: fontSize.body, fontWeight: '400', color: colors.textSecondary },

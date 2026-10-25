@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { SLOT_LABEL, type AgendaRow } from '../../lib/today';
 import type { ScheduleSlot } from '../../types';
 
-// 「作息和事项」：全天 + 各个时段，作息（例行）是方框，事项是圆圈。没东西的时段不占地方。
+// 「作息和事项」：最上面一行直接写新事项（回车就加，认得出「周三 10点」这种），不用先点 ＋。
+// 下面是全天 + 各个时段，作息（例行）是方框，事项是圆圈。没东西的时段不占地方。
 // 点框就勾（今天页给 5 秒撤销）；长按事项能改（日期、重复、提醒、删掉）。
 // 以前没做完的一次性事项（顺延）先收成一行「以前没做完的 N 件」，点开再看，不挤占今天的。
 
@@ -14,6 +15,8 @@ interface Props {
   rows: Record<ScheduleSlot, AgendaRow[]>;
   onToggle: (row: AgendaRow) => void;
   onEdit?: (row: AgendaRow) => void;
+  /** 直接写的一句：存成事项 */
+  onQuickAdd?: (text: string) => Promise<void>;
 }
 
 function Row({ r, onToggle, onEdit }: { r: AgendaRow; onToggle: (row: AgendaRow) => void; onEdit?: (row: AgendaRow) => void }) {
@@ -39,7 +42,44 @@ function Row({ r, onToggle, onEdit }: { r: AgendaRow; onToggle: (row: AgendaRow)
   );
 }
 
-export function AgendaSection({ rows, onToggle, onEdit }: Props) {
+function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      await onAdd(t);
+      setText('');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <View style={styles.addRow}>
+      <View style={styles.addCircle} />
+      <TextInput
+        style={styles.addInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="加一件事，回车就加（周三 10点 带猫打疫苗）"
+        placeholderTextColor={colors.textMuted}
+        returnKeyType="done"
+        onSubmitEditing={submit}
+        blurOnSubmit={false}
+        testID="agenda-add"
+      />
+      {text.trim() ? (
+        <Pressable onPress={submit} hitSlop={8} disabled={busy} testID="agenda-add-send">
+          <Text style={styles.addSend}>加</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd }: Props) {
   const [showCarried, setShowCarried] = useState(false);
   const carried = (rows.allday ?? []).filter((r) => r.carriedFrom);
   const today: Record<string, AgendaRow[]> = {};
@@ -48,7 +88,8 @@ export function AgendaSection({ rows, onToggle, onEdit }: Props) {
 
   return (
     <View style={styles.wrap}>
-      {!slots.length ? <Text style={styles.empty}>今天还没排什么。想到要做的，点右下角 ＋ 说一句就行。</Text> : null}
+      {onQuickAdd ? <QuickAdd onAdd={onQuickAdd} /> : null}
+      {!slots.length ? <Text style={styles.empty}>{onQuickAdd ? '还没排什么。' : '今天还没排什么。想到要做的，点右下角 ＋ 说一句就行。'}</Text> : null}
       {slots.map((slot) => (
         <View key={slot} style={styles.slot}>
           <Text style={styles.slotLabel}>{SLOT_LABEL[slot]}</Text>
@@ -102,4 +143,8 @@ const styles = StyleSheet.create({
   carriedTitle: { fontSize: fontSize.body, color: colors.textSecondary },
   carriedLink: { fontSize: fontSize.secondary, color: colors.purpleDark },
   hint: { fontSize: fontSize.tiny, color: colors.textMuted, marginTop: 2 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.sm, marginBottom: 2 },
+  addCircle: { width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, borderStyle: 'dashed' },
+  addInput: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, paddingVertical: 9 },
+  addSend: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '700', paddingHorizontal: 4 },
 });

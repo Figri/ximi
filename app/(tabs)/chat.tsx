@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -176,7 +175,8 @@ function LingRoom() {
       return (
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>翻篇</Text>
+          {/* 翻篇 = 换个话题：这条线以前聊的，灵接下来就不接着说了（记录还在，长期记的事照样知道） */}
+          <Text style={styles.dividerText}>翻篇 · 前面的不接着聊了</Text>
           <View style={styles.dividerLine} />
         </View>
       );
@@ -207,7 +207,7 @@ function LingRoom() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={styles.header}>
           <View style={styles.flex}>
             <Text style={styles.name}>灵</Text>
