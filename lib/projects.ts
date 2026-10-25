@@ -1,8 +1,8 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import type { Project, ProjectLog, ProjectStatus } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
-  const { data, error } = await supabase.from('projects').select('*').order('updated_at', { ascending: false });
+  const { data, error } = await db.from('projects').select('*').order('updated_at', { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
@@ -13,7 +13,7 @@ export async function createProject(
   linkedCardIds: string[],
   linkedWorryIds: string[]
 ): Promise<Project> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('projects')
     .insert({
       name,
@@ -29,7 +29,7 @@ export async function createProject(
 }
 
 export async function updateProjectStatus(id: string, status: ProjectStatus): Promise<void> {
-  const { error } = await supabase
+  const { error } = await db
     .from('projects')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', id);
@@ -37,7 +37,7 @@ export async function updateProjectStatus(id: string, status: ProjectStatus): Pr
 }
 
 export async function fetchProjectLogs(projectId: string): Promise<ProjectLog[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('project_logs')
     .select('*')
     .eq('project_id', projectId)
@@ -47,12 +47,12 @@ export async function fetchProjectLogs(projectId: string): Promise<ProjectLog[]>
 }
 
 export async function addProjectLog(projectId: string, content: string): Promise<ProjectLog> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('project_logs')
     .insert({ project_id: projectId, content, source: 'manual' })
     .select()
     .single();
   if (error) throw error;
-  await supabase.from('projects').update({ updated_at: new Date().toISOString() }).eq('id', projectId);
+  await db.from('projects').update({ updated_at: new Date().toISOString() }).eq('id', projectId);
   return data;
 }

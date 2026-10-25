@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import type { DailySummary } from '../types';
 
 export { fetchProjects } from './projects';
@@ -16,7 +16,7 @@ export async function fetchCompletionCountsByDay(days: number): Promise<{ date: 
   since.setDate(since.getDate() - (days - 1));
   since.setHours(0, 0, 0, 0);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('completions')
     .select('completed_at')
     .eq('undone', false)
@@ -44,7 +44,7 @@ export async function fetchRecentDailySummaries(days: number): Promise<DailySumm
   const since = new Date();
   since.setDate(since.getDate() - (days - 1));
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('daily_summaries')
     .select('*')
     .gte('date', toDateKey(since))
@@ -55,7 +55,7 @@ export async function fetchRecentDailySummaries(days: number): Promise<DailySumm
 
 /** 体重曲线：从"身体"分类的时间轴记录里解析"体重: 62.5kg"这种格式 */
 export async function fetchWeightSeries(limit = 30): Promise<{ date: string; weight: number }[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .select('start_time, description')
     .eq('category', 'body')

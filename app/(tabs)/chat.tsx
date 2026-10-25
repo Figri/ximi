@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { ChatBubble } from '../../components/ChatBubble';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
+import { db } from '../../lib/localdb';
 import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
 import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
 import { buildCardContextSummary, resolveComplete } from '../../lib/chatInstructions';
@@ -72,7 +72,7 @@ export default function ChatScreen() {
   );
 
   async function loadHistory() {
-    const { data } = await supabase
+    const { data } = await db
       .from('messages')
       .select('*')
       .order('created_at', { ascending: true })
@@ -130,7 +130,7 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      const { data: savedUser } = await supabase
+      const { data: savedUser } = await db
         .from('messages')
         .insert({ role: 'user', content: text })
         .select()
@@ -145,7 +145,7 @@ export default function ChatScreen() {
       const contextSummary = buildContextSummary();
       const reply = await sendChatMessage(history, contextSummary, model, apiKey);
 
-      const { data: savedAssistant } = await supabase
+      const { data: savedAssistant } = await db
         .from('messages')
         .insert({ role: 'assistant', content: reply.text, model })
         .select()
@@ -255,7 +255,7 @@ export default function ChatScreen() {
 
       const imageUrl = await uploadChatImage(localUri);
 
-      const { data: saved } = await supabase
+      const { data: saved } = await db
         .from('messages')
         .insert({ role: 'user', content: '', image_url: imageUrl })
         .select()

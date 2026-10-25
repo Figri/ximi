@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import { callAIOnce, type AIModel } from './ai';
 import { fetchTimelineForDate } from './timeline';
 import { fetchWorries } from './worries';
@@ -12,7 +12,7 @@ function toDateKey(date: Date): string {
 }
 
 export async function fetchDailySummary(date: Date): Promise<DailySummary | null> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('daily_summaries')
     .select('*')
     .eq('date', toDateKey(date))
@@ -40,7 +40,7 @@ async function fetchTodayMessages(date: Date): Promise<{ role: string; content: 
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('messages')
     .select('role, content, created_at')
     .gte('created_at', start.toISOString())
@@ -82,7 +82,7 @@ export async function generateDailySummary(date: Date, model: AIModel, apiKey: s
   if (!jsonMatch) throw new Error('AI 没有返回能解析的总结');
   const parsed = JSON.parse(jsonMatch[0]);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('daily_summaries')
     .upsert(
       {

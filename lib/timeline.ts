@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import type { TimelineCategory, TimelineEntry } from '../types';
 
 /** 某一天（本地时区）的所有条目，按时间正序（给"今日"时间轴用） */
@@ -8,7 +8,7 @@ export async function fetchTimelineForDate(date: Date): Promise<TimelineEntry[]>
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .select('*')
     .gte('start_time', start.toISOString())
@@ -20,7 +20,7 @@ export async function fetchTimelineForDate(date: Date): Promise<TimelineEntry[]>
 
 /** 最近一条记录的结束时间（没有 end_time 就用 start_time），给"记一笔"默认时间段用 */
 export async function fetchLastEntryEnd(): Promise<Date | null> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .select('start_time, end_time')
     .order('start_time', { ascending: false })
@@ -33,7 +33,7 @@ export async function fetchLastEntryEnd(): Promise<Date | null> {
 
 /** 某个分类下所有天的条目，按时间倒序（给"身体/睡眠/..."这些跨天汇总用） */
 export async function fetchTimelineByCategory(category: TimelineCategory, limit = 100): Promise<TimelineEntry[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .select('*')
     .eq('category', category)
@@ -54,7 +54,7 @@ export async function addTimelineEntry(entry: {
   icon?: string | null;
   source?: 'manual' | 'chat';
 }): Promise<TimelineEntry> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .insert({
       category: entry.category ?? 'other',
@@ -74,7 +74,7 @@ export async function addTimelineEntry(entry: {
 }
 
 export async function deleteTimelineEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('timeline_entries').delete().eq('id', id);
+  const { error } = await db.from('timeline_entries').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -89,7 +89,7 @@ function toDateKey(date: Date): string {
 export async function fetchMonthSummaries(year: number, month: number): Promise<Record<string, string>> {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 1);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('daily_summaries')
     .select('date, summary')
     .gte('date', toDateKey(start))
@@ -104,7 +104,7 @@ export async function fetchMonthSummaries(year: number, month: number): Promise<
 
 /** 手动写/改某一天的月历一行摘要 */
 export async function setDaySummary(date: Date, summary: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await db
     .from('daily_summaries')
     .upsert({ date: toDateKey(date), summary: summary.trim() || null }, { onConflict: 'date' });
   if (error) throw error;

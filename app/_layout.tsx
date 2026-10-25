@@ -9,10 +9,21 @@ import { colors } from '../constants/theme';
 import { useDecayNotifications } from '../lib/useDecayNotifications';
 import { useTodoReminders } from '../lib/useTodoReminders';
 import { flushSync } from '../lib/timelogSync';
+import { runLegacyMigration } from '../lib/legacyMigration';
+import { useCardStore } from '../lib/store';
 
 export default function RootLayout() {
   useDecayNotifications();
   useTodoReminders();
+
+  useEffect(() => {
+    // 旧 Supabase 库的数据一次性搬到手机本地；搬到了东西就刷新一下卡片
+    runLegacyMigration().then((state) => {
+      if (state?.status === 'done' && Object.values(state.counts).some((n) => n > 0)) {
+        useCardStore.getState().fetchAll();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     flushSync();

@@ -1,9 +1,9 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 
 // ---- 体重 ----
 
 export async function logWeight(kg: number): Promise<void> {
-  const { error } = await supabase.from('timeline_entries').insert({
+  const { error } = await db.from('timeline_entries').insert({
     start_time: new Date().toISOString(),
     category: 'body',
     description: `体重 ${kg}kg`,
@@ -13,7 +13,7 @@ export async function logWeight(kg: number): Promise<void> {
 }
 
 export async function fetchLastWeight(): Promise<{ kg: number; date: string } | null> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('timeline_entries')
     .select('description, start_time')
     .eq('category', 'body')
@@ -30,7 +30,7 @@ export async function fetchLastWeight(): Promise<{ kg: number; date: string } | 
 // ---- 运动 ----
 
 export async function logExercise(parts: string[]): Promise<void> {
-  const { error } = await supabase.from('timeline_entries').insert({
+  const { error } = await db.from('timeline_entries').insert({
     start_time: new Date().toISOString(),
     category: 'exercise',
     description: parts.join('、'),
@@ -52,7 +52,7 @@ export interface PeriodEvent {
 const PERIOD_SETTINGS_KEY = 'period_history';
 
 export async function fetchPeriodHistory(): Promise<PeriodEvent[]> {
-  const { data, error } = await supabase.from('settings').select('value').eq('key', PERIOD_SETTINGS_KEY).maybeSingle();
+  const { data, error } = await db.from('settings').select('value').eq('key', PERIOD_SETTINGS_KEY).maybeSingle();
   if (error) throw error;
   const value = data?.value;
   return Array.isArray(value) ? (value as PeriodEvent[]) : [];
@@ -61,7 +61,7 @@ export async function fetchPeriodHistory(): Promise<PeriodEvent[]> {
 export async function addPeriodEvent(type: PeriodEventType): Promise<PeriodEvent[]> {
   const history = await fetchPeriodHistory();
   const next = [...history, { type, date: new Date().toISOString() }];
-  const { error } = await supabase.from('settings').upsert({ key: PERIOD_SETTINGS_KEY, value: next });
+  const { error } = await db.from('settings').upsert({ key: PERIOD_SETTINGS_KEY, value: next });
   if (error) throw error;
   return next;
 }

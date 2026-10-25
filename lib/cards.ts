@@ -1,14 +1,14 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import type { Action, Card, Cat, Completion } from '../types';
 
 export async function fetchCats(): Promise<Cat[]> {
-  const { data, error } = await supabase.from('cats').select('*').order('created_at', { ascending: true });
+  const { data, error } = await db.from('cats').select('*').order('created_at', { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
 
 export async function fetchCards(): Promise<Card[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('cards')
     .select('*')
     .eq('archived', false)
@@ -18,14 +18,14 @@ export async function fetchCards(): Promise<Card[]> {
 }
 
 export async function fetchActions(): Promise<Action[]> {
-  const { data, error } = await supabase.from('actions').select('*');
+  const { data, error } = await db.from('actions').select('*');
   if (error) throw error;
   return data ?? [];
 }
 
 /** 每个 action 最近一次未撤销的完成时间 */
 export async function fetchLastCompletions(): Promise<Record<string, string>> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('completions')
     .select('action_id, completed_at')
     .eq('undone', false)
@@ -55,7 +55,7 @@ export async function completeAction(
 
   // card_id 对于联动的动作我们不知道，所以分别查一次更省心：直接让联动动作自己带 card_id
   const { data: linkedActions } = action.linked_action_ids?.length
-    ? await supabase.from('actions').select('id, card_id').in('id', action.linked_action_ids)
+    ? await db.from('actions').select('id, card_id').in('id', action.linked_action_ids)
     : { data: [] };
 
   const cardIdByAction: Record<string, string> = { [action.id]: card.id };
@@ -63,13 +63,13 @@ export async function completeAction(
 
   const finalRows = rows.map((r) => ({ ...r, card_id: cardIdByAction[r.action_id] ?? r.card_id }));
 
-  const { data, error } = await supabase.from('completions').insert(finalRows).select();
+  const { data, error } = await db.from('completions').insert(finalRows).select();
   if (error) throw error;
   return data ?? [];
 }
 
 export async function undoCompletion(completionId: string): Promise<void> {
-  const { error } = await supabase.from('completions').update({ undone: true }).eq('id', completionId);
+  const { error } = await db.from('completions').update({ undone: true }).eq('id', completionId);
   if (error) throw error;
 }
 
@@ -88,11 +88,11 @@ export async function createCard(
     | 'requires_selection'
   >[]
 ): Promise<Card> {
-  const { data: newCard, error: cardError } = await supabase.from('cards').insert(card).select().single();
+  const { data: newCard, error: cardError } = await db.from('cards').insert(card).select().single();
   if (cardError) throw cardError;
 
   if (actions.length) {
-    const { error: actionsError } = await supabase
+    const { error: actionsError } = await db
       .from('actions')
       .insert(actions.map((a) => ({ ...a, card_id: newCard.id })));
     if (actionsError) throw actionsError;
@@ -102,7 +102,7 @@ export async function createCard(
 }
 
 export async function updateCard(id: string, patch: Partial<Card>): Promise<void> {
-  const { error } = await supabase
+  const { error } = await db
     .from('cards')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id);
@@ -114,7 +114,7 @@ export async function archiveCard(id: string): Promise<void> {
 }
 
 export async function fetchCompletionHistory(cardId: string, limit = 30): Promise<Completion[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('completions')
     .select('*')
     .eq('card_id', cardId)
@@ -125,13 +125,13 @@ export async function fetchCompletionHistory(cardId: string, limit = 30): Promis
 }
 
 export async function fetchCard(id: string): Promise<Card | null> {
-  const { data, error } = await supabase.from('cards').select('*').eq('id', id).maybeSingle();
+  const { data, error } = await db.from('cards').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 export async function fetchActionsForCard(cardId: string): Promise<Action[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('actions')
     .select('*')
     .eq('card_id', cardId)
@@ -141,12 +141,12 @@ export async function fetchActionsForCard(cardId: string): Promise<Action[]> {
 }
 
 export async function updateAction(id: string, patch: Partial<Action>): Promise<void> {
-  const { error } = await supabase.from('actions').update(patch).eq('id', id);
+  const { error } = await db.from('actions').update(patch).eq('id', id);
   if (error) throw error;
 }
 
 export async function deleteAction(id: string): Promise<void> {
-  const { error } = await supabase.from('actions').delete().eq('id', id);
+  const { error } = await db.from('actions').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -154,7 +154,7 @@ export async function addAction(
   cardId: string,
   action: Pick<Action, 'name' | 'is_primary' | 'frequency_type' | 'suggested_interval' | 'max_delay'>
 ): Promise<Action> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('actions')
     .insert({ ...action, card_id: cardId })
     .select()
@@ -164,17 +164,17 @@ export async function addAction(
 }
 
 export async function fetchAllTags(): Promise<{ name: string; emoji: string | null }[]> {
-  const { data, error } = await supabase.from('tags').select('name, emoji').order('sort_order');
+  const { data, error } = await db.from('tags').select('name, emoji').order('sort_order');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createTag(name: string): Promise<void> {
-  const { error } = await supabase.from('tags').insert({ name }).select();
+  const { error } = await db.from('tags').insert({ name }).select();
   if (error && error.code !== '23505') throw error; // 忽略重复标签
 }
 
 export async function deleteCard(id: string): Promise<void> {
-  const { error } = await supabase.from('cards').delete().eq('id', id);
+  const { error } = await db.from('cards').delete().eq('id', id);
   if (error) throw error;
 }

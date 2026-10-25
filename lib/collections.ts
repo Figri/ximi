@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { db } from './localdb';
 import type { Collection } from '../types';
 
 export interface CollectionWithCard extends Collection {
@@ -8,12 +8,12 @@ export interface CollectionWithCard extends Collection {
 
 /** 收藏是"卡片+更丰富内容"的组合（type='collection' 的卡片 + collections 表那一行） */
 export async function fetchCollections(): Promise<CollectionWithCard[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('collections')
     .select('*, card:cards(name, created_at)');
   if (error) throw error;
 
-  const rows = (data ?? []).map((row: any) => ({
+  const rows: CollectionWithCard[] = (data ?? []).map((row: any) => ({
     id: row.id,
     card_id: row.card_id,
     content: row.content,
@@ -28,21 +28,21 @@ export async function fetchCollections(): Promise<CollectionWithCard[]> {
 }
 
 export async function addCollection(name: string, content: string, url: string | null): Promise<void> {
-  const { data: card, error: cardError } = await supabase
+  const { data: card, error: cardError } = await db
     .from('cards')
     .insert({ name, type: 'collection', tags: ['⭐收藏'] })
     .select()
     .single();
   if (cardError) throw cardError;
 
-  const { error } = await supabase
+  const { error } = await db
     .from('collections')
     .insert({ card_id: card.id, content: content || null, url: url || null, source: 'manual' });
   if (error) throw error;
 }
 
 export async function deleteCollection(collectionId: string, cardId: string): Promise<void> {
-  const { error } = await supabase.from('collections').delete().eq('id', collectionId);
+  const { error } = await db.from('collections').delete().eq('id', collectionId);
   if (error) throw error;
-  await supabase.from('cards').delete().eq('id', cardId);
+  await db.from('cards').delete().eq('id', cardId);
 }
