@@ -9,6 +9,7 @@ const BASE = 'https://api.notion.com/v1';
 const VERSION = '2022-06-28';
 const K_TOKEN = 'notion_token';
 const MIN_GAP_MS = 350;
+const REQUEST_TIMEOUT_MS = 20000;
 
 export class NotionError extends Error {
   constructor(message: string, public status: number, public code: string | null) {
@@ -44,15 +45,26 @@ export async function notionRequest<T = any>(path: string, init: { method?: stri
       const wait = lastAt + MIN_GAP_MS - Date.now();
       if (wait > 0) await sleep(wait);
       lastAt = Date.now();
-      const res = await fetchImpl(`${BASE}${path}`, {
-        method: init.method ?? 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Notion-Version': VERSION,
-          'Content-Type': 'application/json',
-        },
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      });
+      // 网很慢时别一直挂着：20 秒没回就算这次失败，下次再同步
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      let res: Response;
+      try {
+        res = await fetchImpl(`${BASE}${path}`, {
+          method: init.method ?? 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Notion-Version': VERSION,
+            'Content-Type': 'application/json',
+          },
+          body: init.body === undefined ? undefined : JSON.stringify(init.body),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        throw new NotionError(controller.signal.aborted ? '连 Notion 超时了，等网好一点再试' : `连不上 Notion：${err instanceof Error ? err.message : String(err)}`, 0, 'network');
+      } finally {
+        clearTimeout(timer);
+      }
       if (res.status === 429) {
         const retry = Number(res.headers.get('retry-after') ?? '1');
         await sleep(Math.min(10, Math.max(1, retry)) * 1000);

@@ -22,7 +22,9 @@ export interface Feature {
 }
 
 export const FEATURES: Feature[] = [
-  { key: 'time', label: '时间', icon: '🕐', screenName: 'index', route: '/', otherRoute: '/other/time', fixed: false },
+  // 2.0：今天页是首页（app/(tabs)/index.tsx），时间挪到 time.tsx。key 不变，只换了文件和路由
+  { key: 'today', label: '今天', icon: '☀️', screenName: 'index', route: '/', otherRoute: '/other/today', fixed: false },
+  { key: 'time', label: '时间', icon: '🕐', screenName: 'time', route: '/time', otherRoute: '/other/time', fixed: false },
   { key: 'todo', label: '事项', icon: '✅', screenName: 'todo', route: '/todo', otherRoute: '/other/todo', fixed: false },
   { key: 'checkin', label: '打卡', icon: '📌', screenName: 'checkin', route: '/checkin', otherRoute: '/other/checkin', fixed: false },
   { key: 'notes', label: '笔记', icon: '📁', screenName: 'notes', route: '/notes', otherRoute: '/other/notes', fixed: false },
@@ -35,8 +37,8 @@ export const FEATURES: Feature[] = [
 
 export const FEATURE_BY_KEY: Record<string, Feature> = Object.fromEntries(FEATURES.map((f) => [f.key, f]));
 
-/** 默认展示在底栏的 3 个（key 必须跟上面注册表对得上） */
-export const DEFAULT_LAYOUT: string[] = ['time', 'todo', 'chat'];
+/** 默认展示在底栏的 3 个（key 必须跟上面注册表对得上）。2.0 定的是 今天 / 时间 / 灵（D1=A） */
+export const DEFAULT_LAYOUT: string[] = ['today', 'time', 'chat'];
 
 /** 除"其他"外，参与排布（可拖进/拖出底栏）的全部 key，固定的顺序用于兜底补位 */
 export const ASSIGNABLE_KEYS: string[] = FEATURES.filter((f) => !f.fixed).map((f) => f.key);

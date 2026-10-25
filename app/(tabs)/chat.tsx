@@ -16,8 +16,10 @@ import { MessageSheet } from '../../components/ling/MessageSheet';
 import { useLingThread, type LingMessage } from '../../lib/ling/thread';
 import { replyTo, NoKeyError, currentBrain } from '../../lib/ling/brain';
 import { executeLingActions } from '../../lib/ling/actions';
-import { deliverDue } from '../../lib/ling/proactive';
+import { deliverDue, rescheduleAll } from '../../lib/ling/proactive';
 import { modelLabel } from '../../lib/ai';
+import { endPlay, getPlaySession, type PlaySession } from '../../lib/play';
+import { useDataBus } from '../../lib/dataBus';
 
 // 「灵」：一条不断的对话线（需求文档 §6.7）。按天分隔，往上翻就是昨天；主动消息带时间，长按看为什么发、
 // 标判词；灵给了小建议时下面出「好了 / 一点 / 没用 / 做不到」；翻篇插一条分隔线，记忆照旧。
@@ -49,7 +51,28 @@ export default function LingScreen() {
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<LingMessage | null>(null);
   const [brainHint, setBrainHint] = useState<string | null>(null);
+  const [play, setPlay] = useState<PlaySession | null>(null);
+  const [tick, setTick] = useState(() => Date.now());
+  const dataVersion = useDataBus((s) => s.version);
+  const bump = useDataBus((s) => s.bump);
   const listRef = useRef<FlatList<Row>>(null);
+
+  // 娱乐出口进行中：顶上显示「玩到几点」，点一下可以提前结束（需求文档 §8.3）
+  useEffect(() => {
+    getPlaySession().then(setPlay);
+  }, [dataVersion]);
+  useEffect(() => {
+    const t = setInterval(() => setTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const playLeft = play ? Math.ceil((new Date(play.endsAt).getTime() - tick) / 60000) : 0;
+
+  async function stopPlay() {
+    await endPlay();
+    setPlay(null);
+    rescheduleAll().catch(() => []);
+    bump();
+  }
 
   useEffect(() => {
     if (!loaded) load();
@@ -58,6 +81,8 @@ export default function LingScreen() {
   useFocusEffect(
     useCallback(() => {
       deliverDue().catch(() => 0);
+      getPlaySession().then(setPlay);
+      setTick(Date.now());
       currentBrain().then(({ model, apiKey }) => setBrainHint(apiKey ? null : `还没接上大脑：去「设定」里填 ${modelLabel(model)} 的 key`));
     }, [])
   );
@@ -187,6 +212,17 @@ export default function LingScreen() {
           </Pressable>
         </View>
 
+        {play && playLeft > 0 ? (
+          <View style={styles.playBar}>
+            <Text style={styles.playText}>
+              玩{play.what}到 {hhmm(play.endsAt)} · 还剩 {playLeft} 分钟
+            </Text>
+            <Pressable onPress={stopPlay} hitSlop={8} testID="chat-play-stop">
+              <Text style={styles.playStop}>提前结束</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {brainHint ? (
           <Pressable style={styles.hint} onPress={() => router.push('/ling-settings')}>
             <Text style={styles.hintText}>{brainHint}</Text>
@@ -257,6 +293,9 @@ export default function LingScreen() {
 }
 
 const styles = StyleSheet.create({
+  playBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: room.surface },
+  playText: { color: room.accent, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  playStop: { color: room.ink2, fontSize: 12 },
   container: { flex: 1, backgroundColor: room.bg },
   flex: { flex: 1 },
   header: {

@@ -4,6 +4,7 @@ import { Text } from 'react-native';
 import { colors } from '../../constants/theme';
 import { FEATURES, FEATURE_BY_KEY } from '../../lib/features';
 import { useLayoutStore } from '../../lib/layoutStore';
+import { CaptureSheet } from '../../components/capture/CaptureSheet';
 
 // 底栏按用户自定义的布局动态渲染：全部功能屏幕都声明在这里（expo-router 的
 // Tabs 本身是静态声明式的，改不了这点），在底栏里展示的那几个给正常 href，
@@ -27,37 +28,41 @@ export default function TabsLayout() {
   ];
 
   return (
-    <Tabs
-      screenOptions={({ route }) => {
-        const feature = FEATURES.find((f) => f.screenName === route.name);
-        const dark = route.name === 'chat';
-        return {
-          headerShown: false,
-          tabBarActiveTintColor: colors.purpleDark,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarLabelStyle: { fontSize: 11 },
-          tabBarStyle: {
-            backgroundColor: dark ? '#231C2E' : colors.card,
-            borderTopWidth: 0,
-            elevation: 8,
-          },
-          ...(dark ? { tabBarActiveTintColor: '#D8B4E2', tabBarInactiveTintColor: '#A497B8' } : {}),
-          tabBarIcon: () => <Text style={{ fontSize: 18 }}>{feature?.icon ?? ''}</Text>,
-        };
-      }}
-    >
-      {orderedKeys.map((key) => {
-        const feature = FEATURE_BY_KEY[key];
-        const inTop = topSet.has(key);
-        return (
-          <Tabs.Screen
-            key={key}
-            name={feature.screenName}
-            options={{ title: feature.label, href: inTop ? undefined : null }}
-          />
-        );
-      })}
-      <Tabs.Screen name="other" options={{ title: '其他' }} />
-    </Tabs>
+    <>
+      <Tabs
+        screenOptions={({ route }) => {
+          const feature = FEATURES.find((f) => f.screenName === route.name);
+          const dark = route.name === 'chat';
+          return {
+            headerShown: false,
+            tabBarActiveTintColor: colors.purpleDark,
+            tabBarInactiveTintColor: colors.textMuted,
+            tabBarLabelStyle: { fontSize: 11 },
+            tabBarStyle: {
+              backgroundColor: dark ? '#231C2E' : colors.card,
+              borderTopWidth: 0,
+              elevation: 8,
+            },
+            ...(dark ? { tabBarActiveTintColor: '#D8B4E2', tabBarInactiveTintColor: '#A497B8' } : {}),
+            tabBarIcon: () => <Text style={{ fontSize: 18 }}>{feature?.icon ?? ''}</Text>,
+          };
+        }}
+      >
+        {orderedKeys.map((key) => {
+          const feature = FEATURE_BY_KEY[key];
+          const inTop = topSet.has(key);
+          return (
+            <Tabs.Screen
+              key={key}
+              name={feature.screenName}
+              options={{ title: feature.label, href: inTop ? undefined : null }}
+            />
+          );
+        })}
+        <Tabs.Screen name="other" options={{ title: '其他' }} />
+      </Tabs>
+      {/* 右下角 ＋ 的面板全局只有一个，哪个页面的 ＋ 都打开它 */}
+      <CaptureSheet />
+    </>
   );
 }

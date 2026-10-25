@@ -44,6 +44,8 @@ export const BACKUP_KV_KEYS = [
   'ling_settings_v1',
   'ling_layers_v1',
   'ling_in_os_versions_v1',
+  'notion_ideas_v1',
+  'todo_cat_links_v1',
 ] as const;
 
 export interface BackupFile {

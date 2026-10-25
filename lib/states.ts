@@ -56,6 +56,13 @@ export async function updateStateEvent(id: string, patch: Partial<Pick<StateEven
   await db.from('state_events').update(patch).eq('id', id);
 }
 
+/** 撤销一次打点：删掉本地这行，返回删掉的那行（已经写进 Notion 的，由同步模块去 Notion 那边归档） */
+export async function deleteStateEvent(id: string): Promise<StateEvent | null> {
+  const { data } = await db.from('state_events').select('*').eq('id', id).maybeSingle();
+  await db.from('state_events').delete().eq('id', id);
+  return (data as StateEvent | null) ?? null;
+}
+
 export async function stateEventsBetween(start: Date, end: Date): Promise<StateEvent[]> {
   const { data } = await db
     .from('state_events')

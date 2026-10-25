@@ -4,7 +4,7 @@ import type { AIAction } from '../../types';
 import { buildLingSystemPrompt } from './prompt';
 import { buildTodayData, loadLocalMemory, yesterdaySnippet } from './context';
 import { historyForModel, recentFeedback, type LingMessage } from './thread';
-import { fallbackText, KIND_LABEL, type ProactiveKind } from './templates';
+import { fallbackText, hasBanned, KIND_LABEL, type ProactiveKind } from './templates';
 import { loadLingSettings, useLingSettings } from './settings';
 
 // 灵的大脑：聊天回复、点状态时接住你、提前写主动消息、设定页的「让灵试一句」。
@@ -87,7 +87,7 @@ export function extractJson(raw: string): any | null {
 function cleanLine(s: unknown): string | null {
   if (typeof s !== 'string') return null;
   const t = s.replace(/^["“”'\s]+|["“”'\s]+$/g, '').trim();
-  if (!t || t.length > 80) return null;
+  if (!t || t.length > 80 || hasBanned(t)) return null;
   return t;
 }
 
@@ -105,7 +105,7 @@ export async function catchState(state: string, note: string | null, messages: L
     ]);
     const raw = await callModel(model, history, system, apiKey, 200);
     const text = parseActions(raw).text.split(/\n\s*\n/)[0]?.trim();
-    return text ? { text, fallback: false } : fb();
+    return text && !hasBanned(text) ? { text, fallback: false } : fb();
   } catch {
     return fb();
   }
@@ -196,4 +196,21 @@ export async function trySamples(kind: Exclude<ProactiveKind, 'test' | 'play_end
   const list = Array.isArray(json?.samples) ? json.samples.map(cleanLine).filter(Boolean) : [];
   if (!list.length) throw new Error(`这次没写出「${KIND_LABEL[kind]}」的示范，再试一次`);
   return list.slice(0, 3) as string[];
+}
+
+// ---- 今天页最上面那句 ----
+
+/** 打开今天页时灵写一句（一句、短、不提问、不催）；写不出来返回 null，页面就用规则那句 */
+export async function writeTodayLine(messages: LingMessage[], hint: string): Promise<string | null> {
+  try {
+    const { model, apiKey } = await currentBrain();
+    if (!apiKey) return null;
+    const system = await systemPrompt(messages, { omitReplyFormat: true });
+    const user = `（她打开了 App 的今天页。写一句放在页面最上面的话：一句，不超过 25 个字，像微信里随口说的；不用问句，不催，不列计划，不提几点了。能接上最近聊的或今天的情况就接上。参考：${hint}。只输出这句话。）`;
+    const raw = await callModel(model, normalizeHistory([...historyForModel(messages, 8), { role: 'user', content: user }]), system, apiKey, 80);
+    const line = cleanLine(parseActions(raw).text.split('\n')[0]);
+    return line && line.length <= 40 ? line : null;
+  } catch {
+    return null;
+  }
 }

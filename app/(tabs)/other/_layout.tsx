@@ -16,6 +16,7 @@ export default function OtherLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="today" options={{ title: '今天' }} />
       <Stack.Screen name="time" options={{ title: '时间' }} />
       <Stack.Screen name="todo" options={{ title: '事项' }} />
       <Stack.Screen name="checkin" options={{ title: '打卡' }} />

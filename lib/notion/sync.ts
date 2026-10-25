@@ -7,7 +7,7 @@ import { loadAllMessages, type LingMessage } from '../ling/thread';
 import { callAIOnce } from '../ai';
 import { currentBrain } from '../ling/brain';
 import { buildDayDigest, dayWindow } from '../dayDigest';
-import { unsyncedStateEvents, updateStateEvent } from '../states';
+import { deleteStateEvent, unsyncedStateEvents, updateStateEvent } from '../states';
 import { exportBackup } from '../backup';
 
 // OS ↔ Notion 同步（需求文档 §3.4、§4.3）：
@@ -22,13 +22,15 @@ const K_CHAT_ARCHIVED_UNTIL = 'notion_chat_archived_until_v1';
 const K_LAST_BACKUP = 'notion_last_backup_v1';
 const K_IN_OS_PULLED_AT = 'notion_in_os_pulled_at_v1';
 const K_CHAT_SUMMARY = 'notion_chat_summary_v1';
+const K_IDEAS = 'notion_ideas_v1';
 const MIN_INTERVAL_MS = 30 * 60 * 1000;
 
-export type JobKey = 'layers' | 'states' | 'diary' | 'nextSteps' | 'chatArchive' | 'backup';
+export type JobKey = 'layers' | 'states' | 'ideas' | 'diary' | 'nextSteps' | 'chatArchive' | 'backup';
 
 export const JOB_LABELS: Record<JobKey, string> = {
   layers: '灵的人设和规矩',
   states: '状态日志',
+  ideas: '想法池',
   diary: '日记属性',
   nextSteps: '项目的下一步',
   chatArchive: '对话存档',
@@ -161,6 +163,114 @@ async function pushStates(ids: NotionIds): Promise<string> {
     n++;
   }
   return n ? `新写了 ${n} 行` : '没有新的';
+}
+
+/** 把 Notion 里的一页放进回收站（30 天内能找回）：撤销打点 / 改了想法池的归类时用 */
+export async function archiveNotionPage(pageId: string): Promise<void> {
+  await notionRequest(`/pages/${pageId}`, { method: 'PATCH', body: { archived: true } });
+}
+
+/** 撤销一次状态打点：等手上这轮同步跑完再删，免得刚写进 Notion 的那行没人管；已经写进去的归档掉 */
+export async function removeStateEvent(id: string): Promise<void> {
+  if (running) await running.catch(() => null);
+  const row = await deleteStateEvent(id);
+  if (row?.notion_page_id && (await getNotionToken())) await archiveNotionPage(row.notion_page_id).catch(() => {});
+}
+
+// ---------------- 写：想法池（＋ 里「想做个人短剧」这种） ----------------
+
+export interface QueuedIdea {
+  id: string;
+  text: string;
+  createdAt: string;
+  pageId: string | null;
+}
+
+// 想法先进本地发件箱，连得上 Notion 时写成计划与待办里阶段 = 想法池的一行。没网、没连都不丢。
+let ideasLock: Promise<unknown> = Promise.resolve();
+function withIdeasLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = ideasLock.then(fn, fn);
+  ideasLock = run.catch(() => {});
+  return run;
+}
+
+async function readIdeas(): Promise<QueuedIdea[]> {
+  try {
+    const raw = await AsyncStorage.getItem(K_IDEAS);
+    return raw ? (JSON.parse(raw) as QueuedIdea[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pendingIdeas(): Promise<QueuedIdea[]> {
+  return readIdeas().then((list) => list.filter((i) => !i.pageId));
+}
+
+export function queueIdea(text: string): Promise<QueuedIdea> {
+  return withIdeasLock(async () => {
+    const idea: QueuedIdea = { id: `idea-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text: text.trim(), createdAt: new Date().toISOString(), pageId: null };
+    const list = await readIdeas();
+    // 已经写进 Notion 的只留最近 50 条（撤销用），没写进去的全留着
+    const pushed = list.filter((i) => i.pageId).slice(-50);
+    await AsyncStorage.setItem(K_IDEAS, JSON.stringify([...list.filter((i) => !i.pageId), ...pushed, idea]));
+    return idea;
+  });
+}
+
+export async function removeIdea(id: string): Promise<void> {
+  if (running) await running.catch(() => null);
+  const removed = await withIdeasLock(async () => {
+    const list = await readIdeas();
+    const hit = list.find((i) => i.id === id) ?? null;
+    await AsyncStorage.setItem(K_IDEAS, JSON.stringify(list.filter((i) => i.id !== id)));
+    return hit;
+  });
+  if (removed?.pageId && (await getNotionToken())) await archiveNotionPage(removed.pageId).catch(() => {});
+}
+
+const titlePropCache = new Map<string, string>();
+async function titlePropOf(databaseId: string): Promise<string> {
+  const cached = titlePropCache.get(databaseId);
+  if (cached) return cached;
+  const db = await notionRequest<any>(`/databases/${databaseId}`);
+  const name = Object.entries<any>(db.properties ?? {}).find(([, v]) => v?.type === 'title')?.[0] ?? '名称';
+  titlePropCache.set(databaseId, name);
+  return name;
+}
+
+async function pushIdeas(ids: NotionIds): Promise<string> {
+  const pending = await pendingIdeas();
+  if (!pending.length) return '没有新的';
+  if (!ids.planDb) return `没找到计划与待办，${pending.length} 条先存着`;
+  const titleProp = await titlePropOf(ids.planDb);
+  let n = 0;
+  for (const idea of pending) {
+    const page = await notionRequest<any>('/pages', {
+      method: 'POST',
+      body: {
+        parent: { database_id: ids.planDb },
+        properties: {
+          [titleProp]: { title: richText(idea.text) },
+          阶段: { select: { name: '想法池' } },
+          备注: { rich_text: richText(`西米OS ＋ 里记的 · ${mmddhhmm(new Date(idea.createdAt))}`) },
+        },
+      },
+    });
+    // 写的这几秒里她可能已经把它改成别的了：那就把刚建的这页归档
+    const stillThere = await withIdeasLock(async () => {
+      const list = await readIdeas();
+      const hit = list.find((i) => i.id === idea.id);
+      if (hit) {
+        hit.pageId = page.id;
+        await AsyncStorage.setItem(K_IDEAS, JSON.stringify(list));
+      }
+      return !!hit;
+    });
+    if (!stillThere) await archiveNotionPage(page.id).catch(() => {});
+    else n++;
+  }
+  return `新写了 ${n} 条`;
 }
 
 // ---------------- 写：日记属性 ----------------
@@ -422,6 +532,7 @@ export function syncAll(force = false, only?: JobKey[]): Promise<SyncStatus> {
     const jobs: [JobKey, () => Promise<string>][] = [
       ['layers', () => pullLayers(ids)],
       ['states', () => pushStates(ids)],
+      ['ideas', () => pushIdeas(ids)],
       ['diary', () => writeDiary(ids)],
       ['nextSteps', () => pullNextSteps(ids)],
       ['chatArchive', () => archiveChat(ids)],
@@ -448,4 +559,9 @@ export function syncAll(force = false, only?: JobKey[]): Promise<SyncStatus> {
 /** 状态打点后立刻试一下（没连 Notion 或失败都不打扰） */
 export function syncStatesSoon(): void {
   syncAll(true, ['states']).catch(() => {});
+}
+
+/** ＋ 里记了想法后试一下 */
+export function syncIdeasSoon(): void {
+  syncAll(true, ['ideas']).catch(() => {});
 }

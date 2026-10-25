@@ -28,8 +28,8 @@ export default function RecordScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Pressable style={styles.backRow} onPress={() => router.push('/')}>
-        <Text style={styles.backText}>‹ 打卡</Text>
+      <Pressable style={styles.backRow} onPress={() => (router.canGoBack() ? router.back() : router.push('/'))}>
+        <Text style={styles.backText}>‹ 返回</Text>
       </Pressable>
       <View style={styles.body}>
         <View style={styles.sidebarWrap}>

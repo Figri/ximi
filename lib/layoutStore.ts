@@ -6,6 +6,8 @@ import { enqueueSync } from './timelogSync';
 const K_TAB_LAYOUT = 'ximi_tab_layout';
 /** 2.0：「灵」要在底栏里（D1）。老布局里没有就把第三个换成灵，只做一次，之后随你拖 */
 const K_LING_TAB_MIGRATED = 'ximi_tab_layout_ling_v1';
+/** 2.0 第二期：底栏换成 今天 / 时间 / 灵（D1=A），只换一次，之后随你拖 */
+const K_TODAY_TAB_MIGRATED = 'ximi_tab_layout_today_v1';
 
 /** 坏数据兜底：读出来的东西不管多离谱，这个函数永远吐出一份合法的3个key。
  * 规则（文档4.「坏数据兜底」）：
@@ -51,6 +53,11 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         }
         await AsyncStorage.setItem(K_LING_TAB_MIGRATED, '1');
       }
+      if (!(await AsyncStorage.getItem(K_TODAY_TAB_MIGRATED))) {
+        keys = [...DEFAULT_LAYOUT];
+        await AsyncStorage.setItem(K_TAB_LAYOUT, JSON.stringify(keys));
+        await AsyncStorage.setItem(K_TODAY_TAB_MIGRATED, '1');
+      }
       set({ topKeys: keys, loaded: true });
     } catch {
       // 解析失败（存的根本不是合法JSON）—— 直接用默认，app 不能因为这个白屏
@@ -65,3 +72,10 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     enqueueSync({ table: 'tab_layout', op: 'upsert', row: { id: 'main', keys: clean, updated_at: new Date().toISOString() } });
   },
 }));
+
+/** 打开某个功能：在底栏里就切过去，不在就从「其他」里推进去（返回回到「其他」） */
+export function routeForFeature(key: string): string {
+  const f = FEATURE_BY_KEY[key];
+  if (!f) return '/';
+  return useLayoutStore.getState().topKeys.includes(key) ? f.route : f.otherRoute;
+}

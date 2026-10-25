@@ -68,7 +68,10 @@ export function recentFeedback(messages: LingMessage[]): string[] {
     .map((m) => `你说「${m.content.slice(0, 40)}」，她觉得${m.feedback}`);
 }
 
-/** 喂给模型的对话历史：最后一条分隔线之后的内容，最多 30 条，去掉 App 自己的小提示 */
+/**
+ * 喂给模型的对话历史：最后一条分隔线之后的内容，最多 30 条，去掉 App 自己的小提示（role = system）。
+ * 她在 App 里做的动作（比如在今天页点了「焦虑」）记成 role = user 的 note，带括号喂进去，灵才知道前因。
+ */
 export function historyForModel(messages: LingMessage[], limit = 30): { role: 'user' | 'assistant'; content: string }[] {
   let start = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -79,9 +82,9 @@ export function historyForModel(messages: LingMessage[], limit = 30): { role: 'u
   }
   return messages
     .slice(start)
-    .filter((m) => m.role !== 'system' && m.kind !== 'note' && m.content.trim())
+    .filter((m) => m.role !== 'system' && m.content.trim())
     .slice(-limit)
-    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.kind === 'note' ? `（${m.content}）` : m.content }));
 }
 
 interface ThreadState {
@@ -92,6 +95,8 @@ interface ThreadState {
   add: (m: Partial<LingMessage> & Pick<LingMessage, 'role' | 'content'>) => Promise<LingMessage>;
   setTyping: (v: boolean) => void;
   feedback: (id: string, tag: string | null) => Promise<void>;
+  /** 撤销时用：比如点了状态又撤销，把那条「点了状态」和灵接住的话一起拿掉 */
+  remove: (ids: string[]) => Promise<void>;
 }
 
 export const useLingThread = create<ThreadState>((set, get) => ({
@@ -120,5 +125,11 @@ export const useLingThread = create<ThreadState>((set, get) => ({
   feedback: async (id, tag) => {
     await setMessageFeedback(id, tag);
     set({ messages: get().messages.map((m) => (m.id === id ? { ...m, feedback: tag } : m)) });
+  },
+
+  remove: async (ids) => {
+    if (!ids.length) return;
+    await db.from(TABLE).delete().in('id', ids);
+    set({ messages: get().messages.filter((m) => !ids.includes(m.id)) });
   },
 }));

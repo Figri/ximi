@@ -20,6 +20,7 @@ import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } fro
 import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/features';
 import { useLayoutStore } from '../../../lib/layoutStore';
 import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
+import { CaptureFab } from '../../../components/capture/CaptureFab';
 
 const ICON_SIZE = 60;
 const DIVIDER_SENTINEL = '__divider__';
@@ -306,6 +307,7 @@ export default function OtherScreen() {
           <Text style={styles.toastText}>{toast}</Text>
         </Animated.View>
       )}
+      <CaptureFab />
     </SafeAreaView>
   );
 }

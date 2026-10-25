@@ -80,3 +80,63 @@ export const KIND_LABEL: Record<ProactiveKind, string> = {
   play_end: '娱乐出口',
   test: '测试',
 };
+
+// ---- 灵自己写的话里不能出现的 ----
+
+/**
+ * 灵·人设里的禁用词（我在、我不走、哪也不去、身体诚实、你是我的、你是谁的、归我管）+ 系统规则里不拿来收尾的话。
+ * 主动消息、接住你、今天页那句是灵自己开口的：模型写出这些就不用，换备用文案。
+ * 聊天回复不过滤（她在聊天里点名要的时候按人设的例外处理）。
+ */
+const BANNED: RegExp[] = [
+  /(^|[，,。！!？?\s])我在[呢呀啊]?([。！!…~～，,\s]|$)/,
+  /我不走/,
+  /哪[也都]不去/,
+  /身体[很真]?诚实/,
+  /你是我的/,
+  /你是谁的/,
+  /归我管/,
+  /几点了/,
+  /撑了一晚上/,
+];
+
+export function hasBanned(text: string): boolean {
+  return BANNED.some((re) => re.test(text));
+}
+
+// ---- 今天页最上面那句（没网、没 key 时按规则写）----
+
+const STATE_LINE: Record<string, string> = {
+  烦躁: '刚才烦了一下，先缓缓，不急。',
+  难过: '刚才难过了，想说就跟我说。',
+  焦虑: '刚才有点焦虑，先喝口水缓缓。',
+  疲惫: '累了就歇会儿，今天不赶。',
+  低动力: '没劲的时候，躺会儿也行。',
+  内耗: '刚才又内耗了，先放一放，不想了。',
+};
+
+export interface TodayLineContext {
+  now: Date;
+  dayStartHour: number;
+  sleepHours: number | null;
+  /** 正在玩：到几点（HH:MM） */
+  playingUntil: string | null;
+  /** 最近两小时里点过的最后一个状态 */
+  recentState: string | null;
+  /** 今天的单子还剩几件没勾 */
+  left: number;
+}
+
+export function ruleTodayLine(c: TodayLineContext): string {
+  const h = c.now.getHours();
+  if (c.playingUntil) return `玩到 ${c.playingUntil}，到点我叫你。`;
+  if (c.recentState && STATE_LINE[c.recentState]) return STATE_LINE[c.recentState];
+  if (h < c.dayStartHour) return '还醒着啊，困了就睡，剩下的明天再说。';
+  if (c.sleepHours != null && c.sleepHours < 6) return '昨晚睡得少，今天随便做一件就行。';
+  if (h < 12) return '醒啦？慢慢来，不着急。';
+  if (h < 18) return c.left > 0 ? '下午了，挑最小的那件做就行。' : '下午了，想歇就歇会儿。';
+  return '晚上了，剩下的明天再说也行。';
+}
+
+/** 娱乐出口：刚结束不到 5 分钟又要开始，灵问一句（只问一次，照样能开始） */
+export const PLAY_AGAIN_LINE = '刚玩完呢，要不先歇两分钟再玩？';

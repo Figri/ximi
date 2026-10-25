@@ -32,11 +32,15 @@ interface WeekDateStripProps {
   // 这周7天各自的"有几条"数字，不传就不显示——time模块传time_logs条数，
   // todo模块传当天事项数，让这个组件不跟任何一个模块的数据源绑死
   fetchCounts: (dates: Date[]) => Promise<Record<string, number>>;
+  /** 「今」落在哪天。今天页按「一天从 5 点算起」传进来，凌晨还算前一天；不传就是日历上的今天 */
+  today?: Date;
+  /** 今天页自己的页头已经写了日期，这里就不再显示那一行 */
+  hideDateRow?: boolean;
 }
 
-export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts }: WeekDateStripProps) {
+export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, today: todayProp, hideDateRow }: WeekDateStripProps) {
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const today = new Date();
+  const today = todayProp ?? new Date();
   const weekStart = startOfWeek(date);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -81,11 +85,11 @@ export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts }: W
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      <View style={styles.dateRow}>
+      <View style={[styles.dateRow, hideDateRow && { display: 'none' }]}>
         <Text style={styles.dateLabel}>
           {date.getMonth() + 1}月{date.getDate()}日
         </Text>
-        <Pressable style={styles.todayButton} onPress={() => onDateChange(new Date())}>
+        <Pressable style={styles.todayButton} onPress={() => onDateChange(todayProp ?? new Date())}>
           <Text style={styles.todayButtonText}>今</Text>
         </Pressable>
       </View>
