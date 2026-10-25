@@ -4,6 +4,8 @@ import { ASSIGNABLE_KEYS, DEFAULT_LAYOUT, FEATURE_BY_KEY } from './features';
 import { enqueueSync } from './timelogSync';
 
 const K_TAB_LAYOUT = 'ximi_tab_layout';
+/** 2.0：「灵」要在底栏里（D1）。老布局里没有就把第三个换成灵，只做一次，之后随你拖 */
+const K_LING_TAB_MIGRATED = 'ximi_tab_layout_ling_v1';
 
 /** 坏数据兜底：读出来的东西不管多离谱，这个函数永远吐出一份合法的3个key。
  * 规则（文档4.「坏数据兜底」）：
@@ -41,7 +43,15 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     try {
       const raw = await AsyncStorage.getItem(K_TAB_LAYOUT);
       const parsed = raw ? JSON.parse(raw) : null;
-      set({ topKeys: sanitizeLayout(parsed), loaded: true });
+      let keys = sanitizeLayout(parsed);
+      if (!(await AsyncStorage.getItem(K_LING_TAB_MIGRATED))) {
+        if (!keys.includes('chat')) {
+          keys = [keys[0], keys[1], 'chat'];
+          await AsyncStorage.setItem(K_TAB_LAYOUT, JSON.stringify(keys));
+        }
+        await AsyncStorage.setItem(K_LING_TAB_MIGRATED, '1');
+      }
+      set({ topKeys: keys, loaded: true });
     } catch {
       // 解析失败（存的根本不是合法JSON）—— 直接用默认，app 不能因为这个白屏
       set({ topKeys: [...DEFAULT_LAYOUT], loaded: true });

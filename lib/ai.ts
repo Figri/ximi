@@ -1,15 +1,28 @@
 import type { AIAction, AIReply, ChatMessage } from '../types';
 import { imageUrlToBase64 } from './chatImages';
+import { getModelOption, setModelOption } from './aiSettings';
 
-// 支持的模型（可在聊天页 ⋯ 设置里切换、填各家的 key）
-export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-flash' | 'deepseek-chat';
+// 支持的模型（灵的设定 / 其他页的设置里切换、填各家的 key）
+// 2.0 起默认用国内能直连的 DeepSeek（需求文档 D3=C），豆包备选；Claude/GPT/Gemini 要开代理，只当备选。
+export type AIModel = 'deepseek-chat' | 'doubao' | 'claude-sonnet' | 'gpt-4o' | 'gemini-flash';
 
-export const AI_MODELS: { id: AIModel; label: string; keyHint: string; supportsImages: boolean }[] = [
-  { id: 'claude-sonnet', label: 'Claude', keyHint: 'sk-ant-...（console.anthropic.com）', supportsImages: true },
-  { id: 'gpt-4o', label: 'GPT-4o', keyHint: 'sk-...（platform.openai.com）', supportsImages: true },
-  { id: 'gemini-flash', label: 'Gemini', keyHint: 'AIza...（aistudio.google.com/apikey）', supportsImages: true },
-  { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）', supportsImages: false },
+export const DEFAULT_MODEL: AIModel = 'deepseek-chat';
+
+export const AI_MODELS: { id: AIModel; label: string; keyHint: string; supportsImages: boolean; needsProxy: boolean }[] = [
+  { id: 'deepseek-chat', label: 'DeepSeek', keyHint: 'sk-...（platform.deepseek.com）', supportsImages: false, needsProxy: false },
+  { id: 'doubao', label: '豆包', keyHint: '火山方舟的 API Key（console.volcengine.com/ark）', supportsImages: false, needsProxy: false },
+  { id: 'claude-sonnet', label: 'Claude', keyHint: 'sk-ant-...（console.anthropic.com，要代理）', supportsImages: true, needsProxy: true },
+  { id: 'gpt-4o', label: 'GPT', keyHint: 'sk-...（platform.openai.com，要代理）', supportsImages: true, needsProxy: true },
+  { id: 'gemini-flash', label: 'Gemini', keyHint: 'AIza...（aistudio.google.com/apikey，要代理）', supportsImages: true, needsProxy: true },
 ];
+
+export function modelLabel(model: AIModel): string {
+  return AI_MODELS.find((m) => m.id === model)?.label ?? model;
+}
+
+/** DeepSeek 官方在调整模型名（价格页现在列的是 deepseek-flash / deepseek-v4-pro），
+ * 这里先用 deepseek-chat，报"模型不存在"就依次换下一个，并记住能用的那个 */
+const DEEPSEEK_MODEL_CANDIDATES = ['deepseek-chat', 'deepseek-flash', 'deepseek-v4-flash'];
 
 const SYSTEM_PROMPT_SUFFIX = `
 
@@ -36,65 +49,82 @@ const SYSTEM_PROMPT_SUFFIX = `
 - create_card: 新建一张习惯卡片，frequency_type 是 interval（按周期）就填 interval_days，是 fixed_day（固定星期几，1=周一...7=周日）就填 fixed_days 数组`;
 
 export function buildSystemPrompt(contextSummary: string): string {
-  return `你是「灵」，西米的私人AI助手，住在她的西米OS APP里。你阳光、有活力、有主见，说话用中文，语气温暖亲近像认识很久的朋友，可以多用emoji，不是冷冰冰的工具。
+  return `你是「灵」，西米的私人AI助手，住在她的西米OS APP里。说话用中文，像真人发微信：口语、短，不写动作描写。
 
 ${contextSummary}${SYSTEM_PROMPT_SUFFIX}`;
 }
 
-function parseActions(raw: string): { text: string; actions: AIAction[] } {
+/** 把回复里的 ```json {...} ``` 指令块拆出来；extra 里是 actions 以外的字段（比如 suggest） */
+export function parseActions(raw: string): { text: string; actions: AIAction[]; extra: Record<string, unknown> } {
   const match = raw.match(/```json\s*([\s\S]*?)```/);
-  if (!match) return { text: raw.trim(), actions: [] };
+  if (!match) return { text: raw.trim(), actions: [], extra: {} };
 
   const text = raw.replace(match[0], '').trim();
   try {
     const parsed = JSON.parse(match[1]);
-    return { text, actions: parsed.actions ?? [] };
+    const { actions, ...extra } = parsed ?? {};
+    return { text, actions: Array.isArray(actions) ? actions : [], extra };
   } catch {
-    return { text, actions: [] };
+    return { text, actions: [], extra: {} };
   }
 }
 
-async function callAnthropic(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
+const REQUEST_TIMEOUT_MS = 60000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw new Error('网络太慢，等了一分钟没回');
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export interface ModelMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  image_url?: string | null;
+}
+
+async function callAnthropic(messages: ModelMessage[], system: string, apiKey: string, maxTokens: number): Promise<string> {
   const mapped = await Promise.all(
     messages.map(async (m) => {
       if (!m.image_url) return { role: m.role, content: m.content };
       const { base64, mimeType } = await imageUrlToBase64(m.image_url);
-      const parts: unknown[] = [
-        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
-      ];
+      const parts: unknown[] = [{ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }];
       if (m.content) parts.push({ type: 'text', text: m.content });
       return { role: m.role, content: parts };
     })
   );
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system,
-      messages: mapped,
-    }),
+    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: maxTokens, system, messages: mapped }),
   });
-  if (!res.ok) throw new Error(`Anthropic API 错误: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`Claude 接口错误: ${res.status} ${await res.text()}`);
   const data = await res.json();
   return data.content?.[0]?.text ?? '';
 }
 
-/** OpenAI 和 DeepSeek 用的都是 chat/completions 这套格式，公用一个实现 */
+/** OpenAI、DeepSeek、豆包（火山方舟）用的都是 chat/completions 这套格式，公用一个实现 */
 async function callOpenAICompatible(
   baseUrl: string,
   model: string,
-  messages: ChatMessage[],
+  messages: ModelMessage[],
   system: string,
   apiKey: string,
   errorLabel: string,
-  supportsImages: boolean
+  supportsImages: boolean,
+  maxTokens: number
 ): Promise<string> {
   const mapped = await Promise.all(
     messages.map(async (m) => {
@@ -106,23 +136,48 @@ async function callOpenAICompatible(
     })
   );
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: system }, ...mapped],
-    }),
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, ...mapped] }),
   });
-  if (!res.ok) throw new Error(`${errorLabel} API 错误: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new ModelHttpError(`${errorLabel} 接口错误: ${res.status} ${await res.text()}`, res.status);
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? '';
 }
 
-async function callGemini(messages: ChatMessage[], system: string, apiKey: string): Promise<string> {
+class ModelHttpError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+async function callDeepSeek(messages: ModelMessage[], system: string, apiKey: string, maxTokens: number): Promise<string> {
+  const saved = await getModelOption('deepseek');
+  const order = saved ? [saved, ...DEEPSEEK_MODEL_CANDIDATES.filter((m) => m !== saved)] : DEEPSEEK_MODEL_CANDIDATES;
+  let lastError: unknown = null;
+  for (const name of order) {
+    try {
+      const out = await callOpenAICompatible('https://api.deepseek.com', name, messages, system, apiKey, 'DeepSeek', false, maxTokens);
+      if (name !== saved) await setModelOption('deepseek', name);
+      return out;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const modelMissing = err instanceof ModelHttpError && err.status === 400 && /model/i.test(msg);
+      if (!modelMissing) throw err;
+    }
+  }
+  throw lastError ?? new Error('DeepSeek 没有可用的模型');
+}
+
+async function callDoubao(messages: ModelMessage[], system: string, apiKey: string, maxTokens: number): Promise<string> {
+  const model = (await getModelOption('doubao'))?.trim();
+  if (!model) throw new Error('豆包还没填模型名：在灵的设定 → 大脑里填火山方舟的模型名或接入点 ID（ep- 开头）');
+  return callOpenAICompatible('https://ark.cn-beijing.volces.com/api/v3', model, messages, system, apiKey, '豆包', false, maxTokens);
+}
+
+async function callGemini(messages: ModelMessage[], system: string, apiKey: string): Promise<string> {
   const contents = await Promise.all(
     messages.map(async (m) => {
       const parts: unknown[] = [];
@@ -136,47 +191,44 @@ async function callGemini(messages: ChatMessage[], system: string, apiKey: strin
     })
   );
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+  const res = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-      }),
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents }),
     }
   );
-  if (!res.ok) throw new Error(`Gemini API 错误: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`Gemini 接口错误: ${res.status} ${await res.text()}`);
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
-async function callModel(
+/** 调一次模型，拿纯文本回复 */
+export async function callModel(
   model: AIModel,
-  messages: ChatMessage[],
+  messages: ModelMessage[],
   system: string,
-  apiKey: string
+  apiKey: string,
+  maxTokens = 1024
 ): Promise<string> {
   switch (model) {
-    case 'gpt-4o':
-      return callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI', true);
     case 'deepseek-chat':
-      return callOpenAICompatible(
-        'https://api.deepseek.com',
-        'deepseek-chat',
-        messages,
-        system,
-        apiKey,
-        'DeepSeek',
-        false
-      );
+      return callDeepSeek(messages, system, apiKey, maxTokens);
+    case 'doubao':
+      return callDoubao(messages, system, apiKey, maxTokens);
+    case 'gpt-4o':
+      return callOpenAICompatible('https://api.openai.com/v1', 'gpt-4o', messages, system, apiKey, 'OpenAI', true, maxTokens);
     case 'gemini-flash':
       return callGemini(messages, system, apiKey);
     case 'claude-sonnet':
     default:
-      return callAnthropic(messages, system, apiKey);
+      return callAnthropic(messages, system, apiKey, maxTokens);
   }
+}
+
+function missingKeyError(model: AIModel): Error {
+  return new Error(`还没有设置 ${modelLabel(model)} 的 API Key，去灵的设定 → 大脑里填一下`);
 }
 
 export async function sendChatMessage(
@@ -185,11 +237,7 @@ export async function sendChatMessage(
   model: AIModel,
   apiKey: string | null
 ): Promise<AIReply> {
-  if (!apiKey) {
-    const label = AI_MODELS.find((m) => m.id === model)?.label ?? model;
-    throw new Error(`还没有设置 ${label} 的 API Key，去聊天页右上角 ⋯ → 设置里填一下`);
-  }
-
+  if (!apiKey) throw missingKeyError(model);
   const system = buildSystemPrompt(contextSummary);
   const raw = await callModel(model, messages, system, apiKey);
   const { text, actions } = parseActions(raw);
@@ -198,24 +246,15 @@ export async function sendChatMessage(
 
 /**
  * 通用的一次性 AI 调用：给一段系统提示 + 一段用户内容，拿纯文本回复。
- * 给"每日总结"这种不是聊天、但也要调用 AI 的场景用。
+ * 给"每日总结"、主动消息预写这种不是聊天、但也要调用 AI 的场景用。
  */
 export async function callAIOnce(
   systemPrompt: string,
   userPrompt: string,
   model: AIModel,
-  apiKey: string | null
+  apiKey: string | null,
+  maxTokens = 1024
 ): Promise<string> {
-  if (!apiKey) {
-    const label = AI_MODELS.find((m) => m.id === model)?.label ?? model;
-    throw new Error(`还没有设置 ${label} 的 API Key`);
-  }
-  const fakeMessage: ChatMessage = {
-    id: 'once',
-    role: 'user',
-    content: userPrompt,
-    model: null,
-    created_at: new Date().toISOString(),
-  };
-  return callModel(model, [fakeMessage], systemPrompt, apiKey);
+  if (!apiKey) throw missingKeyError(model);
+  return callModel(model, [{ role: 'user', content: userPrompt }], systemPrompt, apiKey, maxTokens);
 }

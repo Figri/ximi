@@ -20,7 +20,7 @@ export default function OtherLayout() {
       <Stack.Screen name="todo" options={{ title: '事项' }} />
       <Stack.Screen name="checkin" options={{ title: '打卡' }} />
       <Stack.Screen name="notes" options={{ title: '笔记' }} />
-      <Stack.Screen name="chat" options={{ title: '聊天' }} />
+      <Stack.Screen name="chat" options={{ headerShown: false }} />
       <Stack.Screen name="record" options={{ title: '记录' }} />
       <Stack.Screen name="data" options={{ title: '数据' }} />
       <Stack.Screen name="schedule" options={{ title: '日程' }} />

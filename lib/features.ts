@@ -26,7 +26,7 @@ export const FEATURES: Feature[] = [
   { key: 'todo', label: '事项', icon: '✅', screenName: 'todo', route: '/todo', otherRoute: '/other/todo', fixed: false },
   { key: 'checkin', label: '打卡', icon: '📌', screenName: 'checkin', route: '/checkin', otherRoute: '/other/checkin', fixed: false },
   { key: 'notes', label: '笔记', icon: '📁', screenName: 'notes', route: '/notes', otherRoute: '/other/notes', fixed: false },
-  { key: 'chat', label: '聊天', icon: '💬', screenName: 'chat', route: '/chat', otherRoute: '/other/chat', fixed: false },
+  { key: 'chat', label: '灵', icon: '💜', screenName: 'chat', route: '/chat', otherRoute: '/other/chat', fixed: false },
   { key: 'record', label: '记录', icon: '📋', screenName: 'record', route: '/record', otherRoute: '/other/record', fixed: false },
   { key: 'data', label: '数据', icon: '📊', screenName: 'data', route: '/data', otherRoute: '/other/data', fixed: false },
   { key: 'schedule', label: '日程', icon: '🗓️', screenName: 'schedule', route: '/schedule', otherRoute: '/other/schedule', fixed: false },
@@ -36,7 +36,7 @@ export const FEATURES: Feature[] = [
 export const FEATURE_BY_KEY: Record<string, Feature> = Object.fromEntries(FEATURES.map((f) => [f.key, f]));
 
 /** 默认展示在底栏的 3 个（key 必须跟上面注册表对得上） */
-export const DEFAULT_LAYOUT: string[] = ['time', 'todo', 'checkin'];
+export const DEFAULT_LAYOUT: string[] = ['time', 'todo', 'chat'];
 
 /** 除"其他"外，参与排布（可拖进/拖出底栏）的全部 key，固定的顺序用于兜底补位 */
 export const ASSIGNABLE_KEYS: string[] = FEATURES.filter((f) => !f.fixed).map((f) => f.key);

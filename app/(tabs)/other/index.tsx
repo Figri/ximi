@@ -19,9 +19,15 @@ import { AI_MODELS, type AIModel } from '../../../lib/ai';
 import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } from '../../../lib/aiSettings';
 import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/features';
 import { useLayoutStore } from '../../../lib/layoutStore';
+import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
 
 const ICON_SIZE = 60;
 const DIVIDER_SENTINEL = '__divider__';
+
+function fmtTime(iso: string) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 function formatTime(date: Date | null) {
   if (!date) return '未知';
@@ -50,18 +56,42 @@ export default function OtherScreen() {
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
   // 设置区状态——原 settings.tsx 的逻辑原样搬过来
-  const [selected, setSelected] = useState<AIModel>('claude-sonnet');
+  const [selected, setSelected] = useState<AIModel>('deepseek-chat');
   const [savedKeys, setSavedKeys] = useState<Partial<Record<AIModel, string>>>({});
   const [drafts, setDrafts] = useState<Partial<Record<AIModel, string>>>({});
   const [expanded, setExpanded] = useState<AIModel | null>(null);
   const [checking, setChecking] = useState(false);
 
+  const [migrationText, setMigrationText] = useState('读取中……');
+  const [migrating, setMigrating] = useState(false);
+
   useEffect(() => {
     loadSettings();
+    loadMigration();
   }, []);
 
+  async function loadMigration() {
+    const state = await getMigrationState();
+    const local = await localLegacyCounts();
+    const have = `手机里现在有：习惯卡片 ${local.cards}、打卡记录 ${local.completions}、猫 ${local.cats}、旧聊天 ${local.messages}。`;
+    if (!state) setMigrationText(`还没搬过。${have}`);
+    else if (state.status === 'done') setMigrationText(`${fmtTime(state.at)} 搬完了。${have}旧 Supabase 库可以去控制台删掉了。`);
+    else if (state.status === 'skipped') setMigrationText(`不搬了（${state.error ?? ''}）。${have}`);
+    else setMigrationText(`还没搬成功，下次打开会再试（${state.error ?? '连不上'}）。${have}`);
+  }
+
+  async function handleRemigrate() {
+    setMigrating(true);
+    try {
+      await runLegacyMigration(true);
+      await loadMigration();
+    } finally {
+      setMigrating(false);
+    }
+  }
+
   async function loadSettings() {
-    const model = (await getSelectedModel()) ?? 'claude-sonnet';
+    const model = (await getSelectedModel()) ?? 'deepseek-chat';
     setSelected(model);
     const entries = await Promise.all(AI_MODELS.map(async (m) => [m.id, await getApiKey(m.id)] as const));
     const map: Partial<Record<AIModel, string>> = {};
@@ -235,57 +265,26 @@ export default function OtherScreen() {
           <Text style={styles.templateLinkText}>📅 日常作息模板</Text>
           <Text style={styles.moreArrow}>›</Text>
         </Pressable>
-        <Text style={styles.intro}>
-          每个 key 只存在这台手机本地（系统安全存储），不会传到 Supabase 或者任何服务器。换 APP/清数据要重新填。
-        </Text>
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/ling-settings')}>
+          <Text style={styles.templateLinkText}>💜 灵的设定（大脑、频率、提示词、提醒自检）</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/notion-connect')}>
+          <Text style={styles.templateLinkText}>🗂 Notion 连接、同步、备份与恢复</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/memory')}>
+          <Text style={styles.templateLinkText}>🧠 让灵一直记住的事（本机）</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
 
-        <Text style={[styles.settingsSubLabel]}>当前用哪个模型聊天</Text>
-        {AI_MODELS.map((m) => {
-          const hasKey = !!savedKeys[m.id];
-          const isSelected = selected === m.id;
-          const isExpanded = expanded === m.id;
-          return (
-            <View key={m.id} style={styles.providerCard}>
-              <Pressable style={styles.providerRow} onPress={() => handleSelectModel(m.id)}>
-                <View style={[styles.radio, isSelected && styles.radioActive]} />
-                <View style={styles.providerInfo}>
-                  <Text style={styles.providerName}>{m.label}</Text>
-                  <Text style={styles.providerStatus}>
-                    {hasKey ? `已设置 ${maskKey(savedKeys[m.id]!)}` : '还没填 key'}
-                    {!m.supportsImages ? ' · 不支持图片识别' : ''}
-                  </Text>
-                </View>
-                <Pressable style={styles.editKeyButton} onPress={() => setExpanded(isExpanded ? null : m.id)}>
-                  <Text style={styles.editKeyButtonText}>{hasKey ? '修改' : '设置'}</Text>
-                </Pressable>
-              </Pressable>
-              {isExpanded && (
-                <View style={styles.editArea}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={m.keyHint}
-                    placeholderTextColor={colors.textMuted}
-                    value={drafts[m.id] ?? ''}
-                    onChangeText={(text) => setDrafts((prev) => ({ ...prev, [m.id]: text }))}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <View style={styles.editActions}>
-                    {hasKey && (
-                      <Pressable style={styles.clearButton} onPress={() => handleClearKey(m.id)}>
-                        <Text style={styles.clearButtonText}>清除</Text>
-                      </Pressable>
-                    )}
-                    <Pressable style={styles.saveKeyButton} onPress={() => handleSaveKey(m.id)}>
-                      <Text style={styles.saveKeyButtonText}>保存</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              )}
-            </View>
-          );
-        })}
+        <Text style={[styles.settingsSubLabel, { marginTop: spacing.lg }]}>旧数据搬家</Text>
+        <View style={styles.versionCard}>
+          <Text style={styles.versionValue}>{migrationText}</Text>
+          <Pressable style={styles.checkButton} onPress={handleRemigrate} disabled={migrating}>
+            {migrating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.checkButtonText}>再搬一次</Text>}
+          </Pressable>
+        </View>
 
         <Text style={[styles.settingsSubLabel, { marginTop: spacing.lg }]}>版本信息</Text>
         <View style={styles.versionCard}>

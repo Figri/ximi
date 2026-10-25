@@ -6,15 +6,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Updates from 'expo-updates';
 import { colors } from '../constants/theme';
-import { useDecayNotifications } from '../lib/useDecayNotifications';
-import { useTodoReminders } from '../lib/useTodoReminders';
+import { useLingRuntime } from '../lib/ling/useLingRuntime';
 import { flushSync } from '../lib/timelogSync';
 import { runLegacyMigration } from '../lib/legacyMigration';
 import { useCardStore } from '../lib/store';
 
 export default function RootLayout() {
-  useDecayNotifications();
-  useTodoReminders();
+  useLingRuntime();
 
   useEffect(() => {
     // 旧 Supabase 库的数据一次性搬到手机本地；搬到了东西就刷新一下卡片
@@ -91,6 +89,8 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
+          <Stack.Screen name="ling-settings" options={{ presentation: 'card', contentStyle: { backgroundColor: '#231C2E' } }} />
+          <Stack.Screen name="notion-connect" options={{ presentation: 'card' }} />
           <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
           <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />

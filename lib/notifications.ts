@@ -7,15 +7,37 @@ const TIMER_IDENTIFIER_PREFIX = 'ximi-timer-';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    const isTimer = notification.request.identifier.startsWith(TIMER_IDENTIFIER_PREFIX);
+    const id = notification.request.identifier;
+    const isTimer = id.startsWith(TIMER_IDENTIFIER_PREFIX);
+    const kind = (notification.request.content.data as any)?.kind;
+    const isLingRemind = id.startsWith('ling-') && (kind === 'reminder' || kind === 'play_end');
+    // 这里只在 App 开着时才会走到：「想你了」这时不弹（她就在），由灵的运行时作废重排
+    const isMissYouWhileOpen = id.startsWith('ling-') && kind === 'miss_you';
     return {
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: isTimer, // 计时器完成要响铃，日常提醒不用吵
+      shouldShowBanner: !isMissYouWhileOpen,
+      shouldShowList: !isMissYouWhileOpen,
+      shouldPlaySound: isTimer || isLingRemind, // 计时器和约定提醒要响，灵平常说话不吵
       shouldSetBadge: false,
     };
   },
 });
+
+/** 灵的两个通知渠道：平常说话（想你了、顺口一提）和约定提醒（到点要响） */
+export async function ensureLingChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('ling', {
+    name: '灵的消息',
+    importance: Notifications.AndroidImportance.HIGH,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  });
+  await Notifications.setNotificationChannelAsync('ling-remind', {
+    name: '约定提醒',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  });
+}
 
 async function ensureAndroidChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;

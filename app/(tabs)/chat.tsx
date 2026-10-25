@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   FlatList,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,443 +11,313 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { ChatBubble } from '../../components/ChatBubble';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { db } from '../../lib/localdb';
-import { AI_MODELS, sendChatMessage, type AIModel } from '../../lib/ai';
-import { getApiKey, getSelectedModel, setSelectedModel } from '../../lib/aiSettings';
-import { buildCardContextSummary, resolveComplete } from '../../lib/chatInstructions';
-import { pickImage, uploadChatImage } from '../../lib/chatImages';
-import { fetchMemory } from '../../lib/memory';
-import { addTimelineEntry, deleteTimelineEntry } from '../../lib/timeline';
-import { createCard } from '../../lib/cards';
-import { generateDailySummary } from '../../lib/dailySummary';
-import { useCardStore } from '../../lib/store';
-import type { ChatMessage, TimelineCategory } from '../../types';
+import { room } from '../../constants/room';
+import { MessageSheet } from '../../components/ling/MessageSheet';
+import { useLingThread, type LingMessage } from '../../lib/ling/thread';
+import { replyTo, NoKeyError, currentBrain } from '../../lib/ling/brain';
+import { executeLingActions } from '../../lib/ling/actions';
+import { deliverDue } from '../../lib/ling/proactive';
+import { modelLabel } from '../../lib/ai';
 
-interface Confirmation {
-  kind: 'complete' | 'timeline' | 'create_card';
-  id: string;
-  label: string;
+// 「灵」：一条不断的对话线（需求文档 §6.7）。按天分隔，往上翻就是昨天；主动消息带时间，长按看为什么发、
+// 标判词；灵给了小建议时下面出「好了 / 一点 / 没用 / 做不到」；翻篇插一条分隔线，记忆照旧。
+
+const QUICK_REPLIES = ['好了', '一点', '没用', '做不到'];
+const PROACTIVE = new Set(['miss_you', 'mention', 'reminder', 'catch', 'play_end']);
+
+type Row = { type: 'day'; key: string; label: string } | { type: 'msg'; key: string; msg: LingMessage };
+
+function dayLabel(d: Date, now = new Date()): string {
+  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const diff = Math.round((b - a) / 86400000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '昨天';
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-export default function ChatScreen() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+function hhmm(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export default function LingScreen() {
+  const { messages, loaded, typing, load, add, setTyping, feedback } = useLingThread();
   const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendingImage, setSendingImage] = useState(false);
-  const [dreaming, setDreaming] = useState(false);
-  const [model, setModel] = useState<AIModel>('claude-sonnet');
-  const [memory, setMemory] = useState('');
-  const [confirmations, setConfirmations] = useState<Record<string, Confirmation[]>>({});
-  const listRef = useRef<FlatList<ChatMessage>>(null);
-
-  const { cards, actions, cats, lastCompletions, fetchAll, doComplete, doUndo } = useCardStore();
+  const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState<LingMessage | null>(null);
+  const [brainHint, setBrainHint] = useState<string | null>(null);
+  const listRef = useRef<FlatList<Row>>(null);
 
   useEffect(() => {
-    loadHistory();
-    if (cards.length === 0) fetchAll();
-  }, []);
+    if (!loaded) load();
+  }, [loaded, load]);
 
-  useEffect(() => {
-    const sub = Keyboard.addListener('keyboardDidShow', () => {
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    });
-    return () => sub.remove();
-  }, []);
-
-  // 每次回到聊天页都重新读一下选中的模型（比如刚从设置页切换回来）
   useFocusEffect(
     useCallback(() => {
-      getSelectedModel().then((m) => {
-        if (m) setModel(m);
-      });
-      fetchMemory()
-        .then(setMemory)
-        .catch(() => {});
+      deliverDue().catch(() => 0);
+      currentBrain().then(({ model, apiKey }) => setBrainHint(apiKey ? null : `还没接上大脑：去「设定」里填 ${modelLabel(model)} 的 key`));
     }, [])
   );
 
-  async function loadHistory() {
-    const { data } = await db
-      .from('messages')
-      .select('*')
-      .order('created_at', { ascending: true })
-      .limit(200);
-    if (data) setMessages(data);
-  }
-
-  async function handleModelCycle() {
-    const next = nextModel(model);
-    setModel(next);
-    await setSelectedModel(next);
-  }
-
-  function handleOpenMenu() {
-    const currentLabel = AI_MODELS.find((m) => m.id === model)?.label ?? model;
-    Alert.alert('灵', undefined, [
-      { text: `切换模型（当前：${currentLabel}）`, onPress: handleModelCycle },
-      { text: '🌙 手动做梦（生成今日总结）', onPress: handleManualDream },
-      { text: 'AI 记忆', onPress: () => router.push('/memory') },
-      { text: '设置', onPress: () => router.push('/other') },
-      { text: '取消', style: 'cancel' },
-    ]);
-  }
-
-  async function handleManualDream() {
-    if (dreaming) return;
-    setDreaming(true);
-    try {
-      const apiKey = await getApiKey(model);
-      const summary = await generateDailySummary(new Date(), model, apiKey);
-      Alert.alert(
-        '🌙 做梦做完了',
-        `身体：${summary.body_summary ?? '—'}\n睡眠：${summary.sleep_summary ?? '—'}\n饮食：${summary.food_summary ?? '—'}\n情绪：${summary.emotion_summary ?? '—'}\n烦恼：${summary.worry_summary ?? '—'}\n计划：${summary.plan_summary ?? '—'}\n\nHP ${summary.hp ?? '—'} · MP ${summary.mp ?? '—'}\n\n已存进记录tab的AI总结卡片里`
-      );
-    } catch (err) {
-      Alert.alert('做梦失败', err instanceof Error ? err.message : String(err));
-    } finally {
-      setDreaming(false);
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    let lastDay = '';
+    for (const m of messages) {
+      const d = new Date(m.created_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (key !== lastDay) {
+        out.push({ type: 'day', key: `day-${key}`, label: dayLabel(d) });
+        lastDay = key;
+      }
+      out.push({ type: 'msg', key: m.id, msg: m });
     }
-  }
+    return out;
+  }, [messages]);
 
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput('');
-    setSending(true);
+  const lastProactive = useMemo(() => [...messages].reverse().find((m) => PROACTIVE.has(m.kind)), [messages]);
+  const last = messages[messages.length - 1];
+  const showQuick = !!last && last.role === 'assistant' && last.suggest && !busy;
 
-    const userMessage: ChatMessage = {
-      id: `local-${Date.now()}`,
-      role: 'user',
-      content: text,
-      model: null,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
+  useEffect(() => {
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  }, [rows.length, typing]);
 
+  async function runReply() {
+    setBusy(true);
+    setTyping(true);
     try {
-      const { data: savedUser } = await db
-        .from('messages')
-        .insert({ role: 'user', content: text })
-        .select()
-        .single();
-
-      const apiKey = await getApiKey(model);
-      const history = [...messages, savedUser ?? userMessage].slice(-20);
-      const modelInfo = AI_MODELS.find((m) => m.id === model);
-      if (!modelInfo?.supportsImages && history.some((m) => m.image_url)) {
-        Alert.alert('这个模型看不了图片', 'DeepSeek暂不支持图片识别，去⋯菜单切换到Claude/GPT/Gemini才能让AI看到图片');
-      }
-      const contextSummary = buildContextSummary();
-      const reply = await sendChatMessage(history, contextSummary, model, apiKey);
-
-      const { data: savedAssistant } = await db
-        .from('messages')
-        .insert({ role: 'assistant', content: reply.text, model })
-        .select()
-        .single();
-
-      const assistantMessage: ChatMessage = savedAssistant ?? {
-        id: `local-${Date.now()}-a`,
-        role: 'assistant',
-        content: reply.text,
-        model,
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== userMessage.id),
-        savedUser ?? userMessage,
-        assistantMessage,
-      ]);
-
-      // 执行 AI 回复里携带的指令，并记下确认行给这条消息展示
-      const results: Confirmation[] = [];
-      for (const action of reply.actions ?? []) {
-        if (action.type === 'complete') {
-          const resolved = resolveComplete(action, cards, actions);
-          if (!resolved) continue;
-          await doComplete(resolved.action, resolved.card);
-          results.push({
-            kind: 'complete',
-            id: resolved.action.id,
-            label: `${resolved.card.name} 已更新（${resolved.action.name}）`,
-          });
-        } else if (action.type === 'timeline' && action.description) {
-          const durationMs = (action.duration_min ?? 0) * 60_000;
-          const endTime = new Date();
-          const startTime = new Date(endTime.getTime() - durationMs);
-          const entry = await addTimelineEntry({
-            category: (action.category as TimelineCategory) ?? 'other',
-            description: action.description,
-            start_time: startTime.toISOString(),
-            end_time: durationMs > 0 ? endTime.toISOString() : undefined,
-            hp_change: action.hp_change,
-            mp_change: action.mp_change,
-            source: 'chat',
-          });
-          const delta = [
-            action.duration_min ? `${action.duration_min}min` : null,
-            action.hp_change ? `HP${action.hp_change > 0 ? '+' : ''}${action.hp_change}` : null,
-            action.mp_change ? `MP${action.mp_change > 0 ? '+' : ''}${action.mp_change}` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
-          results.push({
-            kind: 'timeline',
-            id: entry.id,
-            label: `${action.description}${delta ? ` · ${delta}` : ''} 已记录`,
-          });
-        } else if (action.type === 'create_card' && action.card_name && action.action_name) {
-          const newCard = await createCard(
-            { name: action.card_name, type: 'habit', tags: action.card_tags ?? [], notes: null },
-            [
-              {
-                name: action.action_name,
-                is_primary: true,
-                frequency_type: action.frequency_type ?? 'interval',
-                interval_days: action.frequency_type === 'interval' ? (action.interval_days ?? 3) : null,
-                fixed_days: action.frequency_type === 'fixed_day' ? (action.fixed_days ?? null) : null,
-                suggested_interval: action.frequency_type === 'interval' ? (action.interval_days ?? 3) : null,
-                max_delay: action.frequency_type === 'interval' ? (action.interval_days ?? 3) * 1.5 : null,
-                requires_selection: false,
-              },
-            ]
-          );
-          results.push({ kind: 'create_card', id: newCard.id, label: `新卡片「${newCard.name}」已建好` });
-        }
-      }
-      if (results.length) {
-        await fetchAll();
-        setConfirmations((prev) => ({ ...prev, [assistantMessage.id]: results }));
-      }
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `local-error-${Date.now()}`,
+      const reply = await replyTo(useLingThread.getState().messages);
+      for (let i = 0; i < reply.bubbles.length; i++) {
+        if (i > 0) await wait(450 + Math.min(1100, reply.bubbles[i].length * 25));
+        await add({
           role: 'assistant',
-          content: `唔，出错了：${err instanceof Error ? err.message : String(err)}`,
-          model: null,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setSending(false);
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    }
-  }
-
-  function buildContextSummary(): string {
-    return buildCardContextSummary(cards, actions, cats, lastCompletions, memory);
-  }
-
-  async function handleSendImage(source: 'camera' | 'library') {
-    if (sendingImage) return;
-    setSendingImage(true);
-    try {
-      const localUri = await pickImage(source);
-      if (!localUri) return; // 取消了，或者没给权限
-
-      const imageUrl = await uploadChatImage(localUri);
-
-      const { data: saved } = await db
-        .from('messages')
-        .insert({ role: 'user', content: '', image_url: imageUrl })
-        .select()
-        .single();
-
-      const message: ChatMessage = saved ?? {
-        id: `local-${Date.now()}`,
-        role: 'user',
-        content: '',
-        model: null,
-        image_url: imageUrl,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, message]);
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+          content: reply.bubbles[i],
+          kind: 'chat',
+          suggest: reply.suggest && i === reply.bubbles.length - 1,
+          actions: i === 0 && reply.actions.length ? reply.actions : null,
+        });
+      }
+      const labels = await executeLingActions(reply.actions);
+      for (const l of labels) await add({ role: 'system', content: l, kind: 'note' });
     } catch (err) {
-      Alert.alert('发图片失败', err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      await add({
+        role: 'system',
+        kind: 'note',
+        content: err instanceof NoKeyError ? msg : `灵没收到（${msg.slice(0, 80)}），点这条重发`,
+        trigger: err instanceof NoKeyError ? 'settings' : 'retry',
+      });
     } finally {
-      setSendingImage(false);
+      setTyping(false);
+      setBusy(false);
     }
   }
 
-  function handleUndoConfirmation(messageId: string, confirmation: Confirmation) {
-    if (confirmation.kind === 'complete') doUndo(confirmation.id);
-    else if (confirmation.kind === 'timeline') deleteTimelineEntry(confirmation.id);
-    setConfirmations((prev) => ({
-      ...prev,
-      [messageId]: (prev[messageId] ?? []).filter((c) => c.id !== confirmation.id),
-    }));
+  async function send(text: string) {
+    const t = text.trim();
+    if (!t || busy) return;
+    setInput('');
+    await add({ role: 'user', content: t });
+    await runReply();
+  }
+
+  async function turnPage() {
+    if (busy) return;
+    if (last?.kind === 'divider') return;
+    await add({ role: 'system', content: '翻篇', kind: 'divider' });
+  }
+
+  function onNotePress(m: LingMessage) {
+    if (m.trigger === 'settings') router.push('/ling-settings');
+    else if (m.trigger === 'retry' && !busy) runReply();
+  }
+
+  function renderRow({ item }: { item: Row }) {
+    if (item.type === 'day') return <Text style={styles.daySep}>{item.label}</Text>;
+    const m = item.msg;
+    if (m.kind === 'divider') {
+      return (
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>翻篇</Text>
+          <View style={styles.dividerLine} />
+        </View>
+      );
+    }
+    if (m.kind === 'note') {
+      return (
+        <Pressable onPress={() => onNotePress(m)} disabled={!m.trigger}>
+          <Text style={[styles.note, m.trigger && styles.noteAction]}>{m.content}</Text>
+        </Pressable>
+      );
+    }
+    const mine = m.role === 'user';
+    return (
+      <View style={[styles.msgBlock, mine ? styles.msgMine : styles.msgLing]}>
+        {!mine && PROACTIVE.has(m.kind) ? <Text style={styles.meta}>{hhmm(m.created_at)}</Text> : null}
+        <Pressable
+          onLongPress={() => !mine && setSheet(m)}
+          delayLongPress={350}
+          style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleLing]}
+          testID={mine ? 'bubble-me' : 'bubble-ling'}
+        >
+          <Text style={styles.bubbleText}>{m.content}</Text>
+        </Pressable>
+        {!mine && m.feedback ? <Text style={styles.feedbackTag}>你标了：{m.feedback}</Text> : null}
+      </View>
+    );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.push('/')} hitSlop={8}>
-          <Text style={styles.menuButtonText}>‹</Text>
-        </Pressable>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>灵</Text>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.header}>
+          <View style={styles.flex}>
+            <Text style={styles.name}>灵</Text>
+            <Text style={styles.sub}>{lastProactive ? `上次找你 ${hhmm(lastProactive.created_at)}` : '想说什么都行'}</Text>
+          </View>
+          <Pressable style={styles.headBtn} onPress={turnPage} hitSlop={6}>
+            <Text style={styles.headBtnText}>翻篇</Text>
+          </Pressable>
+          <Pressable style={styles.headBtn} onPress={() => router.push('/ling-settings')} hitSlop={6}>
+            <Text style={styles.headBtnText}>设定</Text>
+          </Pressable>
         </View>
-        <View style={styles.headerNameBlock}>
-          <Text style={styles.headerName}>灵</Text>
-          <Text style={styles.headerStatus}>在线</Text>
-        </View>
-        <Pressable style={styles.menuButton} onPress={handleOpenMenu}>
-          <Text style={styles.menuButtonText}>⋯</Text>
-        </Pressable>
-      </View>
 
-      <KeyboardAvoidingView
-        style={styles.flexOne}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+        {brainHint ? (
+          <Pressable style={styles.hint} onPress={() => router.push('/ling-settings')}>
+            <Text style={styles.hintText}>{brainHint}</Text>
+          </Pressable>
+        ) : null}
+
         <FlatList
           ref={listRef}
-          style={styles.list}
-          removeClippedSubviews={false}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={({ item, index }) => {
-            const prev = index > 0 ? messages[index - 1] : null;
-            const showDateDivider =
-              !prev || new Date(prev.created_at).toDateString() !== new Date(item.created_at).toDateString();
-            const itemConfirmations = confirmations[item.id];
-            return (
-              <View>
-                <ChatBubble message={item} showDateDivider={showDateDivider} />
-                {itemConfirmations?.map((c) => (
-                  <View key={c.id} style={styles.confirmRow}>
-                    <Text style={styles.confirmText}>✓ {c.label}</Text>
-                    {c.kind !== 'create_card' && (
-                      <Pressable onPress={() => handleUndoConfirmation(item.id, c)}>
-                        <Text style={styles.confirmUndo}>˟ 撤销</Text>
-                      </Pressable>
-                    )}
+          data={rows}
+          keyExtractor={(r) => r.key}
+          renderItem={renderRow}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={loaded ? <Text style={styles.empty}>还没说过话。随便说点什么，灵都在听。</Text> : null}
+          ListFooterComponent={
+            <View>
+              {typing ? (
+                <View style={[styles.msgBlock, styles.msgLing]}>
+                  <View style={[styles.bubble, styles.bubbleLing]}>
+                    <Text style={styles.typing}>正在输入…</Text>
                   </View>
-                ))}
-              </View>
-            );
-          }}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+                </View>
+              ) : null}
+              {showQuick ? (
+                <View style={styles.quickRow}>
+                  {QUICK_REPLIES.map((q) => (
+                    <Pressable key={q} style={styles.quick} onPress={() => send(q)}>
+                      <Text style={styles.quickText}>{q}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          }
         />
 
         <View style={styles.inputBar}>
-          <Pressable style={styles.iconButton} onPress={() => handleSendImage('camera')} disabled={sendingImage}>
-            {sendingImage ? (
-              <ActivityIndicator size="small" color={colors.textSecondary} />
-            ) : (
-              <Text style={styles.icon}>📷</Text>
-            )}
-          </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => handleSendImage('library')} disabled={sendingImage}>
-            <Text style={styles.icon}>🖼</Text>
-          </Pressable>
-          <Pressable style={styles.iconButton} onPress={handleOpenMenu}>
-            <Text style={styles.icon}>＋</Text>
-          </Pressable>
           <TextInput
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder="跟灵说点什么…"
-            placeholderTextColor={colors.textMuted}
+            placeholder="说点什么……"
+            placeholderTextColor={room.ink3}
             multiline
-            textAlignVertical="top"
-            cursorColor={colors.purpleDark}
-            selectionColor={colors.purple}
+            onSubmitEditing={() => send(input)}
+            blurOnSubmit={false}
           />
-          <Pressable onPress={handleSend} style={styles.sendButton} disabled={sending}>
-            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendText}>↑</Text>}
+          <Pressable
+            style={[styles.send, (!input.trim() || busy) && styles.sendDisabled]}
+            onPress={() => send(input)}
+            disabled={!input.trim() || busy}
+          >
+            <Text style={styles.sendText}>发送</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <MessageSheet
+        message={sheet}
+        onClose={() => setSheet(null)}
+        onFeedback={async (m, tag) => {
+          await feedback(m.id, tag);
+          setSheet((s) => (s && s.id === m.id ? { ...s, feedback: tag } : s));
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-function nextModel(current: AIModel): AIModel {
-  const idx = AI_MODELS.findIndex((m) => m.id === current);
-  return AI_MODELS[(idx + 1) % AI_MODELS.length].id;
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: room.bg },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: room.line,
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.avatar,
-    backgroundColor: colors.purple,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontSize: fontSize.body, color: colors.textPrimary, fontWeight: '600' },
-  headerNameBlock: { flex: 1 },
-  headerName: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '600' },
-  headerStatus: { fontSize: fontSize.tiny, color: colors.greenDark },
-  backButton: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
-  menuButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  menuButtonText: { fontSize: 20, color: colors.textSecondary, fontWeight: '700' },
-  flexOne: { flex: 1 },
-  list: { flex: 1 },
-  listContent: { paddingVertical: spacing.md },
-  confirmRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: spacing.lg,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    backgroundColor: colors.greenDark + '1A',
-    borderRadius: radius.widget,
-  },
-  confirmText: { fontSize: fontSize.secondary, color: colors.greenDark, flexShrink: 1 },
-  confirmUndo: { fontSize: fontSize.secondary, color: colors.textMuted, marginLeft: spacing.sm },
+  name: { color: room.ink, fontSize: 17, fontWeight: '700' },
+  sub: { color: room.ink3, fontSize: 11, marginTop: 2 },
+  headBtn: { borderWidth: 1, borderColor: room.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  headBtnText: { color: room.ink2, fontSize: 12 },
+  hint: { marginHorizontal: 16, marginTop: 10, backgroundColor: room.surface, borderRadius: 12, padding: 10 },
+  hintText: { color: room.accent, fontSize: 12 },
+  list: { paddingHorizontal: 14, paddingVertical: 12, gap: 6, flexGrow: 1 },
+  empty: { color: room.ink3, fontSize: 13, textAlign: 'center', marginTop: 60 },
+  daySep: { color: room.ink3, fontSize: 11, textAlign: 'center', marginVertical: 8 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 10 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: room.line },
+  dividerText: { color: room.ink3, fontSize: 11 },
+  note: { color: room.ink3, fontSize: 11, textAlign: 'center', marginVertical: 4, paddingHorizontal: 20 },
+  noteAction: { color: room.accent, textDecorationLine: 'underline' },
+  msgBlock: { maxWidth: '86%', gap: 3 },
+  msgMine: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+  msgLing: { alignSelf: 'flex-start', alignItems: 'flex-start' },
+  meta: { color: room.ink3, fontSize: 10, marginLeft: 4 },
+  bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  bubbleLing: { backgroundColor: room.ling, borderTopLeftRadius: 4 },
+  bubbleMine: { backgroundColor: room.me, borderTopRightRadius: 4 },
+  bubbleText: { color: room.ink, fontSize: 15, lineHeight: 21 },
+  feedbackTag: { color: room.ink3, fontSize: 10, marginLeft: 4 },
+  typing: { color: room.ink3, fontSize: 13 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  quick: { borderWidth: 1, borderColor: room.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  quickText: { color: room.ink2, fontSize: 13 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-    backgroundColor: colors.card,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    borderRadius: radius.card,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: room.line,
+    backgroundColor: room.bg,
   },
-  iconButton: { padding: 4 },
-  icon: { fontSize: 20, includeFontPadding: false },
   input: {
     flex: 1,
-    fontSize: fontSize.body,
-    lineHeight: fontSize.body + 6,
-    color: colors.textPrimary,
-    minHeight: 36,
-    maxHeight: 100,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
-    includeFontPadding: false,
+    minHeight: 38,
+    maxHeight: 120,
+    backgroundColor: room.surface,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    color: room.ink,
+    fontSize: 15,
   },
-  sendButton: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.avatar,
-    backgroundColor: colors.purpleDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  send: { backgroundColor: room.accent, borderRadius: 19, paddingHorizontal: 14, height: 38, justifyContent: 'center' },
+  sendDisabled: { opacity: 0.4 },
+  sendText: { color: room.bg, fontWeight: '700', fontSize: 14 },
 });
