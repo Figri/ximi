@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Updates from 'expo-updates';
@@ -21,6 +21,7 @@ import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/feat
 import { useLayoutStore } from '../../../lib/layoutStore';
 import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
 import { CaptureFab } from '../../../components/capture/CaptureFab';
+import { clearCrashes, loadCrashes, type CrashEntry } from '../../../lib/crashLog';
 
 const ICON_SIZE = 60;
 const DIVIDER_SENTINEL = '__divider__';
@@ -65,6 +66,14 @@ export default function OtherScreen() {
 
   const [migrationText, setMigrationText] = useState('读取中……');
   const [migrating, setMigrating] = useState(false);
+  const [crashes, setCrashes] = useState<CrashEntry[]>([]);
+
+  // 出错记录：每次回到这一页都重新读，刚出的错马上能看到
+  useFocusEffect(
+    useCallback(() => {
+      loadCrashes().then(setCrashes);
+    }, [])
+  );
 
   useEffect(() => {
     loadSettings();
@@ -287,6 +296,39 @@ export default function OtherScreen() {
           </Pressable>
         </View>
 
+        {crashes.length ? (
+          <>
+            <Text style={[styles.settingsSubLabel, { marginTop: spacing.lg }]}>出错记录（截图发给灵，对着修）</Text>
+            <View style={styles.versionCard}>
+              {crashes.slice(0, 5).map((c, i) => (
+                <View key={`${c.at}-${i}`} style={styles.crashRow}>
+                  <Text style={styles.crashHead}>
+                    {fmtTime(c.at)} · {c.kind === 'render' ? '页面出错' : c.kind === 'fatal' ? '程序出错' : '突然退出'} · {c.route}
+                  </Text>
+                  <Text style={styles.crashMsg} selectable>
+                    {c.message}
+                  </Text>
+                  {c.stack ? (
+                    <Text style={styles.crashStack} selectable numberOfLines={6}>
+                      {c.stack}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              <Pressable
+                style={styles.checkButton}
+                onPress={async () => {
+                  await clearCrashes();
+                  setCrashes([]);
+                }}
+                testID="crash-clear"
+              >
+                <Text style={styles.checkButtonText}>清空记录</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : null}
+
         <Text style={[styles.settingsSubLabel, { marginTop: spacing.lg }]}>版本信息</Text>
         <View style={styles.versionCard}>
           <View style={styles.versionRow}>
@@ -391,6 +433,10 @@ const styles = StyleSheet.create({
   versionValue: { fontSize: fontSize.secondary, color: colors.textPrimary, fontWeight: '600' },
   versionWarning: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: 18 },
   checkButton: { marginTop: spacing.xs, backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingVertical: spacing.sm, alignItems: 'center' },
+  crashRow: { gap: 3, paddingBottom: spacing.sm, marginBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.purpleLight },
+  crashHead: { fontSize: fontSize.tiny, color: colors.textMuted },
+  crashMsg: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: 16 },
+  crashStack: { fontSize: 10, color: colors.textSecondary, lineHeight: 14 },
   checkButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
 
   // 编辑态：单列表（react-native-draggable-flatlist 这个版本不支持numColumns网格拖拽，

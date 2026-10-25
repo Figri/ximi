@@ -411,7 +411,7 @@ export function rescheduleAll(at?: Date): Promise<OutboxItem[]> {
     }
 
     items.sort((a, b) => a.fireAt.localeCompare(b.fireAt));
-    const canNotify = Platform.OS !== 'web' && (await ensureLingChannels().then(() => ensureNotificationPermission()).catch(() => false));
+    const canNotify = Platform.OS !== 'web' && (await ensureLingChannels().then(() => ensureNotificationPermission('once')).catch(() => false));
     for (const it of items) it.notificationId = await scheduleOne(it, settings, canNotify);
     const kept = await loadOutbox(); // cancelAllPending 之后只剩已响未投递的
     await saveOutbox([...kept, ...items]);

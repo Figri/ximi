@@ -39,6 +39,8 @@ import { LingLockGate } from '../components/ling/LingLockGate';
 import { PinPad } from '../components/ling/PinPad';
 
 type SampleKind = 'miss_you' | 'mention' | 'reminder' | 'catch';
+const SWITCH_TRACK = { false: room.line, true: '#C4B5D8' };
+const SWITCH_THUMB = room.accent;
 const SAMPLE_KINDS: SampleKind[] = ['miss_you', 'catch', 'reminder', 'mention'];
 
 function fmt(iso: string | null | undefined): string {
@@ -234,15 +236,15 @@ function LingSettingsBody() {
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>顺口一提（每天最多一件）</Text>
-            <Switch value={settings.enableMention} onValueChange={(v) => changeAndReschedule({ enableMention: v })} />
+            <Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={settings.enableMention} onValueChange={(v) => changeAndReschedule({ enableMention: v })} />
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>点了难过时接住你</Text>
-            <Switch value={settings.enableCatch} onValueChange={(v) => update({ enableCatch: v })} />
+            <Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={settings.enableCatch} onValueChange={(v) => update({ enableCatch: v })} />
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>今天别找我</Text>
-            <Switch value={pausedToday} onValueChange={(v) => changeAndReschedule({ pausedOn: v ? lingDayKey(new Date(), settings.dayStartHour) : null })} />
+            <Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={pausedToday} onValueChange={(v) => changeAndReschedule({ pausedOn: v ? lingDayKey(new Date(), settings.dayStartHour) : null })} />
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>免打扰</Text>
@@ -295,7 +297,7 @@ function LingSettingsBody() {
           <Text style={styles.hint}>进「灵」和这一页要先输 4 位密码；App 一到后台就重新锁上。忘了密码可以在密码盘上点「忘了」，等 60 秒锁就关掉。</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>对话每月存进 Notion</Text>
-            <Switch value={settings.archiveChatToNotion} onValueChange={(v) => update({ archiveChatToNotion: v })} testID="archive-switch" />
+            <Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={settings.archiveChatToNotion} onValueChange={(v) => update({ archiveChatToNotion: v })} testID="archive-switch" />
           </View>
         </View>
 
@@ -500,38 +502,38 @@ const styles = StyleSheet.create({
   notionRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: room.line, paddingTop: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: 1, borderColor: room.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  chipOn: { borderColor: room.accent, backgroundColor: room.ling },
+  chipOn: { borderColor: room.accent, backgroundColor: room.inset },
   chipText: { color: room.ink2, fontSize: 13 },
   chipTextOn: { color: room.accent },
-  sample: { backgroundColor: room.ling, borderRadius: 12, borderTopLeftRadius: 4, padding: 10 },
+  sample: { backgroundColor: room.inset, borderRadius: 12, borderTopLeftRadius: 4, padding: 10 },
   sampleText: { color: room.ink, fontSize: 14, lineHeight: 20 },
   muted: { color: room.ink3, fontSize: 12 },
   error: { color: room.danger, fontSize: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   rowLabel: { color: room.ink, fontSize: 14, flexShrink: 1 },
   hint: { color: room.ink3, fontSize: 11, lineHeight: 16 },
-  seg: { flexDirection: 'row', backgroundColor: room.ling, borderRadius: 10, padding: 2, flexWrap: 'wrap' },
+  seg: { flexDirection: 'row', backgroundColor: room.inset, borderRadius: 10, padding: 2, flexWrap: 'wrap' },
   segItem: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   segOn: { backgroundColor: room.accent },
   segText: { color: room.ink2, fontSize: 12 },
   segTextOn: { color: room.bg, fontWeight: '700' },
   quietRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timeInput: { backgroundColor: room.ling, color: room.ink, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, width: 64, textAlign: 'center' },
+  timeInput: { backgroundColor: room.inset, color: room.ink, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, width: 64, textAlign: 'center' },
   pendingRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   pendingTime: { color: room.ink3, fontSize: 11, width: 78 },
   pendingKind: { color: room.accent, fontSize: 11 },
   pendingText: { color: room.ink2, fontSize: 12 },
   keyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  keyInput: { flex: 1, backgroundColor: room.ling, color: room.ink, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+  keyInput: { flex: 1, backgroundColor: room.inset, color: room.ink, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
   smallBtn: { backgroundColor: room.accent, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   smallBtnText: { color: room.bg, fontWeight: '700', fontSize: 13 },
-  wideBtn: { backgroundColor: room.ling, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  wideBtn: { backgroundColor: room.inset, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
   wideBtnText: { color: room.ink, fontSize: 14 },
   toast: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: room.accent, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
   toastText: { color: room.bg, fontWeight: '700' },
   editorTools: { paddingHorizontal: 16, paddingBottom: 6 },
   editorSamples: { paddingHorizontal: 16, gap: 4, paddingBottom: 8 },
-  editor: { flex: 1, margin: 12, backgroundColor: room.surface, color: room.ink, borderRadius: 12, padding: 12, fontSize: 14, lineHeight: 21 },
+  editor: { flex: 1, margin: 12, backgroundColor: room.surface, borderWidth: 1, borderColor: room.line, color: room.ink, borderRadius: 12, padding: 12, fontSize: 14, lineHeight: 21 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   versionSheet: { backgroundColor: room.surface, borderRadius: 16, padding: 16, gap: 10 },
   versionRow: { paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: room.line, gap: 2 },

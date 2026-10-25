@@ -8,6 +8,7 @@ import { getNotionToken, notionRequest, setNotionToken } from '../lib/notion/cli
 import { allRequiredOk, discover, loadNotionIds, runChecks, saveNotionIds, EMPTY_IDS, type CheckItem } from '../lib/notion/discover';
 import { backupToNotion, JOB_LABELS, listBackups, loadSyncStatus, readBackup, syncAll, type BackupRow, type JobKey, type SyncStatus } from '../lib/notion/sync';
 import { importBackup, parseBackup } from '../lib/backup';
+import { markSessionBackground } from '../lib/crashLog';
 
 // Notion 连接向导（需求文档 §8.10）+ 同步状态 + 备份与恢复。
 // OS 不改 Notion 的结构（D10），只检查：缺什么告诉你在哪加、叫什么、选什么类型。
@@ -101,6 +102,8 @@ export default function NotionConnectScreen() {
       const n = Object.values(counts).reduce((a, b) => a + b, 0);
       setRestoreMsg(`恢复好了，一共 ${n} 条。马上重开一下 App。`);
       setTimeout(() => {
+        // 主动重启不算「用着用着没了」
+        markSessionBackground();
         if (Platform.OS === 'web') (globalThis as any).location?.reload();
         else Updates.reloadAsync().catch(() => {});
       }, 1500);

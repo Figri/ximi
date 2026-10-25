@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { room } from '../../constants/room';
 import { FORGET_WAIT_MS, useLingLock } from '../../lib/ling/lock';
 
-// 4 位密码盘（深色，跟灵的空间一样）。三种用法：
+// 4 位密码盘（跟灵的窗口同一套颜色）。三种用法：
 // unlock = 进门；set = 设新密码（输两次）；verify = 关锁 / 改密码前先确认现在的密码。
 
 type Mode = 'unlock' | 'set' | 'verify';
@@ -138,9 +138,9 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 16, marginTop: 6 },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: room.ink3 },
   dotOn: { backgroundColor: room.accent, borderColor: room.accent },
-  error: { color: '#E5A3B5', fontSize: 12, minHeight: 16 },
+  error: { color: room.danger, fontSize: 12, minHeight: 16 },
   pad: { flexDirection: 'row', flexWrap: 'wrap', width: 252, justifyContent: 'space-between', rowGap: 14 },
-  key: { width: 72, height: 56, borderRadius: 16, backgroundColor: room.surface, alignItems: 'center', justifyContent: 'center' },
+  key: { width: 72, height: 56, borderRadius: 16, backgroundColor: room.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: room.line, alignItems: 'center', justifyContent: 'center' },
   keyEmpty: { backgroundColor: 'transparent' },
   keyText: { color: room.ink, fontSize: 22 },
   footer: { flexDirection: 'row', gap: 28, marginTop: 8, minHeight: 20 },

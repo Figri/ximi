@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 计时器到点的提醒还在这里；事项提醒、例行变黄的推送 2.0 起都改成灵来说（lib/ling/proactive.ts）。
 const TIMER_IDENTIFIER_PREFIX = 'ximi-timer-';
@@ -52,11 +53,25 @@ async function ensureAndroidChannels(): Promise<void> {
   });
 }
 
-export async function ensureNotificationPermission(): Promise<boolean> {
+const K_ASKED_ONCE = 'notif_perm_asked_v1';
+
+/**
+ * 通知权限。ask：
+ * - 'always'：你自己点的（开计时器、提醒自检），没权限就问；
+ * - 'once'：灵排消息时，整个安装只主动问这一次，而且只在 App 开在前台时问；
+ * - 'never'：只看不问。
+ * 以前每次排消息都问，没给权限的话系统弹窗会一遍遍弹，屏幕跟着一闪一闪。
+ */
+export async function ensureNotificationPermission(ask: 'always' | 'once' | 'never' = 'always'): Promise<boolean> {
   await ensureAndroidChannels();
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
-
+  if (ask === 'never' || current.canAskAgain === false) return false;
+  if (ask === 'once') {
+    if (AppState.currentState !== 'active') return false;
+    if (await AsyncStorage.getItem(K_ASKED_ONCE).catch(() => '1')) return false;
+    await AsyncStorage.setItem(K_ASKED_ONCE, '1').catch(() => {});
+  }
   const requested = await Notifications.requestPermissionsAsync();
   return requested.granted;
 }

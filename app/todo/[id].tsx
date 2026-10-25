@@ -110,7 +110,7 @@ export default function TodoDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.pageTitle}>编辑事项</Text>
 

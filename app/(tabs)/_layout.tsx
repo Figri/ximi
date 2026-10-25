@@ -32,18 +32,16 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={({ route }) => {
           const feature = FEATURES.find((f) => f.screenName === route.name);
-          const dark = route.name === 'chat';
           return {
             headerShown: false,
             tabBarActiveTintColor: colors.purpleDark,
             tabBarInactiveTintColor: colors.textMuted,
             tabBarLabelStyle: { fontSize: 11 },
             tabBarStyle: {
-              backgroundColor: dark ? '#231C2E' : colors.card,
+              backgroundColor: colors.card,
               borderTopWidth: 0,
               elevation: 8,
             },
-            ...(dark ? { tabBarActiveTintColor: '#D8B4E2', tabBarInactiveTintColor: '#A497B8' } : {}),
             tabBarIcon: () => <Text style={{ fontSize: 18 }}>{feature?.icon ?? ''}</Text>,
           };
         }}

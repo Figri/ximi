@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { archiveCard, createCard, fetchActionsForCard, fetchCard, updateAction, updateCard } from '../../lib/cards';
+import { archiveCard, createCard, fetchActionsForCard, fetchAllTags, fetchCard, fetchCards, updateAction, updateCard } from '../../lib/cards';
 import { useCardStore } from '../../lib/store';
 import type { Action, FrequencyType, TimeOfDay } from '../../types';
 
@@ -46,10 +46,31 @@ export default function HabitDetailScreen() {
   const [fixedDays, setFixedDays] = useState<number[]>([1]);
   const [requiresSelection, setRequiresSelection] = useState(false);
   const [primaryAction, setPrimaryAction] = useState<Action | null>(null);
+  // 分类：卡片的第一个标签，「今天 → 该照顾的」按它分组（猫、打扫……）；其余标签原样留着
+  const [group, setGroup] = useState<string | null>(null);
+  const [otherTags, setOtherTags] = useState<string[]>([]);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
 
   useEffect(() => {
     if (!isNew) loadCard(id);
+    loadKnownTags();
   }, [id]);
+
+  async function loadKnownTags() {
+    const [table, cards] = await Promise.all([fetchAllTags().catch(() => []), fetchCards().catch(() => [])]);
+    const names = [...table.map((t) => t.name), ...cards.flatMap((c) => c.tags ?? [])].filter((t): t is string => !!t && !!t.trim());
+    const uniq = Array.from(new Set(names));
+    setKnownTags(uniq.length ? uniq : ['🐱猫', '🧹打扫', '💅护理']);
+  }
+
+  function addNewTag() {
+    const t = newTag.trim();
+    if (!t) return;
+    setKnownTags((prev) => (prev.includes(t) ? prev : [...prev, t]));
+    setGroup(t);
+    setNewTag('');
+  }
 
   async function loadCard(cid: string) {
     setLoading(true);
@@ -59,6 +80,9 @@ export default function HabitDetailScreen() {
         setEmoji(card.emoji ?? '⭐');
         setName(card.name);
         setTimeSlot(card.time_of_day ?? 'anytime');
+        const tags = (card.tags ?? []).filter(Boolean);
+        setGroup(tags[0] ?? null);
+        setOtherTags(tags.slice(1));
       }
       const primary = actions.find((a) => a.is_primary) ?? null;
       setPrimaryAction(primary);
@@ -105,12 +129,13 @@ export default function HabitDetailScreen() {
     setSaving(true);
     try {
       const freq = buildFrequencyFields();
+      const tags = group ? [group, ...otherTags.filter((t) => t !== group)] : otherTags;
       if (isNew) {
         await createCard(
           {
             name: name.trim(),
             type: 'habit',
-            tags: [],
+            tags,
             notes: null,
             time_of_day: timeSlot,
             emoji: emoji.trim() || '⭐',
@@ -134,6 +159,7 @@ export default function HabitDetailScreen() {
           name: name.trim(),
           time_of_day: timeSlot,
           emoji: emoji.trim() || '⭐',
+          tags,
         });
         if (primaryAction) {
           await updateAction(primaryAction.id, {
@@ -179,8 +205,8 @@ export default function HabitDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.pageTitle}>{isNew ? '新建习惯' : '编辑习惯'}</Text>
 
         <Text style={styles.label}>图标</Text>
@@ -188,6 +214,30 @@ export default function HabitDetailScreen() {
 
         <Text style={styles.label}>名字</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：刷牙" />
+
+        <Text style={styles.label}>分类（今天页「该照顾的」按它分组）</Text>
+        <View style={styles.chipRow}>
+          {knownTags.map((t) => (
+            <Pressable key={t} onPress={() => setGroup(t)} style={[styles.chip, group === t && styles.chipActive]} testID={`habit-group-${t}`}>
+              <Text style={[styles.chipText, group === t && styles.chipTextActive]}>{t}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={[styles.row, styles.newTagRow]}>
+          <TextInput
+            style={[styles.input, styles.flex]}
+            value={newTag}
+            onChangeText={setNewTag}
+            placeholder="新分类，比如 🧹打扫"
+            placeholderTextColor={colors.textMuted}
+            returnKeyType="done"
+            onSubmitEditing={addNewTag}
+            testID="habit-new-group"
+          />
+          <Pressable style={styles.addTagBtn} onPress={addNewTag}>
+            <Text style={styles.addTagText}>加上</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.label}>时间段</Text>
         <View style={styles.chipRow}>
@@ -295,6 +345,10 @@ const styles = StyleSheet.create({
   chipText: { fontSize: fontSize.body, color: colors.textSecondary },
   chipTextActive: { color: colors.textPrimary, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center' },
+  flex: { flex: 1 },
+  newTagRow: { gap: spacing.sm, marginTop: spacing.sm },
+  addTagBtn: { borderWidth: 1, borderColor: colors.purple, borderRadius: radius.widget, paddingHorizontal: 14, paddingVertical: 8 },
+  addTagText: { color: colors.purpleDark, fontSize: fontSize.body },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg },
   saveButton: {
     marginTop: spacing.xl,

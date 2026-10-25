@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   quote: { color: room.ink2, fontSize: 13, lineHeight: 19 },
-  whyBox: { backgroundColor: room.ling, borderRadius: 12, padding: 12, gap: 4 },
+  whyBox: { backgroundColor: room.inset, borderRadius: 12, padding: 12, gap: 4 },
   whyLabel: { color: room.ink3, fontSize: 11 },
   whyText: { color: room.ink, fontSize: 14 },
   whyHint: { color: room.ink3, fontSize: 11 },
@@ -77,6 +77,6 @@ const styles = StyleSheet.create({
   tagOn: { backgroundColor: room.accent },
   tagText: { color: room.accent, fontSize: 13 },
   tagTextOn: { color: room.bg, fontWeight: '700' },
-  close: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: room.ling },
+  close: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: room.inset },
   closeText: { color: room.ink, fontSize: 14 },
 });
