@@ -11,29 +11,38 @@ import { AgendaSection } from '../../components/today/AgendaSection';
 import { CareSection } from '../../components/today/CareSection';
 import { PlaySection } from '../../components/today/PlaySection';
 import { FragmentsSection } from '../../components/today/FragmentsSection';
+import { BodySection } from '../../components/today/BodySection';
+import { WeightSheet } from '../../components/today/WeightSheet';
+import { TodoFormModal } from '../../components/todotab/TodoFormModal';
 import { CaptureFab } from '../../components/capture/CaptureFab';
 import { agendaCount, loadAgenda, setAgendaDone, type AgendaRow } from '../../lib/today';
 import { addFragment, deleteFragment, fragmentsBetween, type Fragment } from '../../lib/fragments';
-import { addStateEvent, stateEventsBetween, type StateWord } from '../../lib/states';
+import { addStateEvent, STATE_REPLACE_MS, stateEventsBetween, updateStateEvent, type StateEvent, type StateWord } from '../../lib/states';
+import { deleteBody, endPeriod, importLegacyBody, listBody, startPeriod, type BodyRecord } from '../../lib/body';
+import { isCompletedToday } from '../../lib/decay';
 import { buildDayDigest, dayWindow } from '../../lib/dayDigest';
 import { getPlaySession } from '../../lib/play';
 import { useDataBus } from '../../lib/dataBus';
-import { useCaptureStore } from '../../lib/captureStore';
 import { useCardStore } from '../../lib/store';
+import { useTodoStore } from '../../lib/todoStore';
 import { routeForFeature } from '../../lib/layoutStore';
 import { getNotionToken } from '../../lib/notion/client';
-import { completeNextStep, loadNextSteps, loadSyncStatus, removeStateEvent, syncAll, syncStatesSoon, type NextStep } from '../../lib/notion/sync';
+import { completeNextStep, loadNextSteps, loadSyncStatus, syncAll, syncStatesSoon, type NextStep } from '../../lib/notion/sync';
 import { lingDayKey, useLingSettings } from '../../lib/ling/settings';
 import { useLingThread } from '../../lib/ling/thread';
 import { writeTodayLine } from '../../lib/ling/brain';
 import { onStateTapped, undoStateTap, type CatchHandle } from '../../lib/ling/catch';
 import { rescheduleAll } from '../../lib/ling/proactive';
 import { ruleTodayLine, type TodayLineContext } from '../../lib/ling/templates';
-import type { ScheduleSlot } from '../../types';
+import type { ScheduleSlot, TodoItem } from '../../types';
 
-// 今天（需求文档 §8.1）：打开 3 秒内知道今天的一件事是什么，点一下就记下状态，开始玩之前顺手定个出口。
+// 今天（需求文档 §8.1）：一页放下一天要用的东西，不用跳来跳去。从上到下：
+// 碎碎念（直接写）→ 现在怎么样（三个表情，点了就亮着）→ 项目的下一步 → 作息和事项 → 娱乐出口（直接选、玩完列出几点到几点）
+// → 身体（体重、经期）→ 该照顾的（最底下，默认收着）。
 // 全部读本地，断网也一样快；Notion 的「下一步」用上次同步的缓存，后台再去拉新的。
 // 一天从 5 点算起（灵的设定里能改）：凌晨还没睡时这里还是前一天。
+
+const WEIGH_WORDS = /称体重|量体重|体重/;
 
 const EMPTY: Record<ScheduleSlot, AgendaRow[]> = { allday: [], '08': [], '10': [], '12': [], '14': [], '16': [], '18': [], '20': [], '22': [] };
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -79,8 +88,9 @@ export default function TodayScreen() {
   const settingsLoaded = useLingSettings((s) => s.loaded);
   const version = useDataBus((s) => s.version);
   const bump = useDataBus((s) => s.bump);
-  const openCapture = useCaptureStore((s) => s.open);
   const fetchCards = useCardStore((s) => s.fetchAll);
+  const cats = useCardStore((s) => s.cats);
+  const fetchTodoMeta = useTodoStore((s) => s.fetchAll);
 
   const [now, setNow] = useState(() => new Date());
   const todayKey = lingDayKey(now, settings.dayStartHour);
@@ -96,6 +106,17 @@ export default function TodayScreen() {
   const [notionLine, setNotionLine] = useState<string | null>(null);
   const [line, setLine] = useState<string>('');
   const [catchText, setCatchText] = useState<string | null>(null);
+  /** 今天最近一次点的状态（「现在怎么样」里亮着的那个） */
+  const [mood, setMood] = useState<StateEvent | null>(null);
+  const moodRef = useRef<StateEvent | null>(null);
+  /** 每次点状态灵那边的「接住你」：改成别的状态时把上一次的撤掉 */
+  const catchHandles = useRef(new Map<string, CatchHandle>());
+  const pickChain = useRef<Promise<void>>(Promise.resolve());
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [weights, setWeights] = useState<BodyRecord[]>([]);
+  const [periods, setPeriods] = useState<BodyRecord[]>([]);
+  const [weighOpen, setWeighOpen] = useState(false);
+  const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastRef = useRef<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,11 +204,23 @@ export default function TodayScreen() {
     const ag = await loadAgenda(shownKey, { includeCarried: shownKey === key, dayStartHour: settings.dayStartHour });
     setAgenda(ag);
     setFragments(await fragmentsBetween(start, end));
+    const events = await stateEventsBetween(start, end).catch(() => [] as StateEvent[]);
+    const latest = events.length ? events[events.length - 1] : null;
+    moodRef.current = latest;
+    setMood(latest);
     fetchCards();
     loadNotion();
+    loadBody();
     const c = agendaCount(ag);
     loadLine(key, shownKey === key ? c.total - c.done : 0).catch(() => {});
   }, [settings.dayStartHour, selected, fetchCards, loadNotion, loadLine]);
+
+  const loadBody = useCallback(async () => {
+    // 旧版工具箱里记的体重、生理期，第一次打开时搬进「身体」（搬过的不会重复）
+    await importLegacyBody().catch(() => 0);
+    setWeights(await listBody('weight'));
+    setPeriods(await listBody('period'));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -207,6 +240,7 @@ export default function TodayScreen() {
   useEffect(
     () => () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (pushTimer.current) clearTimeout(pushTimer.current);
       toastRef.current?.commit?.();
       toastRef.current = null;
     },
@@ -236,24 +270,47 @@ export default function TodayScreen() {
     t?.undo?.();
   }
 
-  async function onPickState(state: StateWord, intensity: number | null, note: string | null) {
-    const ev = await addStateEvent(state, { intensity, note });
-    const handle: CatchHandle = { cancelled: false, ids: [] };
+  /**
+   * 点了一个状态：亮着就行，不弹撤销。5 分钟内又点了别的 = 点错了，改掉刚才那条（灵那边对刚才那个的回应也撤掉）；
+   * 再点同一个不重复记。过了 5 分钟再点就是新的一条。写进 Notion 等这 5 分钟过了再写。
+   */
+  function onPickState(state: StateWord, intensity: number | null, note: string | null) {
+    pickChain.current = pickChain.current.catch(() => {}).then(() => pickState(state, intensity, note));
+  }
+
+  async function pickState(state: StateWord, intensity: number | null, note: string | null) {
+    const cur = moodRef.current;
+    const fresh = !!cur && Date.now() - new Date(cur.created_at || cur.at).getTime() < STATE_REPLACE_MS - 15000;
+    if (fresh && cur && cur.state === state && intensity == null && note == null) return;
+    let ev: StateEvent;
+    if (fresh && cur) {
+      const same = cur.state === state;
+      const patch = { state, intensity: intensity ?? (same ? cur.intensity : null), note: note ?? (same ? cur.note : null) };
+      await updateStateEvent(cur.id, patch);
+      ev = { ...cur, ...patch };
+      if (same) {
+        moodRef.current = ev;
+        setMood(ev);
+        return;
+      }
+      const old = catchHandles.current.get(cur.id);
+      if (old) await undoStateTap(old);
+    } else {
+      ev = await addStateEvent(state, { intensity, note });
+    }
+    moodRef.current = ev;
+    setMood(ev);
     setCatchText(null);
-    showToast({
-      text: `记下了：${state}`,
-      undo: async () => {
-        await undoStateTap(handle);
-        await removeStateEvent(ev.id);
-        setCatchText(null);
-        loadLine(todayKey, 0).catch(() => {});
-      },
-      // 5 秒没撤销再写进 Notion，免得 Notion 那边一会儿多一行一会儿进回收站
-      commit: () => syncStatesSoon(),
-    });
-    const text = await onStateTapped(state, note, handle).catch(() => null);
-    if (text && !handle.cancelled) setCatchText(text);
-    loadLine(todayKey, 0).catch(() => {});
+    const handle: CatchHandle = { cancelled: false, ids: [] };
+    catchHandles.current.set(ev.id, handle);
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => syncStatesSoon(), STATE_REPLACE_MS + 20000);
+    onStateTapped(state, note, handle)
+      .then((text) => {
+        if (text && !handle.cancelled && moodRef.current?.id === ev.id) setCatchText(text);
+      })
+      .catch(() => {})
+      .finally(() => loadLine(todayKey, 0).catch(() => {}));
   }
 
   async function onToggle(row: AgendaRow) {
@@ -291,20 +348,65 @@ export default function TodayScreen() {
     });
   }
 
+  async function onAddFragment(text: string) {
+    const f = await addFragment(text);
+    setFragments((prev) => [...prev, f]);
+  }
+
   async function onDeleteFragment(f: Fragment) {
     await deleteFragment(f.id);
     setFragments((prev) => prev.filter((x) => x.id !== f.id));
     showToast({
-      text: '删了一条碎片',
+      text: '删了一条碎碎念',
       undo: async () => {
-        await addFragment(f.text, new Date(f.at));
-        bump();
+        const back = await addFragment(f.text, new Date(f.at));
+        setFragments((prev) => [...prev, back].sort((a, b) => a.at.localeCompare(b.at)));
+      },
+    });
+  }
+
+  /** 记了体重：「称体重」这个习惯今天还没做的话，顺手算做了 */
+  function completeWeighHabit(catIds: string[]) {
+    const st = useCardStore.getState();
+    const card = st.cards.find((c) => !c.archived && c.display_type === 'habit' && WEIGH_WORDS.test(c.name));
+    const action = card ? st.actions.find((a) => a.card_id === card.id && a.is_primary) : null;
+    if (!card || !action) return;
+    const last = st.lastCompletions[action.id] ? new Date(st.lastCompletions[action.id]) : null;
+    if (isCompletedToday(last)) return;
+    st.doComplete(action, card, catIds.length ? { selectedCats: catIds } : undefined);
+  }
+
+  function calendarKey(): string {
+    return dateToKey(new Date());
+  }
+
+  async function onPeriodStart() {
+    const r = await startPeriod(calendarKey());
+    await loadBody();
+    showToast({
+      text: '记下了：经期来了',
+      undo: async () => {
+        await deleteBody(r.id);
+        await loadBody();
+      },
+    });
+  }
+
+  async function onPeriodEnd(r: BodyRecord) {
+    await endPeriod(r.id, calendarKey());
+    await loadBody();
+    showToast({
+      text: '记下了：经期结束',
+      undo: async () => {
+        await endPeriod(r.id, null);
+        await loadBody();
       },
     });
   }
 
   const selectedDate = keyToDate(dayKey);
   const todayDate = keyToDate(todayKey);
+  const todayWindow = dayWindow(todayKey, settings.dayStartHour);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -346,8 +448,14 @@ export default function TodayScreen() {
         ) : null}
 
         {isToday ? (
+          <Section title="碎碎念">
+            <FragmentsSection fragments={fragments} onAdd={onAddFragment} onDelete={onDeleteFragment} />
+          </Section>
+        ) : null}
+
+        {isToday ? (
           <Section title="现在怎么样">
-            <StatePicker onPick={onPickState} />
+            <StatePicker current={mood ? { state: mood.state, at: mood.at } : null} onPick={onPickState} />
             {catchText ? (
               <Pressable style={styles.catch} onPress={() => router.push(routeForFeature('chat') as any)} testID="today-catch">
                 <Text style={styles.catchText}>灵：{catchText}</Text>
@@ -384,19 +492,23 @@ export default function TodayScreen() {
             </View>
           }
         >
-          <AgendaSection rows={agenda} onToggle={onToggle} />
+          <AgendaSection
+            rows={agenda}
+            onToggle={onToggle}
+            onEdit={(row) => {
+              if (!row.todo) return;
+              fetchTodoMeta();
+              setEditingTodo(row.todo);
+            }}
+          />
         </Section>
-
-        {isToday ? (
-          <Section title="该照顾的">
-            <CareSection />
-          </Section>
-        ) : null}
 
         {isToday ? (
           <Section title="娱乐出口">
             <PlaySection
               version={version}
+              dayStart={todayWindow.start}
+              dayEnd={todayWindow.end}
               onChanged={() => {
                 rescheduleAll().catch(() => []);
                 loadLine(todayKey, 0).catch(() => {});
@@ -407,8 +519,28 @@ export default function TodayScreen() {
         ) : null}
 
         {isToday ? (
-          <Section title="今日碎片">
-            <FragmentsSection fragments={fragments} onAdd={() => openCapture('fragment')} onDelete={onDeleteFragment} />
+          <Section
+            title="身体"
+            right={
+              <Pressable onPress={() => router.push(routeForFeature('body') as any)} hitSlop={8} testID="body-more">
+                <Text style={styles.headLink}>全部 ›</Text>
+              </Pressable>
+            }
+          >
+            <BodySection
+              todayKey={dateToKey(now)}
+              weights={weights}
+              periods={periods}
+              onWeigh={() => setWeighOpen(true)}
+              onPeriodStart={onPeriodStart}
+              onPeriodEnd={onPeriodEnd}
+            />
+          </Section>
+        ) : null}
+
+        {isToday ? (
+          <Section title="该照顾的">
+            <CareSection />
           </Section>
         ) : null}
         <View style={{ height: 96 }} />
@@ -426,6 +558,31 @@ export default function TodayScreen() {
           ) : null}
         </View>
       ) : null}
+      <WeightSheet
+        visible={weighOpen}
+        cats={cats}
+        onClose={() => setWeighOpen(false)}
+        onSaved={({ catIds }) => {
+          setWeighOpen(false);
+          completeWeighHabit(catIds);
+          loadBody();
+        }}
+      />
+      <TodoFormModal
+        visible={!!editingTodo}
+        item={editingTodo}
+        onClose={() => setEditingTodo(null)}
+        onSaved={() => {
+          setEditingTodo(null);
+          loadAgendaFor(dayKey);
+          rescheduleAll().catch(() => []);
+        }}
+        onDeleted={() => {
+          setEditingTodo(null);
+          loadAgendaFor(dayKey);
+          rescheduleAll().catch(() => []);
+        }}
+      />
       <CaptureFab />
     </SafeAreaView>
   );

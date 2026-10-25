@@ -24,6 +24,36 @@ export interface PlaySession {
 
 const K_SESSION = 'play_session_v1';
 const K_LAST_END = 'play_last_end_v1';
+const K_HISTORY = 'play_history_v1';
+
+/** 玩过的每一局：几点开始、几点结束（今天页「娱乐出口」底下列出来） */
+export interface PlayRecord {
+  id: string;
+  what: PlayWhat;
+  startedAt: string;
+  endedAt: string;
+  minutes: number;
+}
+
+async function readHistory(): Promise<PlayRecord[]> {
+  try {
+    const raw = await AsyncStorage.getItem(K_HISTORY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function playHistoryBetween(start: Date, end: Date): Promise<PlayRecord[]> {
+  const list = await readHistory();
+  return list
+    .filter((r) => {
+      const t = new Date(r.startedAt).getTime();
+      return t >= start.getTime() && t < end.getTime();
+    })
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
 
 export async function getPlaySession(): Promise<PlaySession | null> {
   try {
@@ -61,8 +91,8 @@ export async function extendPlay(): Promise<PlaySession | null> {
   return next;
 }
 
-/** 结束（到点或提前）：自动记一段「玩」的时间块 */
-export async function endPlay(now = new Date()): Promise<{ loggedMinutes: number } | null> {
+/** 结束（到点或提前）：自动记一段「玩」的时间块，再记进玩过的列表 */
+export async function endPlay(now = new Date()): Promise<{ loggedMinutes: number; record: PlayRecord | null } | null> {
   const s = await getPlaySession();
   if (!s) return null;
   await AsyncStorage.removeItem(K_SESSION);
@@ -70,6 +100,13 @@ export async function endPlay(now = new Date()): Promise<{ loggedMinutes: number
   const end = new Date(Math.min(now.getTime(), new Date(s.endsAt).getTime() + 60 * 60000));
   const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
   await AsyncStorage.setItem(K_LAST_END, end.toISOString());
+  let record: PlayRecord | null = null;
+  if (minutes >= 1) {
+    record = { id: s.id, what: s.what, startedAt: s.startedAt, endedAt: end.toISOString(), minutes };
+    const history = (await readHistory()).filter((r) => r.id !== s.id);
+    // 留最近 200 局就够了
+    await AsyncStorage.setItem(K_HISTORY, JSON.stringify([...history, record].slice(-200))).catch(() => {});
+  }
   if (minutes >= 1) {
     try {
       const cats = await loadCategories();
@@ -83,7 +120,7 @@ export async function endPlay(now = new Date()): Promise<{ loggedMinutes: number
       });
     } catch {}
   }
-  return { loggedMinutes: Math.max(0, minutes) };
+  return { loggedMinutes: Math.max(0, minutes), record };
 }
 
 /** 刚结束不到 5 分钟又要开始：灵问一句要不要先歇两分钟（只问，不拦） */

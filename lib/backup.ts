@@ -46,6 +46,8 @@ export const BACKUP_KV_KEYS = [
   'ling_in_os_versions_v1',
   'notion_ideas_v1',
   'todo_cat_links_v1',
+  'play_history_v1',
+  'body_legacy_imported_v1',
 ] as const;
 
 export interface BackupFile {

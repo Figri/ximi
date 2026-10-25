@@ -1,10 +1,20 @@
 import { db } from './localdb';
 
-// 状态打点：和 Notion「🌡️ 西米状态日志」同一套词（D8=A：7 个词 + 内耗）。
+// 状态打点：和 Notion「🌡️ 西米状态日志」同一套词（D8=A：7 个词 + 内耗，后来又加了「一般」）。
 // 点一下就存进本地 state_events 表；连上 Notion 后由同步模块补写进状态日志（来源 = OS）。
 
-export const STATE_WORDS = ['烦躁', '难过', '焦虑', '疲惫', '平静', '开心', '低动力', '内耗'] as const;
+export const STATE_WORDS = ['开心', '一般', '难过', '烦躁', '焦虑', '疲惫', '平静', '低动力', '内耗'] as const;
 export type StateWord = (typeof STATE_WORDS)[number];
+
+/** 今天页「现在怎么样」最先看到的三个 */
+export const MOOD_FACES: { state: StateWord; face: string }[] = [
+  { state: '开心', face: '😊' },
+  { state: '一般', face: '😐' },
+  { state: '难过', face: '😢' },
+];
+
+/** 点完 5 分钟内又点了别的：当成点错了，改掉刚才那条，不另记一条；过了 5 分钟才写进 Notion */
+export const STATE_REPLACE_MS = 5 * 60 * 1000;
 
 /** 点了这些，灵会来「接住你」 */
 export const CATCH_STATES = new Set<StateWord>(['烦躁', '难过', '焦虑', '疲惫', '低动力', '内耗']);
@@ -52,7 +62,7 @@ export async function addStateEvent(state: StateWord, opts: { intensity?: number
   return data as StateEvent;
 }
 
-export async function updateStateEvent(id: string, patch: Partial<Pick<StateEvent, 'intensity' | 'note' | 'notion_page_id'>>): Promise<void> {
+export async function updateStateEvent(id: string, patch: Partial<Pick<StateEvent, 'state' | 'intensity' | 'note' | 'notion_page_id'>>): Promise<void> {
   await db.from('state_events').update(patch).eq('id', id);
 }
 

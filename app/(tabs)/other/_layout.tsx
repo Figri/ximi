@@ -18,12 +18,7 @@ export default function OtherLayout() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="today" options={{ title: '今天' }} />
       <Stack.Screen name="time" options={{ title: '时间' }} />
-      <Stack.Screen name="todo" options={{ title: '事项' }} />
-      <Stack.Screen name="checkin" options={{ title: '打卡' }} />
-      <Stack.Screen name="notes" options={{ title: '笔记' }} />
       <Stack.Screen name="chat" options={{ headerShown: false }} />
-      <Stack.Screen name="record" options={{ title: '记录' }} />
-      <Stack.Screen name="data" options={{ title: '数据' }} />
       <Stack.Screen name="schedule" options={{ title: '日程' }} />
       {/* 这三页自己带标题和返回（components/common/PageTitle），不用系统标题栏 */}
       <Stack.Screen name="review" options={{ headerShown: false }} />

@@ -22,6 +22,8 @@ export interface RoutineStatus {
   name: string;
   status: 'green' | 'yellow' | 'red';
   timeLeft: string;
+  /** 自己设了「到日子提醒我」的：顺口一提就不再挑它，免得一天说两遍 */
+  hasReminder: boolean;
 }
 
 /** 例行（习惯卡片主动作）的红黄绿，顺口一提和今天页都用 */
@@ -33,7 +35,7 @@ export async function routineStatuses(): Promise<RoutineStatus[]> {
     const primary = actions.find((a) => a.card_id === card.id && a.is_primary);
     if (!primary || primary.frequency_type === 'manual') continue;
     const decay = getActionDecay(primary, last[primary.id] ? new Date(last[primary.id]) : null);
-    out.push({ cardId: card.id, name: card.name, status: decay.status, timeLeft: decay.timeLeft });
+    out.push({ cardId: card.id, name: card.name, status: decay.status, timeLeft: decay.timeLeft, hasReminder: !!primary.remind_at });
   }
   return out;
 }

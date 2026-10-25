@@ -5,7 +5,7 @@ import { loadCompletions as loadTodoCompletions, loadItems as loadTodoItems } fr
 
 // 今天页「作息和事项」（需求文档 §8.1 T-2、§8.5）：
 // 日程的作息模板（例行）、日程事项、事项模块里今天要做的、以前没做完的一次性事项（顺延，灰字，不标红）
-// 合成一张按时段排的单子。只读+勾选；增删改还在日程页 / 事项页，或者用右下角 ＋。
+// 合成一张按时段排的单子。今天页上勾选、长按事项改；作息和日程事项在日程页排，新的用右下角 ＋。
 
 export type AgendaKind = 'routine' | 'item' | 'todo';
 

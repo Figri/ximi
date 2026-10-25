@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -89,6 +88,9 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
   const [reminderHourStr, setReminderHourStr] = useState('09');
   const [reminderMinuteStr, setReminderMinuteStr] = useState('00');
   const [saving, setSaving] = useState(false);
+  // 不弹系统框：填得不对就在底下说一句；删除点一下变「再点一次删除」
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -128,6 +130,8 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
       setReminderMinuteStr('00');
     }
     setCategoryPanelOpen(false);
+    setError(null);
+    setConfirmDelete(false);
   }, [visible, item, initialDate]);
 
   const selectedCategory = categoryId ? categories.find((c) => c.id === categoryId) ?? null : null;
@@ -153,17 +157,18 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
 
   async function persist(): Promise<boolean> {
     if (!content.trim()) {
-      Alert.alert('写点什么呢？', '内容不能为空');
+      setError('写点什么呢？内容不能为空');
       return false;
     }
     if (repeatType === 'weekly' && weekdays.length === 0) {
-      Alert.alert('选至少一个星期几', '每周重复要指定星期几，不然这条事项永远不会出现');
+      setError('每周重复要选至少一个星期几，不然这条事项永远不会出现');
       return false;
     }
     if (repeatType === 'monthly' && dayOfMonth === null) {
-      Alert.alert('选一个日期', '每月重复要指定哪一天，不然这条事项永远不会出现');
+      setError('每月重复要选哪一天，不然这条事项永远不会出现');
       return false;
     }
+    setError(null);
     const payload = {
       content: content.trim(),
       category_id: categoryId,
@@ -189,25 +194,20 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
       const ok = await persist();
       if (ok) onSaved();
     } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!item) return;
-    Alert.alert('删除这条事项？', item.content, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteItem(item.id);
-          onDeleted?.();
-        },
-      },
-    ]);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    await deleteItem(item.id);
+    onDeleted?.();
   }
 
   return (
@@ -261,6 +261,7 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
                 placeholderTextColor={colors.textMuted}
                 multiline
                 textAlignVertical="top"
+                testID="todo-content"
               />
 
               <Text style={styles.label}>日期（从这天开始）</Text>
@@ -377,16 +378,17 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
               </View>
             </ScrollView>
 
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <View style={styles.actions}>
               {isEdit && (
-                <Pressable style={styles.deleteButton} onPress={handleDelete}>
-                  <Text style={styles.deleteButtonText}>删除</Text>
+                <Pressable style={styles.deleteButton} onPress={handleDelete} testID="todo-delete">
+                  <Text style={styles.deleteButtonText}>{confirmDelete ? '再点一次删除' : '删除'}</Text>
                 </Pressable>
               )}
               <Pressable style={styles.outlineButton} onPress={onClose}>
                 <Text style={styles.outlineButtonText}>取消</Text>
               </Pressable>
-              <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving}>
+              <Pressable style={styles.solidButton} onPress={handleSave} disabled={saving} testID="todo-save">
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.solidButtonText}>保存</Text>}
               </Pressable>
             </View>
@@ -398,6 +400,7 @@ export function TodoFormModal({ visible, item, initialDate, onClose, onSaved, on
 }
 
 const styles = StyleSheet.create({
+  errorText: { fontSize: fontSize.secondary, color: colors.redDark, marginTop: spacing.sm },
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'center' },
   avoider: { width: '100%' },
   sheet: { backgroundColor: colors.card, borderRadius: 16, marginHorizontal: 16, padding: spacing.lg },

@@ -9,6 +9,8 @@ export interface NotionIds {
   stateDb: string | null;
   planDb: string | null;
   backupDb: string | null;
+  /** 「知识 / 🎏 笔记」库：手机里的旧笔记搬去这里（没连给西米OS 就找不到，不影响别的） */
+  notesDb: string | null;
   rulesPage: string | null;
   personaPage: string | null;
   inOsPage: string | null;
@@ -25,6 +27,7 @@ export const EMPTY_IDS: NotionIds = {
   stateDb: null,
   planDb: null,
   backupDb: null,
+  notesDb: null,
   rulesPage: null,
   personaPage: null,
   inOsPage: null,
@@ -62,6 +65,7 @@ export async function discover(): Promise<NotionIds> {
   ids.stateDb = pick(dbs, (t) => t.includes('状态日志'));
   ids.planDb = pick(dbs, (t) => t.includes('计划与待办'));
   ids.backupDb = pick(dbs, (t) => t.includes('西米OS备份'));
+  ids.notesDb = pick(dbs, (t) => t === '笔记');
 
   const find = async (query: string, match: (t: string) => boolean) => pick(await searchAll(query, 'page'), match);
   ids.rulesPage = await find('系统规则', (t) => t === '系统规则');
@@ -73,6 +77,15 @@ export async function discover(): Promise<NotionIds> {
   ids.checkedAt = new Date().toISOString();
   await saveNotionIds(ids);
   return ids;
+}
+
+/** 只找「笔记」库（以前连上 Notion 时还没有这一项，用到时补找一次，找到就记下来） */
+export async function findNotesDb(): Promise<string | null> {
+  const ids = await loadNotionIds();
+  if (ids.notesDb) return ids.notesDb;
+  const hit = pick(await searchAll('笔记', 'database'), (t) => t === '笔记');
+  if (hit) await saveNotionIds({ ...ids, notesDb: hit });
+  return hit;
 }
 
 // ---- 逐条检查 ----

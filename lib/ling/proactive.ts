@@ -5,6 +5,8 @@ import { loadItems as loadTodoItems } from '../todoLocal';
 import { nextTodoOccurrence } from '../todo';
 import { loadItems as loadScheduleItems } from '../scheduleLocal';
 import { getPlaySession } from '../play';
+import { fetchActions, fetchCards, fetchLastCompletions } from '../cards';
+import { nextHabitReminder } from '../decay';
 import { ensureNotificationPermission, ensureLingChannels } from '../notifications';
 import { routineStatuses } from './context';
 import { writeDrafts, fallbackDrafts, type DraftRequest, type Drafts } from './brain';
@@ -260,6 +262,18 @@ async function upcomingReminders(now: Date): Promise<Reminder[]> {
     }
   } catch {}
   try {
+    // 习惯「到日子提醒我」：到日子那天提醒一次
+    const [cards, actions, last] = await Promise.all([fetchCards(), fetchActions(), fetchLastCompletions()]);
+    for (const card of cards) {
+      if (card.archived || card.display_type !== 'habit') continue;
+      const a = actions.find((x) => x.card_id === card.id && x.is_primary);
+      if (!a?.remind_at) continue;
+      const at = nextHabitReminder(a, last[a.id] ? new Date(last[a.id]) : null, now);
+      if (!at || at.getTime() > horizon) continue;
+      out.push({ refKey: `habit:${a.id}:${at.toISOString()}`, id: `h${a.id.slice(0, 8)}`, content: card.name, at, kind: 'reminder', trigger: `你给「${card.name}」设了到日子 ${hhmm(at)} 提醒` });
+    }
+  } catch {}
+  try {
     const play = await getPlaySession();
     if (play) {
       const at = new Date(play.endsAt);
@@ -275,7 +289,7 @@ async function pickMention(settings: LingSettings, now: Date): Promise<{ name: s
   if (!settings.enableMention) return null;
   if ((await sentToday('mention', settings, now)) >= 1) return null;
   try {
-    const list = await routineStatuses();
+    const list = (await routineStatuses()).filter((r) => !r.hasReminder);
     const red = list.filter((r) => r.status === 'red');
     const yellow = list.filter((r) => r.status === 'yellow');
     const pick = red[0] ?? yellow[0];

@@ -57,7 +57,7 @@ export default function TodoCategoriesScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()}>
-          <Text style={styles.backText}>‹ 事项</Text>
+          <Text style={styles.backText}>‹ 返回</Text>
         </Pressable>
         <Text style={styles.pageTitle}>分类管理</Text>
         <Pressable style={styles.addButton} onPress={() => setCreating(true)}>

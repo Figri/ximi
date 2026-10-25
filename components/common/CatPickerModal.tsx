@@ -35,8 +35,8 @@ export function CatPickerModal({ visible, cats, title, onCancel, onConfirm }: Ca
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <Pressable style={styles.backdrop} onPress={handleCancel}>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>选哪几只猫？</Text>
           <View style={styles.grid}>
@@ -74,8 +74,8 @@ export function CatPickerModal({ visible, cats, title, onCancel, onConfirm }: Ca
               <Text style={styles.confirmText}>确认（{selected.length}）</Text>
             </Pressable>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

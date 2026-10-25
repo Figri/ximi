@@ -118,7 +118,7 @@ const ACTIONS_SPEC = `需要动 App 里的数据时，在回复最后附一个 J
 ], "suggest": true}
 \`\`\`
 - complete：她说做了某件事，card_name 必须和「今天的情况」里的例行名字一模一样，对不上就别输出。
-- timeline：她记一件事（吃了什么、体重、做了什么），category 从 body/sleep/eat/work/play/cat/exercise/emotion/plan/dream/intimate/diary/other 里选。
+- timeline：她让你记一件事（吃了什么、体重、做了什么）。体重写成「体重: 52.3kg」会记进「身体」，别的记成今天的碎碎念。category 从 body/sleep/eat/work/play/cat/exercise/emotion/plan/dream/intimate/diary/other 里选。
 - create_card：她让你帮她加一个会重复的事，frequency_type 用 interval（每几天）或 fixed_day（每周几，1=周一…7=周日，填 fixed_days）。
 - suggest：这条回复里你给了她一个具体的小建议时写 true，App 会在下面放「好了 / 一点 / 没用 / 做不到」四个快捷回复。`;
 

@@ -44,6 +44,9 @@ export interface Action {
   active_hours_start: string | null;
   active_hours_end: string | null;
 
+  /** 「到日子提醒我」的时间 'HH:MM'，不提醒是 null（旧数据没有这个字段） */
+  remind_at?: string | null;
+
   created_at: string;
 }
 

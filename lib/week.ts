@@ -2,6 +2,8 @@ import { db } from './localdb';
 import { buildDayDigest, dayWindow } from './dayDigest';
 import { stateEventsBetween } from './states';
 import { loadChecks } from './scheduleLocal';
+import { listBody } from './body';
+import { playHistoryBetween } from './play';
 import type { Action, Card } from '../types';
 
 // 本周（需求文档 §8.7）：OS 只放数字——时间去了哪、例行做了几次、各种状态出现了几次。不打分、不算连续天数。
@@ -16,6 +18,12 @@ export interface WeekSummary {
   sleepAvg: number | null;
   sleepNights: number;
   fragments: number;
+  /** 每天照顾了几次（习惯 + 作息模板的勾），周一到周日 */
+  routineByDay: number[];
+  /** 最近的体重（最多 12 次，旧的在前），这周的标出来 */
+  weights: { date: string; value: number; inWeek: boolean }[];
+  /** 这周玩了几局、一共几分钟（娱乐出口记的） */
+  play: { count: number; minutes: number };
 }
 
 function keyOf(d: Date): string {
@@ -62,6 +70,15 @@ export async function buildWeek(dayKey: string, dayStartHour = 5): Promise<WeekS
 
   // 例行：习惯卡片照顾了几次 + 作息模板勾了几次（按名字合在一起数）
   const routineCounts = new Map<string, number>();
+  const routineByDay = days.map(() => 0);
+  const dayIndex = (iso: string): number => {
+    const t = new Date(iso).getTime();
+    for (let i = 0; i < 7; i++) {
+      const w = dayWindow(days[i], dayStartHour);
+      if (t >= w.start.getTime() && t < w.end.getTime()) return i;
+    }
+    return -1;
+  };
   try {
     const [{ data: comps }, { data: actions }, { data: cards }] = await Promise.all([
       db.from('completions').select('*').gte('completed_at', start.toISOString()).lt('completed_at', end.toISOString()),
@@ -76,6 +93,8 @@ export async function buildWeek(dayKey: string, dayStartHour = 5): Promise<WeekS
       const card = a ? cardById.get(a.card_id) : null;
       if (!card || card.display_type !== 'habit') continue;
       routineCounts.set(card.name, (routineCounts.get(card.name) ?? 0) + 1);
+      const i = dayIndex((c as { completed_at?: string }).completed_at ?? '');
+      if (i >= 0) routineByDay[i]++;
     }
   } catch {}
   try {
@@ -83,11 +102,30 @@ export async function buildWeek(dayKey: string, dayStartHour = 5): Promise<WeekS
     for (const c of checks) {
       if (c.source !== 'template' || !days.includes(c.date)) continue;
       routineCounts.set(c.title_snapshot, (routineCounts.get(c.title_snapshot) ?? 0) + 1);
+      routineByDay[days.indexOf(c.date)]++;
     }
+  } catch {}
+
+  let weights: WeekSummary['weights'] = [];
+  try {
+    const list = (await listBody('weight')).filter((w) => w.value != null && w.date <= days[6]);
+    weights = list
+      .slice(0, 12)
+      .reverse()
+      .map((w) => ({ date: w.date, value: w.value as number, inWeek: days.includes(w.date) }));
+  } catch {}
+
+  let play = { count: 0, minutes: 0 };
+  try {
+    const rounds = await playHistoryBetween(start, end);
+    play = { count: rounds.length, minutes: rounds.reduce((n, r) => n + r.minutes, 0) };
   } catch {}
 
   return {
     days,
+    routineByDay,
+    weights,
+    play,
     timeByCategory: [...byCat.values()].sort((a, b) => b.minutes - a.minutes),
     states: [...stateCounts.entries()].map(([state, count]) => ({ state, count })).sort((a, b) => b.count - a.count),
     routines: [...routineCounts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),

@@ -88,35 +88,7 @@ export function getActionDecay(action: Action, lastCompletedAt: Date | null): De
   return calculateDecay(lastCompletedAt, suggestedInterval, maxDelay);
 }
 
-/**
- * 打卡tab习惯图标今天要不要显示。
- * - manual: 一直显示
- * - fixed_day: 只在设定的星期几显示，超过7天没做也显示（避免彻底藏起来忘掉）
- * - interval（含"每天"=interval 1、"每X天一次"）: 距上次完成 >= 间隔天数才显示，今天已完成也显示（这样点完能立刻看到打勾状态）
- */
-export function shouldShowHabitToday(action: Action, lastCompletedAt: Date | null): boolean {
-  if (action.frequency_type === 'manual') return true;
-
-  const now = new Date();
-
-  if (action.frequency_type === 'fixed_day' && action.fixed_days?.length) {
-    const jsDayToOurs = (d: number) => (d === 0 ? 7 : d);
-    const isTodayFixed = action.fixed_days.includes(jsDayToOurs(now.getDay()));
-    if (isTodayFixed) return true;
-    if (!lastCompletedAt) return true;
-    const elapsed = (now.getTime() - lastCompletedAt.getTime()) / DAY_MS;
-    return elapsed > 7;
-  }
-
-  // interval（默认，覆盖"每天"和"每X天一次"）
-  if (isCompletedToday(lastCompletedAt)) return true;
-  if (!lastCompletedAt) return true;
-  const interval = action.suggested_interval ?? action.interval_days ?? 1;
-  const elapsed = (now.getTime() - lastCompletedAt.getTime()) / DAY_MS;
-  return elapsed >= interval;
-}
-
-/** 是不是"今天"已经完成过了（打卡圆形图标用，日历日边界，不是按周期衰减算） */
+/** 是不是"今天"已经完成过了（日历日边界，不是按周期衰减算） */
 export function isCompletedToday(lastCompletedAt: Date | null): boolean {
   if (!lastCompletedAt) return false;
   const now = new Date();
@@ -127,13 +99,65 @@ export function isCompletedToday(lastCompletedAt: Date | null): boolean {
   );
 }
 
-export const statusRank: Record<DecayStatus, number> = { red: 0, yellow: 1, green: 2 };
+const WEEKDAY_CN = ['', '一', '二', '三', '四', '五', '六', '日'];
 
-/** 卡片列表排序：红 → 黄 → 绿，同状态内按最紧迫排序 */
-export function sortByUrgency<T extends { status: DecayStatus; percentage: number }>(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    const rankDiff = statusRank[a.status] - statusRank[b.status];
-    if (rankDiff !== 0) return rankDiff;
-    return a.percentage - b.percentage;
-  });
+/** 「每天」「每周一三五」「做完隔 3 天」：给人看的频率 */
+export function describeFrequency(action: Action): string {
+  if (action.frequency_type === 'manual') return '想做就做';
+  if (action.frequency_type === 'fixed_day' && action.fixed_days?.length) {
+    return `每周${[...action.fixed_days].sort((a, b) => a - b).map((d) => WEEKDAY_CN[d]).join('')}`;
+  }
+  const n = action.suggested_interval ?? action.interval_days ?? 1;
+  const base = n <= 1 ? '每天' : `做完隔 ${n} 天`;
+  return action.remind_at ? `${base} · 到日子 ${action.remind_at} 提醒` : base;
+}
+
+/** 格子底下那行小字：超几天 / 快到了 / 几天前做的 / 今天做了 */
+export function habitSubLabel(action: Action, lastCompletedAt: Date | null, done: boolean, now = new Date()): string {
+  if (done) return '今天做了';
+  if (action.frequency_type === 'manual') {
+    if (!lastCompletedAt) return '还没做过';
+  } else {
+    const d = getActionDecay(action, lastCompletedAt);
+    if (d.status !== 'green') return lastCompletedAt ? d.timeLeft : '还没做过';
+  }
+  if (!lastCompletedAt) return '还没做过';
+  const a = new Date(lastCompletedAt.getFullYear(), lastCompletedAt.getMonth(), lastCompletedAt.getDate()).getTime();
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const n = Math.round((b - a) / DAY_MS);
+  return n <= 0 ? '今天做了' : n === 1 ? '昨天做的' : `${n} 天前做的`;
+}
+
+/**
+ * 「到日子提醒我」：到日子那天的 HH:MM 提醒一次（那天没做也只提这一次，不催）。
+ * - 做完隔 X 天：从上次做完那天往后数 X 天（周一该洗头拖到周三才洗，下次就从周三数）；还没做过的不提醒
+ * - 每周几：下一个还没做的那天
+ */
+export function nextHabitReminder(action: Action, lastCompletedAt: Date | null, now = new Date()): Date | null {
+  const t = action.remind_at;
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t) || action.frequency_type === 'manual') return null;
+  const [h, m] = t.split(':').map(Number);
+  const at = (y: number, mo: number, d: number) => new Date(y, mo, d, h, m, 0, 0);
+  if (action.frequency_type === 'fixed_day' && action.fixed_days?.length) {
+    for (let add = 0; add <= 7; add++) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + add);
+      const dow = day.getDay() === 0 ? 7 : day.getDay();
+      if (!action.fixed_days.includes(dow)) continue;
+      if (
+        lastCompletedAt &&
+        lastCompletedAt.getFullYear() === day.getFullYear() &&
+        lastCompletedAt.getMonth() === day.getMonth() &&
+        lastCompletedAt.getDate() === day.getDate()
+      ) {
+        continue;
+      }
+      const when = at(day.getFullYear(), day.getMonth(), day.getDate());
+      if (when.getTime() > now.getTime()) return when;
+    }
+    return null;
+  }
+  if (!lastCompletedAt) return null;
+  const n = Math.max(1, Math.round(action.suggested_interval ?? action.interval_days ?? 1));
+  const when = at(lastCompletedAt.getFullYear(), lastCompletedAt.getMonth(), lastCompletedAt.getDate() + n);
+  return when.getTime() > now.getTime() ? when : null;
 }

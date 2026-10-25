@@ -182,6 +182,7 @@ export default function RootLayout() {
           <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
           <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="care-groups" options={{ presentation: 'card' }} />
           <Stack.Screen
             name="schedule-template"
             options={{

@@ -73,10 +73,16 @@ export async function undoCompletion(completionId: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function undoCompletions(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await db.from('completions').update({ undone: true }).in('id', ids);
+  if (error) throw error;
+}
+
 export async function createCard(
   card: Pick<Card, 'name' | 'type' | 'tags' | 'notes'> &
     Partial<Pick<Card, 'time_of_day' | 'emoji' | 'display_type' | 'priority' | 'due_date'>>,
-  actions: Pick<
+  actions: (Pick<
     Action,
     | 'name'
     | 'is_primary'
@@ -86,7 +92,7 @@ export async function createCard(
     | 'suggested_interval'
     | 'max_delay'
     | 'requires_selection'
-  >[]
+  > & { remind_at?: string | null })[]
 ): Promise<Card> {
   const { data: newCard, error: cardError } = await db.from('cards').insert(card).select().single();
   if (cardError) throw cardError;
@@ -118,6 +124,19 @@ export async function fetchCompletionHistory(cardId: string, limit = 30): Promis
     .from('completions')
     .select('*')
     .eq('card_id', cardId)
+    .order('completed_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** 一个动作以前做过的记录（不含撤销的），新的在前：长按习惯看「以前什么时候做的」用 */
+export async function fetchActionHistory(actionId: string, limit = 60): Promise<Completion[]> {
+  const { data, error } = await db
+    .from('completions')
+    .select('*')
+    .eq('action_id', actionId)
+    .eq('undone', false)
     .order('completed_at', { ascending: false })
     .limit(limit);
   if (error) throw error;

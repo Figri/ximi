@@ -1,10 +1,18 @@
 import { createCard } from '../cards';
 import { resolveComplete } from '../chatInstructions';
-import { addTimelineEntry } from '../timeline';
+import { addWeight } from '../body';
+import { addFragment } from '../fragments';
 import { useCardStore } from '../store';
-import type { AIAction, TimelineCategory } from '../../types';
+import type { AIAction } from '../../types';
 
-// 灵回复里带的指令：完成例行、记一条时间轴、新建例行。返回给对话里显示的小提示。
+// 灵回复里带的指令：完成例行、记一笔、新建例行。返回给对话里显示的小提示。
+// 记一笔（timeline）：体重记进「身体」，别的记成今天的碎碎念（今天页能看到，晚上进 Notion 日记）——
+// 原来的「记录」页已经没了，不再写进看不到的时间轴表。
+
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export async function executeLingActions(actions: AIAction[]): Promise<string[]> {
   if (!actions.length) return [];
@@ -22,19 +30,15 @@ export async function executeLingActions(actions: AIAction[]): Promise<string[]>
         await useCardStore.getState().doComplete(resolved.action, resolved.card);
         labels.push(`记下了：${resolved.card.name}（${resolved.action.name}）`);
       } else if (action.type === 'timeline' && action.description) {
-        const durationMs = (action.duration_min ?? 0) * 60_000;
-        const end = new Date();
-        const start = new Date(end.getTime() - durationMs);
-        await addTimelineEntry({
-          category: (action.category as TimelineCategory) ?? 'other',
-          description: action.description,
-          start_time: start.toISOString(),
-          end_time: durationMs > 0 ? end.toISOString() : undefined,
-          hp_change: action.hp_change,
-          mp_change: action.mp_change,
-          source: 'chat',
-        });
-        labels.push(`记下了：${action.description}`);
+        const m = action.description.match(/体重[:：]?\s*([\d.]+)/);
+        const kg = m ? parseFloat(m[1]) : NaN;
+        if (kg > 20 && kg < 300) {
+          await addWeight(todayKey(), Math.round(kg * 100) / 100);
+          labels.push(`记下了：体重 ${kg}kg（在「身体」里）`);
+        } else {
+          await addFragment(action.description);
+          labels.push(`记下了：${action.description}（在今天的碎碎念里）`);
+        }
       } else if (action.type === 'create_card' && action.card_name) {
         const interval = action.interval_days ?? 3;
         const isFixed = action.frequency_type === 'fixed_day';

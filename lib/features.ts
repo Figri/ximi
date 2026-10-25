@@ -25,14 +25,11 @@ export const FEATURES: Feature[] = [
   // 2.0：今天页是首页（app/(tabs)/index.tsx），时间挪到 time.tsx。key 不变，只换了文件和路由
   { key: 'today', label: '今天', icon: '☀️', screenName: 'index', route: '/', otherRoute: '/other/today', fixed: false },
   { key: 'time', label: '时间', icon: '🕐', screenName: 'time', route: '/time', otherRoute: '/other/time', fixed: false },
-  { key: 'todo', label: '事项', icon: '✅', screenName: 'todo', route: '/todo', otherRoute: '/other/todo', fixed: false },
-  { key: 'checkin', label: '打卡', icon: '📌', screenName: 'checkin', route: '/checkin', otherRoute: '/other/checkin', fixed: false },
-  { key: 'notes', label: '笔记', icon: '📁', screenName: 'notes', route: '/notes', otherRoute: '/other/notes', fixed: false },
   { key: 'chat', label: '灵', icon: '💜', screenName: 'chat', route: '/chat', otherRoute: '/other/chat', fixed: false },
-  { key: 'record', label: '记录', icon: '📋', screenName: 'record', route: '/record', otherRoute: '/other/record', fixed: false },
-  { key: 'data', label: '数据', icon: '📊', screenName: 'data', route: '/data', otherRoute: '/other/data', fixed: false },
   { key: 'schedule', label: '日程', icon: '🗓️', screenName: 'schedule', route: '/schedule', otherRoute: '/other/schedule', fixed: false },
-  // 2.0 第四期：本周（取代「数据」）、猫咪、身体
+  // 2.0 第四期：本周（取代「数据」）、猫咪、身体。
+  // 2.0 整理：打卡、事项、笔记、记录、数据这几页删了——打卡和事项并进今天页，笔记在 Notion 里记，数据并进本周。
+  // 老布局里存着这些 key 也没关系，layoutStore 读的时候会跳过找不到的 key。
   { key: 'review', label: '本周', icon: '📅', screenName: 'review', route: '/review', otherRoute: '/other/review', fixed: false },
   { key: 'cats', label: '猫咪', icon: '🐱', screenName: 'cats', route: '/cats', otherRoute: '/other/cats', fixed: false },
   { key: 'body', label: '身体', icon: '🌙', screenName: 'body', route: '/body', otherRoute: '/other/body', fixed: false },

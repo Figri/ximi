@@ -1,14 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appendChildren, deleteBlock, getChildren, getNotionToken, notionRequest, pageToText, plainText, queryDatabase, richText, textToBlocks, titleOf } from './client';
-import { loadNotionIds, type NotionIds } from './discover';
+import { findNotesDb, loadNotionIds, type NotionIds } from './discover';
 import { getInOsText, saveLayer, type LayerKey } from '../ling/prompt';
 import { lingDayKey, loadLingSettings } from '../ling/settings';
 import { loadAllMessages, type LingMessage } from '../ling/thread';
 import { callAIOnce } from '../ai';
 import { currentBrain } from '../ling/brain';
 import { buildDayDigest, dayWindow } from '../dayDigest';
-import { deleteStateEvent, unsyncedStateEvents, updateStateEvent } from '../states';
+import { deleteStateEvent, STATE_REPLACE_MS, unsyncedStateEvents, updateStateEvent } from '../states';
 import { exportBackup } from '../backup';
+import { db } from '../localdb';
 
 // OS ↔ Notion 同步（需求文档 §3.4、§4.3）：
 // - 拉：灵·人设 / 系统规则 / 灵·在西米OS / 长期档案 / 近况 → 灵的提示词缓存；计划与待办的「下一步」→ 今天页
@@ -23,9 +24,10 @@ const K_LAST_BACKUP = 'notion_last_backup_v1';
 const K_IN_OS_PULLED_AT = 'notion_in_os_pulled_at_v1';
 const K_CHAT_SUMMARY = 'notion_chat_summary_v1';
 const K_IDEAS = 'notion_ideas_v1';
+const K_NOTES_MOVED = 'notion_notes_moved_v1';
 const MIN_INTERVAL_MS = 30 * 60 * 1000;
 
-export type JobKey = 'layers' | 'states' | 'ideas' | 'diary' | 'nextSteps' | 'chatArchive' | 'backup';
+export type JobKey = 'layers' | 'states' | 'ideas' | 'diary' | 'nextSteps' | 'chatArchive' | 'backup' | 'notes';
 
 export const JOB_LABELS: Record<JobKey, string> = {
   layers: '灵的人设和规矩',
@@ -35,6 +37,7 @@ export const JOB_LABELS: Record<JobKey, string> = {
   nextSteps: '项目的下一步',
   chatArchive: '对话存档',
   backup: '每周备份',
+  notes: '旧笔记搬去 Notion',
 };
 
 export interface JobResult {
@@ -141,7 +144,8 @@ export async function pushInOsToNotion(): Promise<boolean> {
 
 async function pushStates(ids: NotionIds): Promise<string> {
   if (!ids.stateDb) return '没找到状态日志';
-  const list = await unsyncedStateEvents();
+  // 刚点的先不写：5 分钟内还可能改成别的（今天页点错了直接点另一个）
+  const list = (await unsyncedStateEvents()).filter((e) => Date.now() - new Date(e.created_at || e.at).getTime() >= STATE_REPLACE_MS);
   let n = 0;
   for (const e of list) {
     const at = new Date(e.at);
@@ -446,6 +450,52 @@ async function archiveChat(ids: NotionIds): Promise<string> {
   return `存了 ${messages.length} 条`;
 }
 
+// ---------------- 写：旧笔记搬去 Notion 的「笔记」库 ----------------
+// 西米OS 不再有笔记页（笔记就在 Notion 里记）。手机里要是还有以前写的笔记，一条一页搬过去，
+// 搬过的记下来不重复搬；本地那份不删，备份里也还有。
+
+async function moveNotes(ids: NotionIds): Promise<string> {
+  const { data } = await db.from('notes').select('*').order('created_at', { ascending: true });
+  const notes = ((data ?? []) as { id: string; title: string | null; content: string | null; folder_id: string | null; created_at?: string }[]).filter(
+    (n) => (n.title ?? '').trim() || (n.content ?? '').trim()
+  );
+  if (!notes.length) return '手机里没有旧笔记';
+  let moved: string[] = [];
+  try {
+    moved = JSON.parse((await AsyncStorage.getItem(K_NOTES_MOVED)) ?? '[]');
+  } catch {}
+  const done = new Set(moved);
+  const todo = notes.filter((n) => !done.has(n.id));
+  if (!todo.length) return `都搬过了（${notes.length} 条）`;
+  const notesDb = ids.notesDb ?? (await findNotesDb());
+  if (!notesDb) return `手机里有 ${todo.length} 条旧笔记，没找到 Notion 的「笔记」库：把「知识」页连给西米OS 集成，再点一次同步`;
+  const dbInfo = await notionRequest<any>(`/databases/${notesDb}`);
+  const props = dbInfo.properties ?? {};
+  const titleProp = Object.entries<any>(props).find(([, v]) => v?.type === 'title')?.[0] ?? '标题';
+  const { data: folders } = await db.from('folders').select('*');
+  const folderName = new Map(((folders ?? []) as { id: string; name: string }[]).map((f) => [f.id, f.name]));
+  for (const n of todo) {
+    const folder = n.folder_id ? folderName.get(n.folder_id) : null;
+    const body = `${(n.content ?? '').trim()}${folder ? `\n\n（从西米OS 搬来的，原来在「${folder}」文件夹）` : '\n\n（从西米OS 搬来的）'}`;
+    const blocks = textToBlocks(body);
+    const page = await notionRequest<any>('/pages', {
+      method: 'POST',
+      body: {
+        parent: { database_id: notesDb },
+        properties: {
+          [titleProp]: { title: richText((n.title ?? '').trim() || '无标题') },
+          ...(props['日期']?.type === 'date' && n.created_at ? { 日期: { date: { start: n.created_at.slice(0, 10) } } } : {}),
+        },
+        children: blocks.slice(0, 100),
+      },
+    });
+    if (blocks.length > 100) await appendChildren(page.id, blocks.slice(100));
+    done.add(n.id);
+    await AsyncStorage.setItem(K_NOTES_MOVED, JSON.stringify([...done]));
+  }
+  return `搬了 ${todo.length} 条笔记`;
+}
+
 // ---------------- 写：每周备份 ----------------
 
 export async function lastBackupAt(): Promise<string | null> {
@@ -537,6 +587,7 @@ export function syncAll(force = false, only?: JobKey[]): Promise<SyncStatus> {
       ['nextSteps', () => pullNextSteps(ids)],
       ['chatArchive', () => archiveChat(ids)],
       ['backup', () => backupToNotion(false)],
+      ['notes', () => moveNotes(ids)],
     ];
     for (const [key, run] of jobs) {
       if (only && !only.includes(key)) continue;

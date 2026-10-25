@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,7 @@ import { useLayoutStore } from '../../../lib/layoutStore';
 import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
 import { CaptureFab } from '../../../components/capture/CaptureFab';
 import { clearCrashes, loadCrashes, type CrashEntry } from '../../../lib/crashLog';
+import { loadNotionIds } from '../../../lib/notion/discover';
 
 const ICON_SIZE = 60;
 const DIVIDER_SENTINEL = '__divider__';
@@ -36,7 +38,7 @@ function formatTime(date: Date | null) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
-/** 浏览态用的圆形图标——视觉对齐打卡页的 HabitIcon，纯展示+点击跳转，不做完成态 */
+/** 浏览态用的圆形图标——视觉对齐今天页「该照顾的」的格子，纯展示+点击跳转，不做完成态 */
 function FeatureIcon({ feature, onPress }: { feature: Feature; onPress: () => void }) {
   return (
     <Pressable style={styles.iconWrapper} onPress={onPress}>
@@ -267,6 +269,22 @@ export default function OtherScreen() {
             <FeatureIcon key={k} feature={FEATURE_BY_KEY[k]} onPress={() => router.push(FEATURE_BY_KEY[k].otherRoute as any)} />
           ))}
         </View>
+
+        <View style={styles.sectionDivider} />
+
+        <Text style={styles.sectionLabel}>笔记</Text>
+        <Pressable
+          style={styles.templateLinkRow}
+          onPress={async () => {
+            // 笔记不在 App 里记了，直接去 Notion「知识 / 笔记」；没连上那个库就打开 Notion 首页
+            const ids = await loadNotionIds();
+            Linking.openURL(ids.notesDb ? `https://www.notion.so/${ids.notesDb.replace(/-/g, '')}` : 'https://www.notion.so').catch(() => {});
+          }}
+          testID="open-notion-notes"
+        >
+          <Text style={styles.templateLinkText}>📝 笔记在 Notion「知识 / 笔记」里记</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
 
         <View style={styles.sectionDivider} />
 
