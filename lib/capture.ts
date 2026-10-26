@@ -60,7 +60,7 @@ export async function saveParsed(p: ParsedCapture, now = new Date()): Promise<Sa
   switch (p.kind) {
     case 'timeblock': {
       const cats = await loadCategories();
-      const cat = p.categoryName ? cats.find((c) => c.name === p.categoryName) : null;
+      const cat = p.categoryName ? cats.find((c) => c.name === p.categoryName && !c.archived) ?? null : null;
       const log = await addLog({ category_id: cat?.id ?? null, start_time: p.start!.toISOString(), end_time: p.end!.toISOString(), description: p.text || null, tag_ids: [] });
       return done('time_logs', log.id);
     }
@@ -117,8 +117,8 @@ export async function quickAddTodo(text: string, dayKey: string, now = new Date(
   const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const todayKey = lingDayKey(now, ctx.dayStartHour);
   if (p.kind === 'todo') {
-    // 没说哪天：记在正在看的那天（今天页上翻到了周三，就记周三）
-    const saidDay = p.date !== todayKey || /今天|今晚|今早|今儿/.test(text);
+    // 没说哪天：记在正在看的那天（今天页上翻到了周三，就记周三）；「20分钟后」是从现在算的，不挪
+    const saidDay = p.fromNow != null || p.date !== todayKey || /今天|今晚|今早|今儿/.test(text);
     return saveParsed(saidDay ? p : { ...p, date: dayKey }, now);
   }
   const asTodo: ParsedCapture =

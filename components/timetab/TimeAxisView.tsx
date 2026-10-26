@@ -54,8 +54,12 @@ export function TimeAxisView({ date, refreshKey, onChanged }: TimeAxisViewProps)
   const tagById: Record<string, TimeTag> = {};
   for (const t of tags) tagById[t.id] = t;
 
+  // 默认「刚过去的 15 分钟」，记在正在看的那天（翻到前几天再点 ＋ 是补记那天的，不跑到今天去）
   function handleFabAdd() {
-    setModalState({ log: null, categoryId: null, start: new Date(Date.now() - 15 * 60_000), end: new Date() });
+    const now = new Date();
+    const end = new Date(date);
+    end.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    setModalState({ log: null, categoryId: null, start: new Date(end.getTime() - 15 * 60_000), end });
   }
 
   function handleCardPress(log: TimeLog) {

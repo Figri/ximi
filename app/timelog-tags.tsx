@@ -19,7 +19,7 @@ export default function TimelogTagsScreen() {
   }, []);
 
   useEffect(() => {
-    setOrder([...tags].sort((a, b) => a.sort_order - b.sort_order));
+    setOrder(tags.filter((t) => !t.archived).sort((a, b) => a.sort_order - b.sort_order));
   }, [tags]);
 
   function handleSaved() {
@@ -55,8 +55,8 @@ export default function TimelogTagsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.backText}>‹ 时间</Text>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={10}>
+          <Text style={styles.backText}>‹ 返回</Text>
         </Pressable>
         <Text style={styles.pageTitle}>情绪标签管理</Text>
         <Pressable style={styles.addButton} onPress={() => setCreating(true)}>
@@ -65,7 +65,8 @@ export default function TimelogTagsScreen() {
       </View>
       <View style={styles.hintRow}>
         <Text style={styles.hint}>长按拖动排序，点击编辑</Text>
-        <Pressable onPress={() => router.push('/timelog-categories')}>
+        {/* 分类和情绪标签互相跳：换掉这一页，不一层层往上叠，返回总是回到原来那页 */}
+        <Pressable onPress={() => router.replace('/timelog-categories')}>
           <Text style={styles.crossLink}>📁 分类管理 ›</Text>
         </Pressable>
       </View>

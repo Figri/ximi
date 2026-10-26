@@ -148,16 +148,6 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
-            name="card/[id]"
-            options={{
-              headerShown: true,
-              title: '',
-              presentation: 'card',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.textPrimary,
-            }}
-          />
-          <Stack.Screen
             name="cat/[id]"
             options={{
               headerShown: true,
@@ -167,32 +157,14 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
-          <Stack.Screen
-            name="memory"
-            options={{
-              headerShown: true,
-              title: 'AI 记忆',
-              presentation: 'modal',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.textPrimary,
-            }}
-          />
+          <Stack.Screen name="memory" options={{ presentation: 'modal' }} />
           <Stack.Screen name="ling-settings" options={{ presentation: 'card', contentStyle: { backgroundColor: room.bg } }} />
           <Stack.Screen name="notion-connect" options={{ presentation: 'card' }} />
           <Stack.Screen name="timelog-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="timelog-tags" options={{ presentation: 'modal' }} />
           <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="care-groups" options={{ presentation: 'card' }} />
-          <Stack.Screen
-            name="schedule-template"
-            options={{
-              headerShown: true,
-              title: '日常作息模板',
-              presentation: 'modal',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.textPrimary,
-            }}
-          />
+          <Stack.Screen name="schedule-template" options={{ presentation: 'modal' }} />
         </Stack>
         <CrashBanner />
       </SafeAreaProvider>

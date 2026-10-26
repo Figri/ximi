@@ -38,11 +38,15 @@ export const useTimeLogStore = create<TimeLogStoreState>((set, get) => ({
     set({ categories: next });
     enqueueSync({ table: 'time_categories', op: 'upsert', row: cat });
   },
+  // 删分类 / 情绪标签 = 收起来（archived）：选的地方不再出现，以前用它记的时间照样显示原来的名字和颜色
   removeCategory: async (id) => {
-    const next = get().categories.filter((c) => c.id !== id);
+    const target = get().categories.find((c) => c.id === id);
+    if (!target) return;
+    const archived = { ...target, archived: true };
+    const next = get().categories.map((c) => (c.id === id ? archived : c));
     await saveCategories(next);
     set({ categories: next });
-    enqueueSync({ table: 'time_categories', op: 'delete', row: { id } });
+    enqueueSync({ table: 'time_categories', op: 'upsert', row: archived });
   },
   upsertTag: async (tag) => {
     const cur = get().tags;
@@ -52,9 +56,12 @@ export const useTimeLogStore = create<TimeLogStoreState>((set, get) => ({
     enqueueSync({ table: 'time_tags', op: 'upsert', row: tag });
   },
   removeTag: async (id) => {
-    const next = get().tags.filter((t) => t.id !== id);
+    const target = get().tags.find((t) => t.id === id);
+    if (!target) return;
+    const archived = { ...target, archived: true };
+    const next = get().tags.map((t) => (t.id === id ? archived : t));
     await saveTags(next);
     set({ tags: next });
-    enqueueSync({ table: 'time_tags', op: 'delete', row: { id } });
+    enqueueSync({ table: 'time_tags', op: 'upsert', row: archived });
   },
 }));

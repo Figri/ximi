@@ -4,7 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PageTitle } from '../../components/common/PageTitle';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addWeight, daysBetween, deleteBody, endPeriod, listBody, startPeriod, type BodyRecord } from '../../lib/body';
+import { addWeight, daysBetween, deleteBody, endPeriod, listBody, parseKg, startPeriod, type BodyRecord } from '../../lib/body';
 import { buildDayDigest } from '../../lib/dayDigest';
 import { lingDayKey, useLingSettings } from '../../lib/ling/settings';
 
@@ -51,8 +51,8 @@ export default function BodyScreen() {
   const today = keyOf(new Date());
 
   async function saveWeight() {
-    const v = Number(draft.replace(/kg|公斤/gi, '').trim());
-    if (!Number.isFinite(v) || v <= 20 || v >= 300) {
+    const v = parseKg(draft, 20, 300);
+    if (v == null) {
       setError('写个数字就行，比如 52.3');
       return;
     }

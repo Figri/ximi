@@ -3,39 +3,45 @@
 给西米一个人用的生活管理 APP。核心是把"知道该做但总拖着"的事变成固定周期提醒，做了就记录，回头能看。
 打开像跟人聊天，不是打开管理工具。
 
-技术栈：Expo (React Native) + expo-router + Supabase (Postgres) + Zustand + Expo Notifications。
+技术栈：Expo (React Native) + expo-router + Zustand + Expo Notifications。数据存在手机本地（AsyncStorage，`lib/localdb.ts`），
+连上 Notion 后自动同步、每周备份（`lib/notion/`）。只走 OTA 更新（EAS Update），不加需要原生编译的依赖。
 
-## 第一版做了什么
+## 现在（2.0）有什么
 
-- 📌 **生活**：卡片列表（按红/黄/绿排序）、标签筛选、完成打卡 + 撤销（带动效）、新建/编辑卡片
-- 💬 **聊天**：和「灵」的基础对话（v1 纯聊天，还不会自动改卡片数据），模型/key 在 APP 里「⋯ → 设置」自己配，支持 Claude / GPT-4o / Gemini / DeepSeek
-- 📋 **记录** / 📊 **数据**：先放了占位页面，完整功能在第二、三版
-- 衰减引擎（`lib/decay.ts`）：卡片根据完成时间线性衰减，超过 `max_delay` 变红
-- 前台衰减检查 + 本地通知（`lib/useDecayNotifications.ts`，15分钟检查一次，Expo Go 里就能跑）
-- 预设数据：5只猫 + 猫相关/护理/家务卡片（见 `supabase/seed.sql`）
+- ☀️ **今天**：碎碎念、现在怎么样（状态打点）、作息和事项（直接写一句就加，认得「周三 10点」「20分钟后 关火」）、
+  娱乐出口、身体（体重 / 经期）、该照顾的（习惯，按分类分组，长按看记录、改、删）
+- 🕐 **时间**：格子视图 / 列表视图记时间块，月历、统计，分类和情绪标签管理
+- 💜 **灵**：对话、主动消息（约定提醒、接住你、想你了、顺口一提），提示词 6 层拼起来（`lib/ling/prompt.ts`），
+  「灵的设定」里能看能改
+- ⋯ **其他**：底栏自己排；日程、本周、猫咪、身体这些页面；作息模板、灵的设定、Notion 连接 / 备份恢复、让灵记住的事
+- 右下角 ＋：一句话自动归类成时间块 / 事项 / 例行 / 状态 / 想法 / 碎片（`lib/captureParse.ts`）
 
 ## 项目结构
 
 ```
 app/
-  (tabs)/          # 底部tab：chat / life / record / data
-  card/[id].tsx     # 卡片详情/编辑页（id=new 时是新建）
-  _layout.tsx       # 根布局
-components/         # Card, CardList, TagFilter, ChatBubble, ActionButton, HPMPBar
+  (tabs)/            # 底栏：今天 index / 时间 time / 灵 chat / 其他 other（other/ 下是从「其他」点进去的页面）
+  page/              # 从别的页面单独打开某个功能页（带返回）
+  habit/[id].tsx     # 新建 / 编辑习惯（id=new 是新建）
+  cat/[id].tsx       # 一只猫的记录
+  ...                # 灵的设定、Notion 连接、作息模板、分类管理等
+components/          # today/ timetab/ capture/ ling/ schedule/ todotab/ common/
 lib/
-  supabase.ts       # Supabase client
-  ai.ts             # AI API 封装（Claude / GPT-4o / Gemini / DeepSeek 可切换）
-  aiSettings.ts     # AI key 的本地安全存储（不进 .env，不进 Supabase）
-  decay.ts          # 衰减计算引擎
-  notifications.ts  # 本地通知封装
-  cards.ts          # 卡片/动作/完成记录的数据访问
-  store.ts          # Zustand store
-types/index.ts       # 和数据库表一一对应的 TS 类型
-supabase/
-  schema.sql        # 建表 SQL
-  seed.sql          # 预设数据（猫、卡片、标签）
-  split/            # schema.sql / seed.sql 按 <100 行拆好的分段版本
+  localdb.ts         # 本地数据库（用法和 supabase-js 一样，存在 AsyncStorage）
+  ling/              # 灵：提示词、回复、主动消息排程
+  notion/            # Notion 同步、备份
+  captureParse.ts    # ＋ 的一句话怎么归类（纯函数，有测试）
+  decay.ts           # 习惯到日子 / 提醒（纯函数，有测试）
+  legacyMigration.ts # 旧 Supabase 数据一次性搬到本地
+tests/logic.test.mjs # npm test：上面两个纯函数的测试，不用装别的
 ```
+
+## 改完代码怎么验
+
+`npx tsc --noEmit` → `npm test` → `rm -rf dist && npx expo export --platform web` 用浏览器真点一遍 →
+`npx expo export --platform android` 确认 Hermes 能打包。详细规矩见 `AGENTS.md`。
+
+> 下面「建 Supabase 项目」是第一版留下的：2.0 起数据都在手机本地，Supabase 只用来把旧数据一次性搬过来，新装可以跳过。
 
 ## 0. 建 Supabase 项目（不管走哪条部署路线都要做，纯网页操作）
 
@@ -65,7 +71,7 @@ RLS 已经在 `schema.sql` 里关掉了（单用户 APP，不需要）。
    - `EXPO_PUBLIC_SUPABASE_URL`
    - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
-   这步不能跳，不然打出来的 APP 连不上 Supabase（AI key 不用在这加，那个是装完 APP 之后在手机上「聊天→⋯→设置」里自己填的，跟这里无关）。
+   这步不能跳，不然打出来的 APP 连不上 Supabase（AI key 不用在这加，那个是装完 APP 之后在手机上「其他 → 灵的设定 → 大脑」里自己填的，跟这里无关）。
 6. 回 GitHub 仓库 **Actions** 标签页 → **EAS 构建 APK** → **Run workflow**，`profile` 选 `preview`，跑完在日志里能看到下载链接，或者去 expo.dev 项目页的 Builds 里找
 
 ### 装到手机
@@ -95,7 +101,7 @@ EXPO_PUBLIC_SUPABASE_URL=你的 supabase project url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=你的 supabase anon/publishable key
 ```
 
-AI 的 key 不用配在这里：APP 装起来之后，去 **聊天 tab → 右上角 ⋯ → 设置**，选一个模型（Claude / GPT-4o / Gemini / DeepSeek）、把对应的 key 粘进去、保存就行。key 存在手机本地的系统安全存储里（iOS Keychain / Android Keystore），不会进 Supabase 也不会进 git，换手机要重新填一遍。
+AI 的 key 不用配在这里：APP 装起来之后，去 **其他 → 灵的设定 → 大脑**，选一个模型、把对应的 key 粘进去、保存就行。key 存在手机本地的系统安全存储里（iOS Keychain / Android Keystore），不会进 Supabase 也不会进 git，换手机要重新填一遍。
 
 ### 2. 装依赖、跑起来
 
@@ -123,4 +129,4 @@ build 完成后 EAS 会给一个下载链接，把 APK 传到手机（微信/网
 - Expo SDK 57，用了新架构（`newArchEnabled: true`）
 - 装原生模块时如果 `npx expo install` 报网络错误（React Native Directory 兼容性检查），加 `EXPO_OFFLINE=1` 环境变量跳过检查
 - AI key 存在设备本地（`expo-secure-store`），不在构建产物/仓库里；如果以后要给别人用，最好还是换成后端代理，不要让每个人在自己手机上各存各的 key 直连各家 API
-- `lib/ai.ts` 已经会解析 AI 回复里的结构化指令（```json {"instructions":[...]}```），但 v1 聊天页还没接上"自动更新卡片"，这是第二版的事
+- 灵的回复里可以带结构化指令（```json {"actions":[...]}```），由 `lib/ling/actions.ts` 执行（比如打卡）

@@ -119,6 +119,8 @@ export default function TodayScreen() {
   const [weighOpen, setWeighOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  /** 这一页自己加 / 改 / 删了事项：日期条上每天的件数跟着重算（别处改的走 dataBus 的 version） */
+  const [stripKey, setStripKey] = useState(0);
   const toastRef = useRef<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lineBusy = useRef(false);
@@ -353,12 +355,14 @@ export default function TodayScreen() {
   async function onQuickAddTodo(text: string) {
     const saved = await quickAddTodo(text, dayKey);
     await loadAgendaFor(dayKey);
+    setStripKey((k) => k + 1);
     rescheduleAll().catch(() => []);
     showToast({
       text: `加好了：${saved.label}`,
       undo: async () => {
         await removeSaved(saved);
         await loadAgendaFor(dayKey);
+        setStripKey((k) => k + 1);
         rescheduleAll().catch(() => []);
       },
     });
@@ -445,7 +449,7 @@ export default function TodayScreen() {
           setSelected(k === todayKey ? null : k);
           loadAgendaFor(k);
         }}
-        refreshKey={version}
+        refreshKey={version + stripKey}
         fetchCounts={async (dates) => {
           const out: Record<string, number> = {};
           for (const d of dates) {
@@ -594,11 +598,13 @@ export default function TodayScreen() {
         onSaved={() => {
           setEditingTodo(null);
           loadAgendaFor(dayKey);
+          setStripKey((k) => k + 1);
           rescheduleAll().catch(() => []);
         }}
         onDeleted={() => {
           setEditingTodo(null);
           loadAgendaFor(dayKey);
+          setStripKey((k) => k + 1);
           rescheduleAll().catch(() => []);
         }}
       />

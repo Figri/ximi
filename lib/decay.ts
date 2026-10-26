@@ -16,9 +16,9 @@ function formatTimeLeft(remainingDays: number): string {
 export function calculateDecay(
   lastCompletedAt: Date,
   suggestedIntervalDays: number,
-  maxDelayDays: number
+  maxDelayDays: number,
+  now = new Date()
 ): DecayResult {
-  const now = new Date();
   const elapsed = (now.getTime() - lastCompletedAt.getTime()) / DAY_MS;
 
   const percentage = Math.max(0, 100 - (elapsed / suggestedIntervalDays) * 100);
@@ -56,13 +56,12 @@ function nextFixedDayOccurrence(fixedDays: number[], from: Date): Date {
  * - fixed_day: 按下一个固定星期几判断绿/黄，过期算红
  * - manual: 没有截止概念，始终绿色，timeLeft 显示"手动"
  */
-export function getActionDecay(action: Action, lastCompletedAt: Date | null): DecayResult {
+export function getActionDecay(action: Action, lastCompletedAt: Date | null, now = new Date()): DecayResult {
   if (action.frequency_type === 'manual') {
     return { percentage: 100, status: 'green', timeLeft: '手动' };
   }
 
   if (action.frequency_type === 'fixed_day' && action.fixed_days?.length) {
-    const now = new Date();
     if (!lastCompletedAt) {
       return { percentage: 0, status: 'red', timeLeft: '待安排' };
     }
@@ -85,7 +84,7 @@ export function getActionDecay(action: Action, lastCompletedAt: Date | null): De
     return { percentage: 0, status: 'red', timeLeft: '待完成' };
   }
 
-  return calculateDecay(lastCompletedAt, suggestedInterval, maxDelay);
+  return calculateDecay(lastCompletedAt, suggestedInterval, maxDelay, now);
 }
 
 /** 是不是"今天"已经完成过了（日历日边界，不是按周期衰减算） */
@@ -118,7 +117,7 @@ export function habitSubLabel(action: Action, lastCompletedAt: Date | null, done
   if (action.frequency_type === 'manual') {
     if (!lastCompletedAt) return '还没做过';
   } else {
-    const d = getActionDecay(action, lastCompletedAt);
+    const d = getActionDecay(action, lastCompletedAt, now);
     if (d.status !== 'green') return lastCompletedAt ? d.timeLeft : '还没做过';
   }
   if (!lastCompletedAt) return '还没做过';

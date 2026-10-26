@@ -1,28 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Updates from 'expo-updates';
 import { colors, fontSize, radius, spacing } from '../../../constants/theme';
-import { AI_MODELS, type AIModel } from '../../../lib/ai';
-import { getApiKey, getSelectedModel, maskKey, setApiKey, setSelectedModel } from '../../../lib/aiSettings';
 import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/features';
 import { useLayoutStore } from '../../../lib/layoutStore';
 import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
 import { CaptureFab } from '../../../components/capture/CaptureFab';
-import { clearCrashes, loadCrashes, type CrashEntry } from '../../../lib/crashLog';
+import { clearCrashes, loadCrashes, markSessionBackground, type CrashEntry } from '../../../lib/crashLog';
 import { loadNotionIds } from '../../../lib/notion/discover';
 
 const ICON_SIZE = 60;
@@ -59,12 +46,10 @@ export default function OtherScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
-  // 设置区状态——原 settings.tsx 的逻辑原样搬过来
-  const [selected, setSelected] = useState<AIModel>('deepseek-chat');
-  const [savedKeys, setSavedKeys] = useState<Partial<Record<AIModel, string>>>({});
-  const [drafts, setDrafts] = useState<Partial<Record<AIModel, string>>>({});
-  const [expanded, setExpanded] = useState<AIModel | null>(null);
   const [checking, setChecking] = useState(false);
+  // 检查更新的结果写在按钮下面，不弹系统框；下好了多一个「现在重启」
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
 
   const [migrationText, setMigrationText] = useState('读取中……');
   const [migrating, setMigrating] = useState(false);
@@ -78,7 +63,6 @@ export default function OtherScreen() {
   );
 
   useEffect(() => {
-    loadSettings();
     loadMigration();
   }, []);
 
@@ -102,59 +86,21 @@ export default function OtherScreen() {
     }
   }
 
-  async function loadSettings() {
-    const model = (await getSelectedModel()) ?? 'deepseek-chat';
-    setSelected(model);
-    const entries = await Promise.all(AI_MODELS.map(async (m) => [m.id, await getApiKey(m.id)] as const));
-    const map: Partial<Record<AIModel, string>> = {};
-    for (const [id, key] of entries) if (key) map[id] = key;
-    setSavedKeys(map);
-  }
-
-  async function handleSelectModel(model: AIModel) {
-    setSelected(model);
-    await setSelectedModel(model);
-  }
-
-  async function handleSaveKey(model: AIModel) {
-    const draft = drafts[model] ?? '';
-    await setApiKey(model, draft);
-    await loadSettings();
-    setExpanded(null);
-    setDrafts((prev) => ({ ...prev, [model]: '' }));
-  }
-
-  function handleClearKey(model: AIModel) {
-    const label = AI_MODELS.find((m) => m.id === model)?.label;
-    Alert.alert(`清除 ${label} 的 key？`, '清除后这个模型没法用了，随时可以重新填', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '清除',
-        style: 'destructive',
-        onPress: async () => {
-          await setApiKey(model, '');
-          await loadSettings();
-        },
-      },
-    ]);
-  }
-
   async function handleCheckUpdate() {
     if (checking) return;
     setChecking(true);
+    setUpdateMsg(null);
     try {
       const result = await Updates.checkForUpdateAsync();
       if (!result.isAvailable) {
-        Alert.alert('已是最新版本', '没有可用的新更新');
+        setUpdateMsg('已经是最新的了');
         return;
       }
       await Updates.fetchUpdateAsync();
-      Alert.alert('更新已下载', '现在重启应用来应用新版本', [
-        { text: '稍后', style: 'cancel' },
-        { text: '立即重启', onPress: () => Updates.reloadAsync() },
-      ]);
+      setUpdateReady(true);
+      setUpdateMsg('新版本下好了，重启一下就用上');
     } catch (err) {
-      Alert.alert('检查更新失败', err instanceof Error ? err.message : String(err));
+      setUpdateMsg(`没检查成：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setChecking(false);
     }
@@ -356,9 +302,23 @@ export default function OtherScreen() {
           {Updates.isEmbeddedLaunch && (
             <Text style={styles.versionWarning}>⚠️ 当前运行的是安装包自带版本，还没有应用过任何 OTA 更新</Text>
           )}
-          <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={checking}>
+          <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={checking} testID="check-update">
             {checking ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.checkButtonText}>检查更新</Text>}
           </Pressable>
+          {updateMsg ? <Text style={styles.updateMsg}>{updateMsg}</Text> : null}
+          {updateReady ? (
+            <Pressable
+              style={styles.checkButton}
+              onPress={() => {
+                // 自己点的重启不算「用着用着没了」
+                markSessionBackground();
+                Updates.reloadAsync().catch((err) => setUpdateMsg(`没重启成：${err instanceof Error ? err.message : String(err)}`));
+              }}
+              testID="update-restart"
+            >
+              <Text style={styles.checkButtonText}>现在重启</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -410,7 +370,6 @@ const styles = StyleSheet.create({
     maxWidth: ICON_SIZE + 16,
     textAlign: 'center',
   },
-  intro: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: 18 },
   templateLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -422,29 +381,6 @@ const styles = StyleSheet.create({
   },
   templateLinkText: { fontSize: fontSize.body, color: colors.textPrimary },
   moreArrow: { fontSize: fontSize.cardName, color: colors.textMuted },
-  providerCard: { backgroundColor: colors.card, borderRadius: radius.card, marginBottom: spacing.sm, overflow: 'hidden' },
-  providerRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm },
-  radio: { width: 16, height: 16, borderRadius: radius.avatar, borderWidth: 2, borderColor: colors.textMuted },
-  radioActive: { borderColor: colors.purpleDark, backgroundColor: colors.purpleDark },
-  providerInfo: { flex: 1 },
-  providerName: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '600' },
-  providerStatus: { fontSize: fontSize.secondary, color: colors.textMuted, marginTop: 2 },
-  editKeyButton: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.button, backgroundColor: colors.blueLight },
-  editKeyButtonText: { fontSize: fontSize.secondary, color: colors.blueDark },
-  editArea: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
-  input: {
-    backgroundColor: colors.background,
-    borderRadius: radius.widget,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: fontSize.body,
-    color: colors.textPrimary,
-  },
-  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-  clearButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  clearButtonText: { color: colors.redDark, fontSize: fontSize.body },
-  saveKeyButton: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.widget, backgroundColor: colors.purpleDark },
-  saveKeyButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
   versionCard: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.md, gap: spacing.sm },
   versionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   versionKey: { fontSize: fontSize.secondary, color: colors.textMuted },
@@ -456,6 +392,7 @@ const styles = StyleSheet.create({
   crashMsg: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: 16 },
   crashStack: { fontSize: 10, color: colors.textSecondary, lineHeight: 14 },
   checkButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
+  updateMsg: { fontSize: fontSize.secondary, color: colors.textSecondary, lineHeight: 18 },
 
   // 编辑态：单列表（react-native-draggable-flatlist 这个版本不支持numColumns网格拖拽，
   // 浏览态照常是网格，编辑态为了保证"插入式"拖拽判定准确可靠，改成单列——这是经过

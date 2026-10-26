@@ -20,6 +20,19 @@ export interface BodyRecord {
 
 const TABLE = 'body_records';
 
+/**
+ * 体重输入：「52.3」「52.3kg」「52,3」「104.6斤」都认，斤折成公斤；不像体重（不在 min~max 之间）返回 null。
+ * 今天页的记体重、身体页、猫的体重都用这一个，免得各认各的（以前写「104斤」会被当成 104 公斤）。
+ */
+export function parseKg(raw: string, min: number, max: number): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const jin = s.includes('斤') && !s.includes('公斤');
+  const v = Number(s.replace(/kg|公斤|斤/gi, '').replace(',', '.').trim()) / (jin ? 2 : 1);
+  if (!Number.isFinite(v) || v <= min || v >= max) return null;
+  return Math.round(v * 100) / 100;
+}
+
 export async function listBody(kind: BodyKind): Promise<BodyRecord[]> {
   const { data } = await db.from(TABLE).select('*').eq('kind', kind).order('date', { ascending: false });
   return (data ?? []) as BodyRecord[];

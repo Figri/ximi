@@ -200,7 +200,8 @@ export default function HabitDetailScreen() {
       await fetchAll();
       // 改了提醒 / 频率：重排灵的约定提醒
       rescheduleAll().catch(() => []);
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
     } catch (err) {
       setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -219,7 +220,8 @@ export default function HabitDetailScreen() {
     await archiveCard(cardId);
     await fetchAll();
     rescheduleAll().catch(() => []);
-    router.back();
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   }
 
   if (loading) {
@@ -234,7 +236,12 @@ export default function HabitDetailScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.pageTitle}>{isNew ? '新建习惯' : '编辑习惯'}</Text>
+        <View style={styles.titleRow}>
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={12} testID="habit-back">
+            <Text style={styles.back}>‹</Text>
+          </Pressable>
+          <Text style={styles.pageTitle}>{isNew ? '新建习惯' : '编辑习惯'}</Text>
+        </View>
 
         <Text style={styles.label}>图标</Text>
         <TextInput style={styles.input} value={emoji} onChangeText={setEmoji} maxLength={4} />
@@ -386,7 +393,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loading: { textAlign: 'center', marginTop: spacing.xl, color: colors.textMuted },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  back: { fontSize: 26, lineHeight: 28, color: colors.purpleDark, marginTop: -2 },
+  pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   label: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.card,

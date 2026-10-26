@@ -110,7 +110,7 @@ export async function endPlay(now = new Date()): Promise<{ loggedMinutes: number
   if (minutes >= 1) {
     try {
       const cats = await loadCategories();
-      const play = cats.find((c) => c.name.includes('玩') || c.name.includes('娱乐')) ?? null;
+      const play = cats.find((c) => !c.archived && (c.name.includes('玩') || c.name.includes('娱乐'))) ?? null;
       await addLog({
         category_id: play?.id ?? null,
         start_time: start.toISOString(),

@@ -16,6 +16,13 @@ function md(key: string): string {
   return `${m}/${d}`;
 }
 
+/** 称重那天按本地日期算：存的可能是「2026-10-25」，也可能是带时间的 ISO（凌晨称的，UTC 那头还是前一天） */
+function localDay(v: string): string {
+  if (v.length <= 10) return v;
+  const d = new Date(v);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export default function CatsScreen() {
   const [cats, setCats] = useState<Cat[]>([]);
   const [weights, setWeights] = useState<Record<string, { value: number; date: string }>>({});
@@ -51,7 +58,7 @@ export default function CatsScreen() {
                 <Text style={styles.name}>
                   {c.name} {c.gender ?? ''}
                 </Text>
-                <Text style={styles.meta}>{w ? `上次称重 ${w.value}kg · ${md(w.date.slice(0, 10))}` : '还没称过'}</Text>
+                <Text style={styles.meta}>{w ? `上次称重 ${w.value}kg · ${md(localDay(w.date))}` : '还没称过'}</Text>
                 {next ? (
                   <Text style={styles.next}>
                     接下来：{md(next.date)} {next.content}

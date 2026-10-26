@@ -138,7 +138,7 @@ export function CaptureSheet() {
               </Pressable>
             </View>
             {mode === 'any' && !entries.length ? (
-              <Text style={styles.hint}>「14:00-16:00 写简历」「周三带皮蛋打疫苗」「每隔3天换猫砂」「想做个人短剧」「有点内耗」都行，判断不了的存成碎片。</Text>
+              <Text style={styles.hint}>「14:00-16:00 写简历」「周三带皮蛋打疫苗」「20分钟后叫我关火」「每隔3天换猫砂」「想做个人短剧」「有点内耗」都行，判断不了的存成碎片。</Text>
             ) : null}
             {entries.map((e) => (
               <View key={`${e.saved.ref.table}:${e.saved.ref.id}`} style={styles.entry}>

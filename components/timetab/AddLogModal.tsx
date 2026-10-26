@@ -61,8 +61,6 @@ export function AddLogModal({
   focusDescription,
 }: AddLogModalProps) {
   const { categories, tags } = useTimeLogStore();
-  const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
-  const sortedTags = [...tags].sort((a, b) => a.sort_order - b.sort_order);
 
   // sheet的高度上限改用useWindowDimensions算出的实际像素值，不再用CSS百分比
   // 字符串——sheet的父级(KeyboardAvoidingView的avoider)本身没有明确的高度
@@ -94,6 +92,10 @@ export function AddLogModal({
   const [startMinuteStr, setStartMinuteStr] = useState('');
   const [endHourStr, setEndHourStr] = useState('');
   const [endMinuteStr, setEndMinuteStr] = useState('');
+
+  // 收起来（删掉）的分类 / 标签不让再选；正在改的这条已经挂着的标签照样显示，能取消
+  const sortedCategories = categories.filter((c) => !c.archived).sort((a, b) => a.sort_order - b.sort_order);
+  const sortedTags = tags.filter((t) => !t.archived || tagIds.includes(t.id)).sort((a, b) => a.sort_order - b.sort_order);
 
   useEffect(() => {
     if (!visible) return;

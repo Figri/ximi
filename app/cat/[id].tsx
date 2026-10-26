@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addCatEvent, fetchCat, fetchCatEvents } from '../../lib/cats';
+import { parseKg } from '../../lib/body';
+import { addCatEvent, deleteCatEvent, fetchCat, fetchCatEvents } from '../../lib/cats';
 import { catTodos, parseNextDate, scheduleNextForCat, type CatTodo } from '../../lib/catTodos';
 import { rescheduleAll } from '../../lib/ling/proactive';
 import type { Cat, CatEvent, CatEventType } from '../../types';
 
 // 一只猫的页（需求文档 §8.8）：疫苗、驱虫、看医生、体重的记录；记的时候填了「下次」，就在那天建一条事项，
-// 今天页和猫咪页都能看到。
+// 今天页和猫咪页都能看到。记错了长按那条删掉，5 秒内能撤销（跟身体页一样）。
 
 const EVENT_TYPES: { type: CatEventType; emoji: string }[] = [
   { type: '绝育', emoji: '✂️' },
@@ -27,6 +28,15 @@ export default function CatDetailScreen() {
   const [todos, setTodos] = useState<CatTodo[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [undo, setUndo] = useState<{ text: string; event: CatEvent } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    []
+  );
 
   useEffect(() => {
     load();
@@ -42,6 +52,23 @@ export default function CatDetailScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function remove(e: CatEvent) {
+    await deleteCatEvent(e.id);
+    load();
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ text: `删了${e.event_type}${e.value != null ? ` ${e.value}` : ''}`, event: e });
+    undoTimer.current = setTimeout(() => setUndo(null), 5000);
+  }
+
+  async function restore() {
+    if (!undo) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    const e = undo.event;
+    setUndo(null);
+    await addCatEvent(id, { event_type: e.event_type, description: e.description, value: e.value, event_date: e.event_date });
+    load();
   }
 
   if (loading) {
@@ -91,8 +118,9 @@ export default function CatDetailScreen() {
 
         <Text style={styles.sectionTitle}>事件时间线</Text>
         {events.length === 0 && <Text style={styles.empty}>还没有记录，点上面「加事件」加一条</Text>}
+        {events.length ? <Text style={styles.hint}>记错了长按那条就删掉，5 秒内能撤销</Text> : null}
         {events.map((e) => (
-          <View key={e.id} style={styles.eventRow}>
+          <Pressable key={e.id} style={styles.eventRow} onLongPress={() => remove(e)} delayLongPress={450} testID={`cat-event-${e.event_type}`}>
             <Text style={styles.eventEmoji}>{EVENT_TYPES.find((t) => t.type === e.event_type)?.emoji ?? '📝'}</Text>
             <View style={styles.eventBody}>
               <Text style={styles.eventTitle}>
@@ -102,9 +130,18 @@ export default function CatDetailScreen() {
               {e.description && <Text style={styles.eventDesc}>{e.description}</Text>}
               <Text style={styles.eventDate}>{new Date(e.event_date).toLocaleDateString('zh-CN')}</Text>
             </View>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
+
+      {undo ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{undo.text}</Text>
+          <Pressable onPress={restore} hitSlop={10} testID="cat-undo">
+            <Text style={styles.toastUndo}>撤销</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <AddEventModal
         visible={addOpen}
@@ -149,18 +186,20 @@ function AddEventModal({
       setError('下次的日期没认出来，写成 11/28 这样就行');
       return;
     }
-    if (type === '体重' && value.trim() && !Number.isFinite(Number(value))) {
+    // 只有「体重」才有数：先填了体重又换成别的类型，不把那个数带过去
+    const kg = type === '体重' && value.trim() ? parseKg(value, 0, 30) : null;
+    if (type === '体重' && value.trim() && kg == null) {
       setError('体重写个数字就行，比如 4.2');
       return;
     }
     setSaving(true);
     try {
-      const d = new Date();
+      // 跟今天页「记体重」一样存带时间的 ISO：同一天记两次也分得清哪次在后
       await addCatEvent(catId, {
         event_type: type,
         description: description.trim() || null,
-        value: value.trim() ? Number(value) : null,
-        event_date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+        value: kg,
+        event_date: new Date().toISOString(),
       });
       if (nextDate) {
         await scheduleNextForCat(catId, catName, type === '看医生' ? '复查' : type, nextDate);
@@ -266,6 +305,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   empty: { fontSize: fontSize.body, color: colors.textMuted },
+  hint: { fontSize: fontSize.tiny, color: colors.textMuted, marginBottom: spacing.sm },
+  toast: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.xl, flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.textPrimary, borderRadius: radius.button, paddingHorizontal: spacing.lg, paddingVertical: 11 },
+  toastText: { flex: 1, color: '#fff', fontSize: fontSize.body },
+  toastUndo: { color: '#D8B4E2', fontSize: fontSize.body, fontWeight: '700' },
   eventRow: {
     flexDirection: 'row',
     backgroundColor: colors.card,

@@ -1,5 +1,5 @@
 // 右下角 ＋ 的一句话怎么归类（需求文档 §8.2 C-2、C-4）：纯规则、离线、不碰存储，方便单独测。
-// 顺序：时间段 → 例行（每天/每周X/每隔N天/每月N号）→ 想法池 → 状态 → 带日期或时间的事项 → 像要做的事 → 碎片。
+// 顺序：时间段 → 例行（每天/每周X/每隔N天/每月N号）→ 过一会儿（20分钟后…）→ 想法池 → 状态 → 带日期或时间的事项 → 像要做的事 → 碎片。
 // 判断不了的一律存成碎片，永远不丢。
 
 export type CaptureKind = 'timeblock' | 'todo' | 'routine' | 'state' | 'idea' | 'fragment';
@@ -30,6 +30,8 @@ export interface ParsedCapture {
   categoryName?: string | null;
   /** 碎片：说的是过去某个钟点的事（12:40 麻辣烫） */
   at?: Date;
+  /** 「20分钟后…」：从现在起几分钟后提醒（date / time 已经按这个算好） */
+  fromNow?: number;
 }
 
 export interface ParseContext {
@@ -139,7 +141,8 @@ function findTime(s: string): TimeHit | null {
     const min = Number(m1[3]);
     if (h <= 23 && min <= 59) return { hhmm: `${pad(h)}:${pad(min)}`, index: m1.index, length: m1[0].length };
   }
-  const re2 = new RegExp(`${PREFIX}\\s*${HOUR_TOKEN}\\s*点\\s*(半|一刻|三刻|(\\d{1,2})分?)?`);
+  // 分钟也认中文数字：三点二十（分）= 15:20
+  const re2 = new RegExp(`${PREFIX}\\s*${HOUR_TOKEN}\\s*点\\s*(半|一刻|三刻|(\\d{1,2}|[零一二两三四五六七八九十]{1,3})分?)?`);
   const m2 = s.match(re2);
   if (m2 && m2.index != null) {
     const base = cnToNumber(m2[2]);
@@ -149,7 +152,7 @@ function findTime(s: string): TimeHit | null {
       if (m2[3] === '半') min = 30;
       else if (m2[3] === '一刻') min = 15;
       else if (m2[3] === '三刻') min = 45;
-      else if (m2[4]) min = Number(m2[4]);
+      else if (m2[4]) min = cnToNumber(m2[4]) ?? 99;
       if (min <= 59) return { hhmm: `${pad(h)}:${pad(min)}`, index: m2.index, length: m2[0].length };
     }
   }
@@ -213,6 +216,55 @@ function parseRange(s: string, ctx: ParseContext): { start: Date; end: Date; res
   if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 24 * 3600 * 1000);
   if (end.getTime() - start.getTime() > 16 * 3600 * 1000) return null;
   return { start, end, rest };
+}
+
+// ---- 过一会儿：20分钟后 关火 / 半小时后叫我 / 一个半小时后提醒我收衣服（替原来工具箱里的倒计时） ----
+
+const AFTER_NUM = '(\\d{1,3}|[零一二两三四五六七八九十]{1,3})';
+const AFTER_TAIL = '\\s*(?:以后|之后|后)';
+// 前面紧挨着「点」「:」或数字的不算（3点20分后、三点二十分后 是钟点，不是 20 分钟以后）
+const AFTER_HEAD = '(?<![点:\\d零一二两三四五六七八九十])';
+
+function parseAfter(s: string, now: Date): { at: Date; minutes: number; rest: string } | null {
+  const hours = (m: RegExpMatchArray, i = 1) => {
+    const h = cnToNumber(m[i]);
+    return h == null ? null : h * 60;
+  };
+  const tries: [RegExp, (m: RegExpMatchArray) => number | null][] = [
+    [new RegExp(`过?\\s*${AFTER_HEAD}${AFTER_NUM}\\s*个?\\s*(?:小时|钟头)\\s*${AFTER_NUM}\\s*分钟?${AFTER_TAIL}`), (m) => {
+      const h = hours(m);
+      const mm = cnToNumber(m[2]);
+      return h == null || mm == null ? null : h + mm;
+    }],
+    [new RegExp(`过?\\s*${AFTER_HEAD}${AFTER_NUM}\\s*个?\\s*半\\s*(?:小时|钟头)${AFTER_TAIL}`), (m) => {
+      const h = hours(m);
+      return h == null ? null : h + 30;
+    }],
+    [new RegExp(`过?\\s*半\\s*个?\\s*(?:小时|钟头)${AFTER_TAIL}`), () => 30],
+    [new RegExp(`过?\\s*(?<![二两三四五六七八九十\\d])一?\\s*刻钟${AFTER_TAIL}`), () => 15],
+    [new RegExp(`过?\\s*${AFTER_HEAD}${AFTER_NUM}\\s*个?\\s*(?:小时|钟头)${AFTER_TAIL}`), (m) => hours(m)],
+    [new RegExp(`过?\\s*${AFTER_HEAD}${AFTER_NUM}\\s*分钟?${AFTER_TAIL}`), (m) => cnToNumber(m[1])],
+    // 「过20分钟叫我」：带「过」可以不说「后」（「过了20分钟」是在说过去的事，不算）
+    [new RegExp(`过\\s*${AFTER_NUM}\\s*分钟`), (m) => cnToNumber(m[1])],
+    [new RegExp(`过\\s*${AFTER_NUM}\\s*个?\\s*(?:小时|钟头)`), (m) => hours(m)],
+    [/过\s*半\s*个?\s*(?:小时|钟头)/, () => 30],
+  ];
+  for (const [re, toMinutes] of tries) {
+    const m = s.match(re);
+    if (!m || m.index == null) continue;
+    const minutes = toMinutes(m);
+    if (minutes == null || !Number.isFinite(minutes) || minutes < 1 || minutes > 24 * 60) continue;
+    const at = new Date(Math.round((now.getTime() + minutes * 60000) / 60000) * 60000);
+    return { at, minutes, rest: cut(s, m.index, m[0].length) };
+  }
+  return null;
+}
+
+/** 「20分钟后叫我」只剩下「叫我」：事项就叫「20分钟到了」 */
+function afterLabel(minutes: number): string {
+  if (minutes === 30) return '半小时到了';
+  if (minutes % 60 === 0) return `${minutes / 60}小时到了`;
+  return `${minutes}分钟到了`;
 }
 
 // ---- 重复 ----
@@ -338,6 +390,17 @@ export function parseCapture(input: string, ctx: ParseContext): ParsedCapture {
     return { ...base, kind: 'routine', repeat: rep.repeat, time: t?.hhmm ?? null, text: clean(rest) || raw, date: dateKeyOf(lingDay(ctx.now, ctx.dayStartHour)) };
   }
 
+  const after = parseAfter(s, ctx.now);
+  if (after) {
+    const text = clean(
+      after.rest
+        .replace(/^[\s,，]*(?:再)?(?:提醒我一下|提醒一下我|提醒我|提醒一下|叫我一下|叫我|喊我|提醒)/, ' ')
+        .replace(/(?:提醒我一下|提醒一下我|提醒我|提醒一下|叫我一下|叫我|喊我)[\s,，。!！~]*$/, ' ')
+    );
+    const hm = `${pad(after.at.getHours())}:${pad(after.at.getMinutes())}`;
+    return { ...base, kind: 'todo', date: dateKeyOf(after.at), time: hm, text: text || afterLabel(after.minutes), fromNow: after.minutes };
+  }
+
   if (IDEA_PREFIX.test(s)) {
     const text = clean(s.replace(/^(有个想法|有个点子|点子|想法|灵感|idea)[:：，,]?/i, '')) || raw;
     return { ...base, kind: 'idea', text };
@@ -349,7 +412,8 @@ export function parseCapture(input: string, ctx: ParseContext): ParsedCapture {
   const dated = parseDate(s, ctx);
   const restAfterDate = dated ? dated.rest : s;
   const t = findTime(restAfterDate);
-  const rest = clean(t ? cut(restAfterDate, t.index, t.length) : restAfterDate.replace(/^\s*(今晚|今早)/, ''));
+  // 「3点20分后去买菜」：钟点后面跟着的「后 / 以后」不算内容
+  const rest = clean(t ? cut(restAfterDate, t.index, t.length).replace(/^\s*(?:以后|之后|后)/, '') : restAfterDate.replace(/^\s*(今晚|今早)/, ''));
   const date = dated?.date ?? lingDay(ctx.now, ctx.dayStartHour);
   const isToday = dateKeyOf(date) === dateKeyOf(lingDay(ctx.now, ctx.dayStartHour));
   const looksTodo = TODO_VERBS.test(rest) || TODO_VERBS.test(s);

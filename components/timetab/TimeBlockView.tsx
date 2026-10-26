@@ -84,10 +84,11 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
 
   const categoryById: Record<string, TimeCategory> = {};
   for (const c of categories) categoryById[c.id] = c;
-  const sortedCategories = [...categories].sort((a, b) => a.sort_order - b.sort_order);
+  const sortedCategories = categories.filter((c) => !c.archived).sort((a, b) => a.sort_order - b.sort_order);
 
-  const dayStart = new Date(date);
-  dayStart.setHours(0, 0, 0, 0);
+  // 同一天只建一次：它在下面几个 useMemo 的依赖里，每次渲染新建一个会让拖选时每动一下都把整天的色块重算一遍
+  const dayStartMs = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayStart = useMemo(() => new Date(dayStartMs), [dayStartMs]);
 
   // 格子高度按轨道实测高度精确铺满24行，不追求正方形——这是最早交接文档就
   // 定下的规矩："格子高度＝轨道容器实测高度÷24，让24小时正好铺满一屏不留白"。

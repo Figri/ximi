@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../constants/theme';
@@ -22,6 +22,7 @@ export default function ScheduleTemplateScreen() {
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const refs = useRef<Record<string, TextInput | null>>({});
 
   useEffect(() => {
@@ -69,21 +70,33 @@ export default function ScheduleTemplateScreen() {
     focus(prev?.id ?? null);
   }
 
+  // 页面上写着「明天开始生效」，存好直接回去，不弹系统框；没存上就在按钮上面说一句
   async function handleSave() {
     const nonEmpty = rows.filter((r) => r.title.trim());
     setSaving(true);
+    setError(null);
     try {
       await saveNewTemplateVersion(nonEmpty.map((r) => ({ slot: r.slot, title: r.title.trim() })));
-      Alert.alert('已更新', '从明天开始生效，今天和之前的记录都不受影响');
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
+    } catch (err) {
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={10}>
+          <Text style={styles.back}>‹ 返回</Text>
+        </Pressable>
+        <Text style={styles.title}>日常作息模板</Text>
+        <View style={{ width: 48 }} />
+      </View>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>就是一张空白的一天——写好之后点保存，明天开始生效，今天和之前的记录都不会变。</Text>
         {!loading &&
           SLOTS.map((slot) => (
@@ -117,16 +130,23 @@ export default function ScheduleTemplateScreen() {
             </View>
           ))}
       </ScrollView>
-      <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving} testID="template-save">
         <Text style={styles.saveButtonText}>{saving ? '保存中…' : '保存'}</Text>
       </Pressable>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl * 3 },
+  flex: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  back: { fontSize: fontSize.body, color: colors.purpleDark, width: 48 },
+  title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
+  content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl * 3 },
+  error: { fontSize: fontSize.secondary, color: colors.redDark, marginHorizontal: spacing.lg },
   hint: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: 18 },
   slotSection: { marginBottom: spacing.md },
   slotLabel: { fontSize: fontSize.secondary, color: colors.textMuted, fontWeight: '600', marginBottom: 4 },

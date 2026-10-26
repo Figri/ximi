@@ -20,10 +20,28 @@ export function genId(): string {
   });
 }
 
+/**
+ * 读一份整存整取的列表。存的东西坏了（不是 JSON、不是数组）不让页面跟着出错、也不让之后加东西一直失败：
+ * 原样另存一份 `<key>_unreadable` 留底（只留第一次的），这次当「没有」。没存过也返回 null。
+ */
+export async function readList<T>(key: string): Promise<T[] | null> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as T[];
+  } catch {}
+  try {
+    const backup = `${key}_unreadable`;
+    if (!(await AsyncStorage.getItem(backup))) await AsyncStorage.setItem(backup, raw);
+  } catch {}
+  return null;
+}
+
 // ---------- 分类 ----------
 export async function loadCategories(): Promise<TimeCategory[]> {
-  const raw = await AsyncStorage.getItem(K_CATEGORIES);
-  if (raw) return JSON.parse(raw);
+  const stored = await readList<TimeCategory>(K_CATEGORIES);
+  if (stored) return stored;
   const seeded: TimeCategory[] = DEFAULT_CATEGORIES.map((c, i) => ({
     id: genId(),
     name: c.name,
@@ -48,8 +66,8 @@ export async function saveCategories(list: TimeCategory[]): Promise<void> {
 
 // ---------- 标签（同结构，用 K_TAGS + DEFAULT_TAGS）----------
 export async function loadTags(): Promise<TimeTag[]> {
-  const raw = await AsyncStorage.getItem(K_TAGS);
-  if (raw) return JSON.parse(raw);
+  const stored = await readList<TimeTag>(K_TAGS);
+  if (stored) return stored;
   const seeded: TimeTag[] = DEFAULT_TAGS.map((t, i) => ({
     id: genId(),
     name: t.name,
@@ -68,8 +86,7 @@ export async function saveTags(list: TimeTag[]): Promise<void> {
 
 // ---------- 时间记录（无默认值，空数组起步）----------
 export async function loadLogs(): Promise<TimeLog[]> {
-  const raw = await AsyncStorage.getItem(K_LOGS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<TimeLog>(K_LOGS)) ?? [];
 }
 export async function saveLogs(list: TimeLog[]): Promise<void> {
   await AsyncStorage.setItem(K_LOGS, JSON.stringify(list));

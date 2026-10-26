@@ -105,15 +105,22 @@ async function loadTable(name: string): Promise<TableState> {
         if (count > 0) {
           const keys = Array.from({ length: count }, (_, i) => `${PREFIX}${name}_${i}`);
           const values = await AsyncStorage.getMany(keys);
+          const unreadable: [string, string][] = [];
           chunks = keys.map((k) => {
             const raw = values[k];
             try {
               const parsed = raw ? JSON.parse(raw) : [];
-              return Array.isArray(parsed) ? parsed : [];
-            } catch {
-              return [];
-            }
+              if (Array.isArray(parsed)) return parsed;
+            } catch {}
+            if (raw) unreadable.push([k, raw]);
+            return [];
           });
+          // 读不出来的那块当空的用，但原样留一份底：之后往这块写新行会把它盖掉
+          for (const [k, raw] of unreadable) {
+            try {
+              if (!(await AsyncStorage.getItem(`${k}_unreadable`))) await AsyncStorage.setItem(`${k}_unreadable`, raw);
+            } catch {}
+          }
         }
       } catch {
         chunks = [];

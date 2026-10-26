@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -29,18 +28,24 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
   const [name, setName] = useState('');
   const [color, setColor] = useState('#8E73B3');
   const [saving, setSaving] = useState(false);
+  // 不弹系统框：没写名字、没存上就在按钮上面说一句；删除点一下变「再点删除」
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+    setError(null);
+    setConfirmDelete(false);
     setName(tag?.name ?? '');
     setColor(tag?.color ?? '#8E73B3');
   }, [visible, tag]);
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('叫什么名字呢？', '标签名不能为空');
+      setError('起个名字吧');
       return;
     }
+    setError(null);
     setSaving(true);
     try {
       if (isEdit && tag) {
@@ -57,25 +62,20 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
       }
       onSaved();
     } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!tag) return;
-    Alert.alert('删除这个标签？', tag.name, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await removeTag(tag.id);
-          onSaved();
-        },
-      },
-    ]);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    await removeTag(tag.id);
+    onSaved();
   }
 
   return (
@@ -86,15 +86,26 @@ export function TagFormModal({ visible, tag, onClose, onSaved }: TagFormModalPro
             <Text style={styles.title}>{isEdit ? '编辑情绪标签' : '新建情绪标签'}</Text>
 
             <Text style={styles.label}>名称</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：崩溃" placeholderTextColor={colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={(t) => {
+                setName(t);
+                setError(null);
+              }}
+              placeholder="比如：崩溃"
+              placeholderTextColor={colors.textMuted}
+            />
 
             <Text style={styles.label}>颜色</Text>
             <ColorSwatchPicker value={color} onChange={setColor} compact />
 
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {confirmDelete && !error ? <Text style={styles.deleteHint}>再点一次就删掉；以前挂过它的记录照旧显示</Text> : null}
             <View style={styles.actions}>
               {isEdit && (
                 <Pressable style={styles.archiveButton} onPress={handleDelete}>
-                  <Text style={styles.archiveButtonText}>删除</Text>
+                  <Text style={styles.archiveButtonText}>{confirmDelete ? '再点删除' : '删除'}</Text>
                 </Pressable>
               )}
               <Pressable style={styles.cancelButton} onPress={onClose}>
@@ -126,6 +137,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  error: { fontSize: fontSize.secondary, color: colors.redDark, marginTop: spacing.md },
+  deleteHint: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.md },
   archiveButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: 'center' },
   archiveButtonText: { color: colors.redDark, fontSize: fontSize.body },
   cancelButton: {

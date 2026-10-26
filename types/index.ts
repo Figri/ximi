@@ -158,17 +158,6 @@ export interface DailySummary {
   created_at: string;
 }
 
-export type ChatRole = 'user' | 'assistant';
-
-export interface ChatMessage {
-  id: string;
-  role: ChatRole;
-  content: string;
-  model: string | null;
-  image_url?: string | null;
-  created_at: string;
-}
-
 export interface Setting {
   key: string;
   value: unknown;
@@ -363,9 +352,4 @@ export interface AIAction {
   frequency_type?: FrequencyType;
   interval_days?: number;
   fixed_days?: number[];
-}
-
-export interface AIReply {
-  text: string;
-  actions?: AIAction[];
 }

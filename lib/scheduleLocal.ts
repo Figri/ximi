@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ScheduleCheck, ScheduleDiary, ScheduleItem, ScheduleTemplateItem, ScheduleTemplateVersion } from '../types';
+import { readList } from './timelogLocal';
 import { enqueueSync } from './timelogSync';
 
 export { genId } from './timelogLocal';
@@ -14,40 +15,35 @@ const K_DIARY = 'schedule_diary_v1';
 // 保持这个仓库里"本地缓存+后台排队同步"的架构一致，不另起一套。
 
 export async function loadTemplateVersions(): Promise<ScheduleTemplateVersion[]> {
-  const raw = await AsyncStorage.getItem(K_TEMPLATE_VERSIONS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<ScheduleTemplateVersion>(K_TEMPLATE_VERSIONS)) ?? [];
 }
 export async function saveTemplateVersions(list: ScheduleTemplateVersion[]): Promise<void> {
   await AsyncStorage.setItem(K_TEMPLATE_VERSIONS, JSON.stringify(list));
 }
 
 export async function loadTemplateItems(): Promise<ScheduleTemplateItem[]> {
-  const raw = await AsyncStorage.getItem(K_TEMPLATE_ITEMS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<ScheduleTemplateItem>(K_TEMPLATE_ITEMS)) ?? [];
 }
 export async function saveTemplateItems(list: ScheduleTemplateItem[]): Promise<void> {
   await AsyncStorage.setItem(K_TEMPLATE_ITEMS, JSON.stringify(list));
 }
 
 export async function loadItems(): Promise<ScheduleItem[]> {
-  const raw = await AsyncStorage.getItem(K_ITEMS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<ScheduleItem>(K_ITEMS)) ?? [];
 }
 export async function saveItems(list: ScheduleItem[]): Promise<void> {
   await AsyncStorage.setItem(K_ITEMS, JSON.stringify(list));
 }
 
 export async function loadChecks(): Promise<ScheduleCheck[]> {
-  const raw = await AsyncStorage.getItem(K_CHECKS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<ScheduleCheck>(K_CHECKS)) ?? [];
 }
 export async function saveChecks(list: ScheduleCheck[]): Promise<void> {
   await AsyncStorage.setItem(K_CHECKS, JSON.stringify(list));
 }
 
 export async function loadDiaries(): Promise<ScheduleDiary[]> {
-  const raw = await AsyncStorage.getItem(K_DIARY);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<ScheduleDiary>(K_DIARY)) ?? [];
 }
 export async function saveDiaries(list: ScheduleDiary[]): Promise<void> {
   await AsyncStorage.setItem(K_DIARY, JSON.stringify(list));

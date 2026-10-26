@@ -109,10 +109,14 @@ export function yesterdaySnippet(messages: LingMessage[], now = new Date(), dayS
   return tail.map((m) => `${m.role === 'user' ? '她' : '你'}：${m.content.replace(/\s+/g, ' ').slice(0, 80)}`).join('\n');
 }
 
+/** 「让灵一直记住的事」那页写的东西，放进提示词时的样子 */
+export function formatLocalMemory(mem: string): string {
+  return mem ? `她让你一直记住的：\n${mem}` : '';
+}
+
 export async function loadLocalMemory(): Promise<string> {
   try {
-    const mem = await fetchMemory();
-    return mem ? `她让你一直记住的：\n${mem}` : '';
+    return formatLocalMemory(await fetchMemory());
   } catch {
     return '';
   }

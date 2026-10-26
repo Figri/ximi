@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
-import { addWeight, latestWeight, type BodyRecord } from '../../lib/body';
+import { addWeight, latestWeight, parseKg, type BodyRecord } from '../../lib/body';
 import { addCatEvent, fetchLastCatWeights } from '../../lib/cats';
 import type { Cat } from '../../types';
 
@@ -15,13 +15,6 @@ function keyOf(d: Date): string {
 function md(key: string): string {
   const [, m, d] = key.split('-').map(Number);
   return `${m}/${d}`;
-}
-
-/** 「52.3」「52.3kg」「52,3」都认；不像体重的返回 null */
-function parseKg(raw: string, min: number, max: number): number | null {
-  const v = Number(raw.replace(/kg|公斤|斤/gi, '').replace(',', '.').trim());
-  if (!raw.trim() || !Number.isFinite(v) || v <= min || v >= max) return null;
-  return Math.round(v * 100) / 100;
 }
 
 interface Props {

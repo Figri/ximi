@@ -1,4 +1,4 @@
-import type { AIAction, AIReply, ChatMessage } from '../types';
+import type { AIAction } from '../types';
 import { imageUrlToBase64 } from './chatImages';
 import { getModelOption, setModelOption } from './aiSettings';
 
@@ -24,35 +24,6 @@ export function modelLabel(model: AIModel): string {
  * 这里先用 deepseek-chat，报"模型不存在"就依次换下一个，并记住能用的那个 */
 const DEEPSEEK_MODEL_CANDIDATES = ['deepseek-chat', 'deepseek-flash', 'deepseek-v4-flash'];
 
-const SYSTEM_PROMPT_SUFFIX = `
-
-## 你的能力
-- 用户说做了什么事（铲屎、洗头、称体重等），你要在回复末尾返回结构化指令来更新卡片数据。
-- 用户说"帮我加个每周X的提醒"之类的话，你要新建卡片。
-- 用户说烦恼、心情不好，就正常聊天安慰，不需要返回指令。
-- 用户记录事件（比如"我刚才色色了半小时"、"体重60.5"），你要帮她写入时间轴记录。
-- 用户发了图片，你能直接看到图片内容，可以描述、评价或者根据图片内容聊天。
-
-如果有可执行的操作，在回复最后追加一个 JSON 代码块（没有可执行操作就不要输出这个代码块）：
-
-\`\`\`json
-{"actions": [
-  {"type": "complete", "card_name": "铲屎"},
-  {"type": "timeline", "description": "色色", "category": "intimate", "duration_min": 30, "hp_change": -5, "mp_change": -3},
-  {"type": "create_card", "card_name": "掏耳朵", "action_name": "掏了", "frequency_type": "interval", "interval_days": 14, "card_tags": ["🐱猫"]}
-]}
-\`\`\`
-
-字段说明：
-- complete: card_name 必须跟下面"卡片状态"里的名字完全一样（一个字都不能改，不要编不存在的卡片名），action_name 选填（不填默认完成主动作）
-- timeline: description 是这件事的简单描述；category 从这些里选一个：body/sleep/eat/work/play/cat/exercise/emotion/plan/dream/intimate/diary/other；duration_min、hp_change、mp_change 都选填；用户报自己的体重时，description 写成"体重: 62.5kg"这种格式（方便自动识别），category 用 body
-- create_card: 新建一张习惯卡片，frequency_type 是 interval（按周期）就填 interval_days，是 fixed_day（固定星期几，1=周一...7=周日）就填 fixed_days 数组`;
-
-export function buildSystemPrompt(contextSummary: string): string {
-  return `你是「灵」，西米的私人AI助手，住在她的西米OS APP里。说话用中文，像真人发微信：口语、短，不写动作描写。
-
-${contextSummary}${SYSTEM_PROMPT_SUFFIX}`;
-}
 
 /** 把回复里的 ```json {...} ``` 指令块拆出来；extra 里是 actions 以外的字段（比如 suggest） */
 export function parseActions(raw: string): { text: string; actions: AIAction[]; extra: Record<string, unknown> } {
@@ -229,19 +200,6 @@ export async function callModel(
 
 function missingKeyError(model: AIModel): Error {
   return new Error(`还没有设置 ${modelLabel(model)} 的 API Key，去灵的设定 → 大脑里填一下`);
-}
-
-export async function sendChatMessage(
-  messages: ChatMessage[],
-  contextSummary: string,
-  model: AIModel,
-  apiKey: string | null
-): Promise<AIReply> {
-  if (!apiKey) throw missingKeyError(model);
-  const system = buildSystemPrompt(contextSummary);
-  const raw = await callModel(model, messages, system, apiKey);
-  const { text, actions } = parseActions(raw);
-  return { text, actions };
 }
 
 /**

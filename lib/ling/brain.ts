@@ -2,8 +2,8 @@ import { callModel, modelLabel, parseActions, type ModelMessage } from '../ai';
 import { getApiKey } from '../aiSettings';
 import type { AIAction } from '../../types';
 import { buildLingSystemPrompt } from './prompt';
-import { buildTodayData, loadLocalMemory, yesterdaySnippet } from './context';
-import { historyForModel, recentFeedback, type LingMessage } from './thread';
+import { buildTodayData, formatLocalMemory, loadLocalMemory, yesterdaySnippet } from './context';
+import { historyForModel, loadAllMessages, recentFeedback, type LingMessage } from './thread';
 import { fallbackText, hasBanned, KIND_LABEL, type ProactiveKind } from './templates';
 import { loadLingSettings, useLingSettings } from './settings';
 
@@ -39,15 +39,20 @@ function normalizeHistory(history: ModelMessage[]): ModelMessage[] {
   return merged;
 }
 
-async function systemPrompt(messages: LingMessage[], extra: { inOsOverride?: string; omitReplyFormat?: boolean } = {}) {
+async function systemPrompt(messages: LingMessage[], extra: { inOsOverride?: string; omitReplyFormat?: boolean; localMemory?: string } = {}) {
   const settings = await loadLingSettings();
   return buildLingSystemPrompt({
     todayData: await buildTodayData(),
     yesterday: yesterdaySnippet(messages, new Date(), settings.dayStartHour),
     feedback: recentFeedback(messages),
-    localMemory: await loadLocalMemory(),
     ...extra,
+    localMemory: extra.localMemory ?? (await loadLocalMemory()),
   });
+}
+
+/** 「让灵一直记住的事」页的预览：灵现在开口时真正读到的整段提示词（记忆那段用页面上还没存的草稿） */
+export async function previewSystemPrompt(memoryDraft: string): Promise<string> {
+  return systemPrompt(await loadAllMessages(), { localMemory: formatLocalMemory(memoryDraft.trim()) });
 }
 
 export interface LingReply {

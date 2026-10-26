@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TodoCategory, TodoCompletion, TodoItem } from '../types';
-import { genId } from './timelogLocal';
+import { genId, readList } from './timelogLocal';
 import { enqueueSync } from './timelogSync';
 
 const K_CATEGORIES = 'todo_categories_v1';
@@ -17,8 +17,8 @@ export const DEFAULT_TODO_CATEGORIES = [
 
 // ---------- 分类 ----------
 export async function loadCategories(): Promise<TodoCategory[]> {
-  const raw = await AsyncStorage.getItem(K_CATEGORIES);
-  if (raw) return JSON.parse(raw);
+  const stored = await readList<TodoCategory>(K_CATEGORIES);
+  if (stored) return stored;
   const seeded: TodoCategory[] = DEFAULT_TODO_CATEGORIES.map((c, i) => ({
     id: genId(),
     name: c.name,
@@ -39,8 +39,7 @@ export async function saveCategories(list: TodoCategory[]): Promise<void> {
 
 // ---------- 事项（无默认值，空数组起步） ----------
 export async function loadItems(): Promise<TodoItem[]> {
-  const raw = await AsyncStorage.getItem(K_ITEMS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<TodoItem>(K_ITEMS)) ?? [];
 }
 export async function saveItems(list: TodoItem[]): Promise<void> {
   await AsyncStorage.setItem(K_ITEMS, JSON.stringify(list));
@@ -48,8 +47,7 @@ export async function saveItems(list: TodoItem[]): Promise<void> {
 
 // ---------- 重复事项按天完成记录 ----------
 export async function loadCompletions(): Promise<TodoCompletion[]> {
-  const raw = await AsyncStorage.getItem(K_COMPLETIONS);
-  return raw ? JSON.parse(raw) : [];
+  return (await readList<TodoCompletion>(K_COMPLETIONS)) ?? [];
 }
 export async function saveCompletions(list: TodoCompletion[]): Promise<void> {
   await AsyncStorage.setItem(K_COMPLETIONS, JSON.stringify(list));

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -42,9 +41,14 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
   const [color, setColor] = useState('#A78BCE');
   const [colorTouched, setColorTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+  // 不弹系统框：没写名字、没存上就在按钮上面说一句；删除点一下变「再点删除」
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+    setError(null);
+    setConfirmDelete(false);
     if (category) {
       setName(category.name);
       setDefaultDescription(category.default_description ?? '');
@@ -61,6 +65,7 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
   // 新建时没手动选过色，名字变了颜色跟着按名字自动换；一旦手动碰过颜色就不再跟随
   function handleNameChange(next: string) {
     setName(next);
+    setError(null);
     if (!isEdit && !colorTouched) setColor(autoColor(next));
   }
 
@@ -71,9 +76,10 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('叫什么名字呢？', '分类名不能为空');
+      setError('起个名字吧');
       return;
     }
+    setError(null);
     setSaving(true);
     try {
       if (isEdit && category) {
@@ -97,25 +103,20 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
       }
       onSaved();
     } catch (err) {
-      Alert.alert('保存失败', err instanceof Error ? err.message : String(err));
+      setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!category) return;
-    Alert.alert('删除这个分类？', `${category.name}（历史记录里已经记过的不受影响）`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await removeCategory(category.id);
-          onSaved();
-        },
-      },
-    ]);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    await removeCategory(category.id);
+    onSaved();
   }
 
   return (
@@ -147,10 +148,12 @@ export function CategoryFormModal({ visible, category, onClose, onSaved }: Categ
               <Text style={styles.label}>颜色</Text>
               <ColorSwatchPicker value={color} onChange={handleColorChange} compact />
 
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              {confirmDelete && !error ? <Text style={styles.deleteHint}>再点一次就删掉；以前用它记的时间还在，名字和颜色照旧</Text> : null}
               <View style={styles.actions}>
                 {isEdit && (
                   <Pressable style={styles.archiveButton} onPress={handleDelete}>
-                    <Text style={styles.archiveButtonText}>删除</Text>
+                    <Text style={styles.archiveButtonText}>{confirmDelete ? '再点删除' : '删除'}</Text>
                   </Pressable>
                 )}
                 <Pressable style={styles.cancelButton} onPress={onClose}>
@@ -188,6 +191,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  error: { fontSize: fontSize.secondary, color: colors.redDark, marginTop: spacing.md },
+  deleteHint: { fontSize: fontSize.secondary, color: colors.textSecondary, marginTop: spacing.md },
   archiveButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: 'center' },
   archiveButtonText: { color: colors.redDark, fontSize: fontSize.body },
   cancelButton: {

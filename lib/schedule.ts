@@ -53,10 +53,16 @@ export function occursOnDate(item: ScheduleItem, dateKey: string): boolean {
 }
 
 // ---------------- 模板版本：取 effective_from<=date 的最新版本 ----------------
+// 同一天改了好几次模板，几版都是「明天生效」：后存的那版算数（以前取的是第一版，后面几次改了等于白改）
+function isNewerVersion(v: ScheduleTemplateVersion, than: ScheduleTemplateVersion): boolean {
+  if (v.effective_from !== than.effective_from) return v.effective_from > than.effective_from;
+  return (v.created_at ?? '') >= (than.created_at ?? '');
+}
+
 export function findVersionForDate(versions: ScheduleTemplateVersion[], dateKey: string): ScheduleTemplateVersion | null {
   const applicable = versions.filter((v) => v.effective_from <= dateKey);
   if (applicable.length === 0) return null;
-  return applicable.reduce((best, v) => (v.effective_from > best.effective_from ? v : best));
+  return applicable.reduce((best, v) => (isNewerVersion(v, best) ? v : best));
 }
 
 // ---------------- 某一天的渲染视图 ----------------
@@ -215,7 +221,7 @@ export async function setDiary(dateKey: string, content: string): Promise<void> 
 export async function fetchLatestTemplateItems(): Promise<ScheduleTemplateItem[]> {
   const [versions, templateItems] = await Promise.all([loadTemplateVersions(), loadTemplateItems()]);
   if (versions.length === 0) return [];
-  const latest = versions.reduce((best, v) => (v.effective_from > best.effective_from ? v : best));
+  const latest = versions.reduce((best, v) => (isNewerVersion(v, best) ? v : best));
   return templateItems.filter((t) => t.version_id === latest.id).sort((a, b) => a.sort - b.sort);
 }
 
