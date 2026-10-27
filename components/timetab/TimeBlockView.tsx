@@ -13,6 +13,8 @@ import { colors, spacing } from '../../constants/theme';
 import { applySelectionFill, fetchLogsForDate } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import { AddLogModal } from './AddLogModal';
+import { PointsBadge } from './PointsBadge';
+import { formatPoints, normalizePoints } from '../../lib/pointsCalc';
 import type { TimeCategory, TimeLog } from '../../types';
 
 /** 按住不动这么久算长按：已经记了的格子长按直接打开编辑（光标在描述里） */
@@ -23,6 +25,11 @@ const MOVE_SLOP = 8;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const CELLS_PER_ROW = 12; // 每行12格，每格5分钟，写死
 const CELL_MINUTES = 5;
+
+/** 格子上的积分胶囊大概要多宽（9 号粗体数字 + 左右留白）：这一段放不下就不画，免得「-999」被裁成「-99」看错 */
+function badgeFits(points: number, segmentWidth: number): boolean {
+  return segmentWidth - 4 >= 7 + 6 * formatPoints(points).length;
+}
 
 function minutesSinceMidnight(date: Date, dayStart: Date): number {
   return Math.max(0, Math.min(24 * 60, (date.getTime() - dayStart.getTime()) / 60000));
@@ -42,6 +49,8 @@ interface LogBlockRect {
   height: number;
   color: string;
   text?: string;
+  /** 这条记录的积分，只在第一段上显示 */
+  points?: number | null;
 }
 
 interface SelectionRect {
@@ -203,6 +212,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
       const startMin = minutesSinceMidnight(new Date(log.start_time), dayStart);
       const endMin = minutesSinceMidnight(new Date(log.end_time), dayStart);
       if (endMin <= startMin) continue;
+      const points = normalizePoints(log.points);
       let cursor = startMin;
       let first = true;
       while (cursor < endMin) {
@@ -222,6 +232,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
           height: ROW_H,
           color,
           text: first ? label : undefined,
+          points: first && points != null && badgeFits(points, width) ? points : null,
         });
         cursor = segEnd;
         first = false;
@@ -380,17 +391,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
                 />
               ))}
 
-              {/* 字压在格子线上面，不被线切断 */}
+              {/* 字压在格子线上面，不被线切断；有分的最前面一个小胶囊：［+10］运动-骨盆运动 */}
               {logBlocks.map((rect) =>
-                rect.text ? (
+                rect.text || rect.points != null ? (
                   <View
                     key={`t-${rect.key}`}
                     style={[styles.logLabelBox, { top: rect.top, left: rect.left, width: rect.width, height: rect.height }]}
                     pointerEvents="none"
                   >
-                    <Text style={[styles.logBlockText, noEllipsisWebStyle]} numberOfLines={1} ellipsizeMode="clip">
-                      {rect.text}
-                    </Text>
+                    {rect.points != null ? <PointsBadge points={rect.points} size="xs" /> : null}
+                    {rect.text ? (
+                      <Text style={[styles.logBlockText, noEllipsisWebStyle]} numberOfLines={1} ellipsizeMode="clip">
+                        {rect.text}
+                      </Text>
+                    ) : null}
                   </View>
                 ) : null
               )}
@@ -444,8 +458,8 @@ const styles = StyleSheet.create({
   gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
   gridLineV: { position: 'absolute', top: 0, width: StyleSheet.hairlineWidth, backgroundColor: '#fff' },
   logBlock: { position: 'absolute', borderRadius: 4 },
-  logLabelBox: { position: 'absolute', overflow: 'hidden', paddingLeft: 4, paddingTop: 2 },
-  logBlockText: { color: '#fff', fontSize: 10, fontWeight: '600', includeFontPadding: false },
+  logLabelBox: { position: 'absolute', overflow: 'hidden', paddingLeft: 4, paddingTop: 2, flexDirection: 'row', alignItems: 'flex-start' },
+  logBlockText: { color: '#fff', fontSize: 10, fontWeight: '600', includeFontPadding: false, flexShrink: 1 },
   palette: { width: 58, marginLeft: 6 },
   paletteContent: { paddingBottom: spacing.sm, gap: 4 },
   paletteChip: {

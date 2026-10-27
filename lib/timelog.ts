@@ -71,6 +71,7 @@ export async function addLog(entry: {
   description?: string | null;
   tag_ids?: string[];
   source?: 'manual' | 'chat';
+  points?: number | null;
 }): Promise<TimeLog> {
   const all = await loadLogs();
   const newLog: TimeLog = {
@@ -82,6 +83,7 @@ export async function addLog(entry: {
     tag_ids: entry.tag_ids ?? [],
     source: entry.source ?? 'manual',
     created_at: new Date().toISOString(),
+    points: entry.points ?? null,
   };
   await saveLogs([...all, newLog]);
   enqueueSync({ table: 'time_logs', op: 'upsert', row: newLog });
@@ -90,7 +92,7 @@ export async function addLog(entry: {
 
 export async function updateLog(
   id: string,
-  patch: Partial<Pick<TimeLog, 'category_id' | 'start_time' | 'end_time' | 'description' | 'tag_ids'>>
+  patch: Partial<Pick<TimeLog, 'category_id' | 'start_time' | 'end_time' | 'description' | 'tag_ids' | 'points'>>
 ): Promise<void> {
   const all = await loadLogs();
   let updated: TimeLog | null = null;
@@ -137,7 +139,8 @@ export async function applySelectionFill(
         continue;
       }
       if (ls < rs && le > re) {
-        // 选区被这条旧记录整个包住：拆成前后两段
+        // 选区被这条旧记录整个包住：拆成前后两段。积分只留在前一段（原来那条），
+        // 后一段不带分——一条记录的分不会因为被划开变成两份
         await updateLog(log.id, { end_time: run.start.toISOString() });
         const tail = await addLog({
           category_id: log.category_id,

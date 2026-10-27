@@ -7,6 +7,7 @@ import { loadAllMessages, type LingMessage } from '../ling/thread';
 import { callAIOnce } from '../ai';
 import { currentBrain } from '../ling/brain';
 import { buildDayDigest, dayWindow } from '../dayDigest';
+import { netPointsForDay } from '../points';
 import { deleteStateEvent, STATE_REPLACE_MS, unsyncedStateEvents, updateStateEvent } from '../states';
 import { exportBackup } from '../backup';
 import { db } from '../localdb';
@@ -323,6 +324,9 @@ async function writeDiary(ids: NotionIds): Promise<string> {
   const yesterday = lingDayKey(new Date(now.getTime() - 24 * 3600 * 1000), settings.dayStartHour);
   const messages = await loadAllMessages();
   const notes: string[] = [];
+  // 「积分」是后加的属性：库里还没有这一列时不写它，免得整天的属性都写不进去
+  const db = await notionRequest(`/databases/${ids.diaryDb}`).catch(() => null);
+  const hasPoints = db?.properties?.积分?.type === 'number';
   for (const dayKey of [yesterday, today]) {
     const digest = await buildDayDigest(dayKey, settings.dayStartHour);
     const summary = await chatSummary(dayKey, settings.dayStartHour, messages);
@@ -339,6 +343,7 @@ async function writeDiary(ids: NotionIds): Promise<string> {
       和灵聊了什么: { rich_text: summary ? richText(summary) : [] },
       同步时间: { rich_text: richText(mmddhhmm(now)) },
     };
+    if (hasPoints) props.积分 = { number: await netPointsForDay(dayKey, settings.dayStartHour) };
     const found = await findDiaryPage(ids.diaryDb, dayKey);
     if (found) {
       await notionRequest(`/pages/${found.id}`, { method: 'PATCH', body: { properties: props } });

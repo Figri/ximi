@@ -112,6 +112,7 @@ const DIARY_PROPS: PropSpec[] = [
   { name: '今日碎片', type: 'rich_text', typeLabel: '文本' },
   { name: '和灵聊了什么', type: 'rich_text', typeLabel: '文本' },
   { name: '同步时间', type: 'rich_text', typeLabel: '文本' },
+  { name: '积分', type: 'number', typeLabel: '数字' },
 ];
 
 const STATE_PROPS: PropSpec[] = [

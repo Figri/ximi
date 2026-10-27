@@ -4,6 +4,8 @@ import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { fetchLogsForDate, formatLogDuration } from '../../lib/timelog';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import { AddLogModal } from './AddLogModal';
+import { PointsBadge } from './PointsBadge';
+import { normalizePoints } from '../../lib/pointsCalc';
 import type { TimeCategory, TimeLog, TimeTag } from '../../types';
 
 function timeOfDayIcon(hour: number): string {
@@ -89,6 +91,7 @@ export function TimeAxisView({ date, refreshKey, onChanged }: TimeAxisViewProps)
               const end = new Date(log.end_time);
               const durationMin = (end.getTime() - start.getTime()) / 60000;
               const cat = log.category_id ? categoryById[log.category_id] : null;
+              const points = normalizePoints(log.points);
               return (
                 <Pressable key={log.id} style={styles.row} onPress={() => handleCardPress(log)}>
                   <View style={styles.timeCol}>
@@ -100,8 +103,11 @@ export function TimeAxisView({ date, refreshKey, onChanged }: TimeAxisViewProps)
                   <View style={styles.card}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.durationText}>{formatLogDuration(durationMin)}</Text>
-                      <View style={[styles.catBadge, { backgroundColor: cat?.color ?? colors.textMuted }]}>
-                        <Text style={styles.catBadgeText}>{cat?.name ?? '未分类'}</Text>
+                      <View style={styles.cardHeaderRight}>
+                        <View style={[styles.catBadge, { backgroundColor: cat?.color ?? colors.textMuted }]}>
+                          <Text style={styles.catBadgeText}>{cat?.name ?? '未分类'}</Text>
+                        </View>
+                        {points != null ? <PointsBadge points={points} testID={`axis-points-${log.id}`} /> : null}
                       </View>
                     </View>
                     {log.description && <Text style={styles.descText}>{log.description}</Text>}
@@ -136,6 +142,7 @@ export function TimeAxisView({ date, refreshKey, onChanged }: TimeAxisViewProps)
         initialCategoryId={modalState?.categoryId}
         initialStart={modalState?.start}
         initialEnd={modalState?.end}
+        editableTime={!!modalState && !modalState.log}
         onClose={() => setModalState(null)}
         onSaved={handleModalSaved}
         onDeleted={handleModalSaved}
@@ -157,6 +164,7 @@ const styles = StyleSheet.create({
   timeIcon: { fontSize: 14 },
   card: { flex: 1, backgroundColor: colors.card, borderRadius: radius.widget, padding: spacing.sm },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   catBadge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.button },
   catBadgeText: { fontSize: fontSize.tiny, color: '#fff', fontWeight: '700' },
   durationText: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '700' },

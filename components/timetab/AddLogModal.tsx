@@ -14,6 +14,7 @@ import {
 import { router } from 'expo-router';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
 import { addLog, deleteLog, formatLogDuration, updateLog } from '../../lib/timelog';
+import { MAX_POINTS, normalizePoints } from '../../lib/pointsCalc';
 import { useTimeLogStore } from '../../lib/timelogStore';
 import type { TimeLog } from '../../types';
 
@@ -28,6 +29,8 @@ interface AddLogModalProps {
   onDeleted?: () => void;
   /** 长按格子打开时：直接把光标放进「描述」、弹出键盘 */
   focusDescription?: boolean;
+  /** 列表视图右下角 ＋ 新建：没有格子可以划，这时才让改时间；别处时间只显示一行，要改就在格子上重新划 */
+  editableTime?: boolean;
 }
 
 function pad2(n: number): string {
@@ -36,6 +39,16 @@ function pad2(n: number): string {
 
 function digitsOnly(v: string): string {
   return v.replace(/[^\d]/g, '').slice(0, 2);
+}
+
+function hhmm(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** 「16:00–20:00」；过了午夜的写「次日」 */
+function timeRangeLabel(start: Date, end: Date): string {
+  const nextDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime() > new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  return `${hhmm(start)}–${nextDay ? '次日 ' : ''}${hhmm(end)}`;
 }
 
 /** 时+分都合法时才拼出一个新 Date，年月日沿用 base 的年月日——弹窗里不再让改日期 */
@@ -59,6 +72,7 @@ export function AddLogModal({
   onSaved,
   onDeleted,
   focusDescription,
+  editableTime,
 }: AddLogModalProps) {
   const { categories, tags } = useTimeLogStore();
 
@@ -80,6 +94,11 @@ export function AddLogModal({
   const [end, setEnd] = useState(new Date());
   const [description, setDescription] = useState('');
   const [tagIds, setTagIds] = useState<string[]>([]);
+  // 打开弹窗那一刻已经挂着的标签排最前面；点的时候不重新排，免得标签跳位置
+  const [pinnedTagIds, setPinnedTagIds] = useState<string[]>([]);
+  // 积分：＋/－ 选一个（默认＋），框里填数字；空着或 0 就是这条不计分
+  const [pointsSign, setPointsSign] = useState<1 | -1>(1);
+  const [pointsStr, setPointsStr] = useState('');
   const [saving, setSaving] = useState(false);
   const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
 
@@ -95,7 +114,10 @@ export function AddLogModal({
 
   // 收起来（删掉）的分类 / 标签不让再选；正在改的这条已经挂着的标签照样显示，能取消
   const sortedCategories = categories.filter((c) => !c.archived).sort((a, b) => a.sort_order - b.sort_order);
-  const sortedTags = tags.filter((t) => !t.archived || tagIds.includes(t.id)).sort((a, b) => a.sort_order - b.sort_order);
+  const visibleTags = tags
+    .filter((t) => !t.archived || tagIds.includes(t.id) || pinnedTagIds.includes(t.id))
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const sortedTags = [...visibleTags.filter((t) => pinnedTagIds.includes(t.id)), ...visibleTags.filter((t) => !pinnedTagIds.includes(t.id))];
 
   useEffect(() => {
     if (!visible) return;
@@ -108,6 +130,10 @@ export function AddLogModal({
       e = new Date(log.end_time);
       setDescription(log.description ?? '');
       setTagIds(log.tag_ids ?? []);
+      setPinnedTagIds(log.tag_ids ?? []);
+      const p = normalizePoints(log.points);
+      setPointsSign(p != null && p < 0 ? -1 : 1);
+      setPointsStr(p != null ? String(Math.abs(p)) : '');
     } else {
       setCategoryId(initialCategoryId ?? null);
       s = initialStart ?? new Date();
@@ -115,6 +141,9 @@ export function AddLogModal({
       const cat = categories.find((c) => c.id === initialCategoryId);
       setDescription(cat?.default_description ?? '');
       setTagIds([]);
+      setPinnedTagIds([]);
+      setPointsSign(1);
+      setPointsStr('');
     }
     setStart(s);
     setEnd(e);
@@ -127,10 +156,29 @@ export function AddLogModal({
     setConfirmDelete(false);
   }, [visible, log, initialCategoryId, initialStart, initialEnd]);
 
-  // 弹窗刚出来时输入框可能还没挂上，autoFocus 在安卓弹窗里不一定生效：稍等一下再手动聚焦一次
+  // 长按打开时直接弹键盘：不能在输入框一出现就抢焦点（autoFocus）——那会儿弹窗的窗口还没真正显示，
+  // 安卓不给弹键盘，可输入框已经被记成「聚焦了」，之后再 focus() 会被当成重复而跳过。
+  // 所以等弹窗真正显示出来（onShow）再聚焦；万一 onShow 没来，过一会儿补一次
+  const shownRef = useRef(false);
+  function focusDescriptionNow() {
+    const el = descRef.current;
+    if (!el) return;
+    if (el.isFocused()) el.blur();
+    requestAnimationFrame(() => descRef.current?.focus());
+  }
+  function handleShow() {
+    shownRef.current = true;
+    if (focusDescription) focusDescriptionNow();
+  }
   useEffect(() => {
-    if (!visible || !focusDescription) return;
-    const t = setTimeout(() => descRef.current?.focus(), 350);
+    if (!visible) {
+      shownRef.current = false;
+      return;
+    }
+    if (!focusDescription) return;
+    const t = setTimeout(() => {
+      if (!shownRef.current) descRef.current?.focus();
+    }, 700);
     return () => clearTimeout(t);
   }, [visible, focusDescription]);
 
@@ -182,6 +230,7 @@ export function AddLogModal({
       end_time: clampedEnd().toISOString(),
       description: description.trim() || null,
       tag_ids: tagIds,
+      points: pointsStr ? normalizePoints(pointsSign * parseInt(pointsStr, 10)) : null,
     };
     if (activeLog) {
       await updateLog(activeLog.id, payload);
@@ -213,6 +262,9 @@ export function AddLogModal({
         setActiveLog(null);
         setDescription('');
         setTagIds([]);
+        setPinnedTagIds([]);
+        setPointsSign(1);
+        setPointsStr('');
       }
     } catch (err) {
       setError(`没存上：${err instanceof Error ? err.message : String(err)}`);
@@ -234,7 +286,7 @@ export function AddLogModal({
   const durationMin = Math.max(0, (clampedEnd().getTime() - start.getTime()) / 60000);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} onShow={handleShow}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
           <Pressable style={[styles.sheet, { maxHeight: sheetMaxHeight }]} onPress={(e) => e.stopPropagation()}>
@@ -256,64 +308,70 @@ export function AddLogModal({
                 </View>
               </View>
 
-              <View style={styles.timeGroupsRow}>
-                <View style={styles.timeGroup}>
-                  <Text style={styles.timeGroupLabel}>上尾</Text>
-                  <View style={styles.timeInputRow}>
-                    <TextInput
-                      style={styles.hmInput}
-                      value={startHourStr}
-                      onChangeText={(v) => {
-                        const d = digitsOnly(v);
-                        setStartHourStr(d);
-                        commitStart(d, startMinuteStr);
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                    />
-                    <Text style={styles.colon}>:</Text>
-                    <TextInput
-                      style={styles.hmInput}
-                      value={startMinuteStr}
-                      onChangeText={(v) => {
-                        const d = digitsOnly(v);
-                        setStartMinuteStr(d);
-                        commitStart(startHourStr, d);
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                    />
+              {editableTime ? (
+                <View style={styles.timeGroupsRow}>
+                  <View style={styles.timeGroup}>
+                    <Text style={styles.timeGroupLabel}>上尾</Text>
+                    <View style={styles.timeInputRow}>
+                      <TextInput
+                        style={styles.hmInput}
+                        value={startHourStr}
+                        onChangeText={(v) => {
+                          const d = digitsOnly(v);
+                          setStartHourStr(d);
+                          commitStart(d, startMinuteStr);
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                      />
+                      <Text style={styles.colon}>:</Text>
+                      <TextInput
+                        style={styles.hmInput}
+                        value={startMinuteStr}
+                        onChangeText={(v) => {
+                          const d = digitsOnly(v);
+                          setStartMinuteStr(d);
+                          commitStart(startHourStr, d);
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.timeGroup}>
+                    <Text style={styles.timeGroupLabel}>下始</Text>
+                    <View style={styles.timeInputRow}>
+                      <TextInput
+                        style={styles.hmInput}
+                        value={endHourStr}
+                        onChangeText={(v) => {
+                          const d = digitsOnly(v);
+                          setEndHourStr(d);
+                          commitEnd(d, endMinuteStr);
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                      />
+                      <Text style={styles.colon}>:</Text>
+                      <TextInput
+                        style={styles.hmInput}
+                        value={endMinuteStr}
+                        onChangeText={(v) => {
+                          const d = digitsOnly(v);
+                          setEndMinuteStr(d);
+                          commitEnd(endHourStr, d);
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                      />
+                    </View>
                   </View>
                 </View>
-                <View style={styles.timeGroup}>
-                  <Text style={styles.timeGroupLabel}>下始</Text>
-                  <View style={styles.timeInputRow}>
-                    <TextInput
-                      style={styles.hmInput}
-                      value={endHourStr}
-                      onChangeText={(v) => {
-                        const d = digitsOnly(v);
-                        setEndHourStr(d);
-                        commitEnd(d, endMinuteStr);
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                    />
-                    <Text style={styles.colon}>:</Text>
-                    <TextInput
-                      style={styles.hmInput}
-                      value={endMinuteStr}
-                      onChangeText={(v) => {
-                        const d = digitsOnly(v);
-                        setEndMinuteStr(d);
-                        commitEnd(endHourStr, d);
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                    />
-                  </View>
-                </View>
-              </View>
+              ) : (
+                <Text style={styles.timeLine} testID="log-time">
+                  {timeRangeLabel(start, clampedEnd())}
+                </Text>
+              )}
 
               {categoryPanelOpen && (
                 <View style={styles.catPanel}>
@@ -338,6 +396,38 @@ export function AddLogModal({
                 </View>
               )}
 
+              <View style={styles.pointsRow}>
+                <Text style={styles.pointsLabel}>积分</Text>
+                <Pressable
+                  style={[styles.signButton, pointsSign === 1 && styles.signPlusOn]}
+                  onPress={() => setPointsSign(1)}
+                  hitSlop={4}
+                  testID="points-plus"
+                  aria-selected={pointsSign === 1}
+                >
+                  <Text style={[styles.signText, pointsSign === 1 && styles.signTextOn]}>＋</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.signButton, pointsSign === -1 && styles.signMinusOn]}
+                  onPress={() => setPointsSign(-1)}
+                  hitSlop={4}
+                  testID="points-minus"
+                  aria-selected={pointsSign === -1}
+                >
+                  <Text style={[styles.signText, pointsSign === -1 && styles.signTextOn]}>－</Text>
+                </Pressable>
+                <TextInput
+                  style={[styles.pointsInput, pointsStr ? { color: pointsSign === 1 ? colors.greenDark : colors.redDark } : null]}
+                  value={pointsStr}
+                  onChangeText={(v) => setPointsStr(v.replace(/[^\d]/g, '').slice(0, String(MAX_POINTS).length))}
+                  keyboardType="number-pad"
+                  maxLength={String(MAX_POINTS).length}
+                  placeholder="不计分"
+                  placeholderTextColor={colors.textMuted}
+                  testID="points-input"
+                />
+              </View>
+
               <Text style={styles.label}>描述</Text>
               <TextInput
                 style={styles.descInput}
@@ -348,7 +438,6 @@ export function AddLogModal({
                 multiline
                 textAlignVertical="top"
                 ref={descRef}
-                autoFocus={!!focusDescription}
                 testID="log-desc"
               />
 
@@ -358,7 +447,14 @@ export function AddLogModal({
                   <Text style={styles.tagManageLink}>管理 ›</Text>
                 </Pressable>
               </View>
-              <View style={styles.tagRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={styles.tagScroll}
+                contentContainerStyle={styles.tagRow}
+                testID="log-tags"
+              >
                 {sortedTags.map((t) => {
                   const active = tagIds.includes(t.id);
                   return (
@@ -367,11 +463,13 @@ export function AddLogModal({
                       onPress={() => toggleTag(t.id)}
                       style={[styles.tagChip, { borderColor: t.color }, active && { backgroundColor: t.color }]}
                     >
-                      <Text style={[styles.tagChipText, { color: active ? '#fff' : t.color }]}>{t.name}</Text>
+                      <Text style={[styles.tagChipText, { color: active ? '#fff' : t.color }]} numberOfLines={1}>
+                        {t.name}
+                      </Text>
                     </Pressable>
                   );
                 })}
-              </View>
+              </ScrollView>
             </ScrollView>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -428,7 +526,28 @@ const styles = StyleSheet.create({
   durationPill: { backgroundColor: colors.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   durationPillText: { fontSize: fontSize.tiny, color: colors.textSecondary, fontWeight: '600' },
 
+  timeLine: { fontSize: fontSize.body, color: colors.textSecondary, fontWeight: '600', marginBottom: 6 },
   timeGroupsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: 6 },
+
+  pointsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 2 },
+  pointsLabel: { fontSize: fontSize.secondary, color: colors.textSecondary, marginRight: 4 },
+  signButton: { width: 36, height: 32, borderRadius: 8, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  signPlusOn: { backgroundColor: colors.greenDark },
+  signMinusOn: { backgroundColor: colors.redDark },
+  signText: { fontSize: 16, fontWeight: '700', color: colors.textMuted },
+  signTextOn: { color: '#fff' },
+  pointsInput: {
+    width: 72,
+    height: 32,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    fontSize: fontSize.cardName,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
   timeGroup: { flex: 1 },
   timeGroupLabel: { fontSize: fontSize.tiny, color: colors.textMuted, marginBottom: 4 },
   timeInputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -466,7 +585,8 @@ const styles = StyleSheet.create({
 
   tagHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   tagManageLink: { fontSize: fontSize.tiny, color: colors.purpleDark, fontWeight: '600' },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4 },
+  tagScroll: { marginTop: 4, flexGrow: 0 },
+  tagRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.sm },
   tagChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.button, borderWidth: 1 },
   tagChipText: { fontSize: fontSize.body, fontWeight: '500' },
 

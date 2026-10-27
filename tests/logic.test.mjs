@@ -1,4 +1,5 @@
-// 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）。
+// 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）、
+// 时间页积分怎么加总（lib/pointsCalc.ts）。
 // 不用装新依赖：用项目自带的 typescript 把这两个文件转成 CommonJS 放到临时目录再跑。
 // 跑法：npm test（有一条不对就以非 0 退出）。时间都按东八区算。
 process.env.TZ = 'Asia/Shanghai';
@@ -24,6 +25,7 @@ function load(rel) {
 
 const { parseCapture, describeParsed } = load('lib/captureParse.ts');
 const { nextHabitReminder, describeFrequency, habitSubLabel } = load('lib/decay.ts');
+const { normalizePoints, formatPoints, dayKeyAt, mondayOf, summarizePoints, dayDetail } = load('lib/pointsCalc.ts');
 
 let failed = 0;
 let total = 0;
@@ -165,6 +167,69 @@ const texts = [
   [habitSubLabel(A({ frequency_type: 'manual' }), d('2026-10-20T08:00:00+08:00'), false, d('2026-10-25T20:00:00+08:00')), '5 天前做的'],
 ];
 for (const [got, want] of texts) report(got === want, `文案: ${got}${got === want ? '' : `（应该是 ${want}）`}`);
+
+// ---------- 积分：算在开始那天（5 点换日）、本周从周一、按分类加减两组 ----------
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const pointsBasics = [
+  ['normalize 10', normalizePoints(10), 10],
+  ['normalize -8', normalizePoints(-8), -8],
+  ['normalize 0 → 不计分', normalizePoints(0), null],
+  ['normalize "12"', normalizePoints('12'), 12],
+  ['normalize "" → 不计分', normalizePoints(''), null],
+  ['normalize 1000 → 超了不算', normalizePoints(1000), null],
+  ['normalize -999', normalizePoints(-999), -999],
+  ['normalize 3.7 → 3', normalizePoints(3.7), 3],
+  ['normalize null', normalizePoints(null), null],
+  ['normalize undefined（旧记录）', normalizePoints(undefined), null],
+  ['format +10', formatPoints(10), '+10'],
+  ['format -8', formatPoints(-8), '-8'],
+  ['凌晨 1 点算前一天', dayKeyAt(new Date('2026-10-27T01:00:00+08:00'), 5), '2026-10-26'],
+  ['5 点整算当天', dayKeyAt(new Date('2026-10-27T05:00:00+08:00'), 5), '2026-10-27'],
+  ['周日的周一', mondayOf('2026-10-25'), '2026-10-19'],
+  ['周一的周一', mondayOf('2026-10-26'), '2026-10-26'],
+  ['跨月的周一', mondayOf('2026-11-01'), '2026-10-26'],
+];
+for (const [name, got, want] of pointsBasics) report(eq(got, want), `积分 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+const C = [
+  { id: 'sport', name: '运动', color: '#F5B841' },
+  { id: 'play', name: '玩', color: '#A78BCE' },
+  { id: 'proj', name: '项目', color: '#2E6DB4', archived: true },
+];
+const L = (id, cat, start, mins, points) => ({ id, category_id: cat, start_time: new Date(start).toISOString(), end_time: new Date(new Date(start).getTime() + mins * 60000).toISOString(), description: id, tag_ids: [], source: 'manual', created_at: '', ...(points === undefined ? {} : { points }) });
+const plogs = [
+  L('今天运动', 'sport', '2026-10-27T14:00:00+08:00', 120, 10),
+  L('凌晨玩', 'play', '2026-10-27T01:00:00+08:00', 60, -8),
+  L('昨晚项目', 'proj', '2026-10-26T20:00:00+08:00', 60, 5),
+  L('上周日运动', 'sport', '2026-10-25T10:00:00+08:00', 60, 20),
+  L('上个月运动', 'sport', '2026-09-30T10:00:00+08:00', 60, 7),
+  L('没分的', 'sport', '2026-10-27T18:00:00+08:00', 60),
+  L('0分', 'sport', '2026-10-27T19:00:00+08:00', 60, 0),
+  L('十天前玩', 'play', '2026-10-20T22:00:00+08:00', 60, -3),
+];
+const pnow = new Date('2026-10-27T15:00:00+08:00'); // 周二
+const s7 = summarizePoints(plogs, C, pnow, 7, 5);
+const s30 = summarizePoints(plogs, C, pnow, 30, 5);
+const nets = (s) => s.series.filter((d) => d.has).map((d) => `${d.dayKey.slice(5)}:${d.net}`).join(' ');
+const cats = (arr) => arr.map((c) => `${c.name}${formatPoints(c.points)}`).join(' ');
+const pointsCases = [
+  ['今天', s7.today, 10],
+  ['本周（周一起，含凌晨算前一天的 -8）', s7.week, 7],
+  ['本月', s7.month, 24],
+  ['总共', s7.total, 31],
+  ['7 天柱子', nets(s7), '10-25:20 10-26:-3 10-27:10'],
+  ['7 天柱子根数', s7.series.length, 7],
+  ['7 天加分（收起来的分类照样显示名字）', cats(s7.plus), '运动+30 项目+5'],
+  ['7 天扣分', cats(s7.minus), '玩-8'],
+  ['7 天最好的一天', s7.best && `${s7.best.dayKey}:${s7.best.net}`, '2026-10-25:20'],
+  ['30 天加分', cats(s30.plus), '运动+37 项目+5'],
+  ['30 天扣分', cats(s30.minus), '玩-11'],
+  ['30 天柱子根数', s30.series.length, 30],
+  ['10-26 的明细（从早到晚）', dayDetail(plogs, '2026-10-26', 5).map((x) => `${x.log.id}${formatPoints(x.points)}`).join(' '), '昨晚项目+5 凌晨玩-8'],
+  ['今天还没分 → null', summarizePoints(plogs, C, new Date('2026-10-28T12:00:00+08:00'), 7, 5).today, null],
+  ['一条分都没有', summarizePoints([L('x', 'sport', '2026-10-27T10:00:00+08:00', 60)], C, pnow, 7, 5).best, null],
+];
+for (const [name, got, want] of pointsCases) report(eq(got, want), `积分 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
 
 console.log(`\n${total - failed}/${total} 通过`);
 process.exit(failed ? 1 : 0);

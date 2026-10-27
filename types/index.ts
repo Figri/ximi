@@ -228,6 +228,8 @@ export interface TimeLog {
   tag_ids: string[];
   source: 'manual' | 'chat';
   created_at: string;
+  /** 积分：整数，可正可负；没有就是这条不计分（以前的记录都没有） */
+  points?: number | null;
 }
 
 export interface Note {
