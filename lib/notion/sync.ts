@@ -145,7 +145,7 @@ export async function pushInOsToNotion(): Promise<boolean> {
 
 async function pushStates(ids: NotionIds): Promise<string> {
   if (!ids.stateDb) return '没找到状态日志';
-  // 刚点的先不写：5 分钟内还可能改成别的（今天页点错了直接点另一个）
+  // 刚记的先不写：5 分钟内还可能删掉（随心记长按删除）
   const list = (await unsyncedStateEvents()).filter((e) => Date.now() - new Date(e.created_at || e.at).getTime() >= STATE_REPLACE_MS);
   let n = 0;
   for (const e of list) {

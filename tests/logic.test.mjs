@@ -1,5 +1,5 @@
 // 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）、
-// 时间页积分怎么加总（lib/pointsCalc.ts）。
+// 时间页积分怎么加总（lib/pointsCalc.ts）；随心记的表情（lib/moods.ts）。
 // 不用装新依赖：用项目自带的 typescript 把这两个文件转成 CommonJS 放到临时目录再跑。
 // 跑法：npm test（有一条不对就以非 0 退出）。时间都按东八区算。
 process.env.TZ = 'Asia/Shanghai';
@@ -26,6 +26,7 @@ function load(rel) {
 const { parseCapture, describeParsed } = load('lib/captureParse.ts');
 const { nextHabitReminder, describeFrequency, habitSubLabel } = load('lib/decay.ts');
 const { normalizePoints, formatPoints, dayKeyAt, mondayOf, summarizePoints, dayDetail } = load('lib/pointsCalc.ts');
+const { MOOD_FACES, moodLine, moodNote } = load('lib/moods.ts');
 
 let failed = 0;
 let total = 0;
@@ -230,6 +231,24 @@ const pointsCases = [
   ['一条分都没有', summarizePoints([L('x', 'sport', '2026-10-27T10:00:00+08:00', 60)], C, pnow, 7, 5).best, null],
 ];
 for (const [name, got, want] of pointsCases) report(eq(got, want), `积分 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+// ---------- 随心记的表情（lib/moods.ts） ----------
+const face = (label) => MOOD_FACES.find((m) => m.label === label);
+const moodCases = [
+  ['12 个表情', MOOD_FACES.length, 12],
+  ['每个都对上状态日志里的词', MOOD_FACES.every((m) => STATE_WORDS.includes(m.state)), true],
+  ['状态日志 9 个词都有表情', STATE_WORDS.every((w) => MOOD_FACES.some((m) => m.state === w)), true],
+  ['表情不重复', new Set(MOOD_FACES.map((m) => m.face)).size, 12],
+  ['字不重复', new Set(MOOD_FACES.map((m) => m.label)).size, 12],
+  ['想哭 → 难过', face('想哭').state, '难过'],
+  ['只记表情那一行', moodLine(face('难过'), ''), '😢 难过'],
+  ['只记表情（空格不算字）', moodLine(face('想哭'), '   '), '😭 想哭'],
+  ['表情 + 话', moodLine(face('疲惫'), ' 今天好累 '), '😩 今天好累'],
+  ['状态日志事件：写了话就是话', moodNote(face('生气'), '又被气到'), '又被气到'],
+  ['状态日志事件：只点想哭 → 想哭', moodNote(face('想哭'), ''), '想哭'],
+  ['状态日志事件：只点难过 → 空（Notion 那边写「难过（西米OS 打点）」）', moodNote(face('难过'), ''), null],
+];
+for (const [name, got, want] of moodCases) report(eq(got, want), `表情 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
 
 console.log(`\n${total - failed}/${total} 通过`);
 process.exit(failed ? 1 : 0);

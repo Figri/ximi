@@ -6,7 +6,7 @@ import { useCardStore } from '../store';
 import type { AIAction } from '../../types';
 
 // 灵回复里带的指令：完成例行、记一笔、新建例行。返回给对话里显示的小提示。
-// 记一笔（timeline）：体重记进「身体」，别的记成今天的碎碎念（今天页能看到，晚上进 Notion 日记）——
+// 记一笔（timeline）：体重记进「身体」，别的记成今天的随心记（今天页能看到，晚上进 Notion 日记）——
 // 原来的「记录」页已经没了，不再写进看不到的时间轴表。
 
 function todayKey(): string {
@@ -37,7 +37,7 @@ export async function executeLingActions(actions: AIAction[]): Promise<string[]>
           labels.push(`记下了：体重 ${kg}kg（在「身体」里）`);
         } else {
           await addFragment(action.description);
-          labels.push(`记下了：${action.description}（在今天的碎碎念里）`);
+          labels.push(`记下了：${action.description}（在今天的随心记里）`);
         }
       } else if (action.type === 'create_card' && action.card_name) {
         const interval = action.interval_days ?? 3;

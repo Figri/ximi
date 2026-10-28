@@ -6,14 +6,7 @@ import { db } from './localdb';
 export const STATE_WORDS = ['开心', '一般', '难过', '烦躁', '焦虑', '疲惫', '平静', '低动力', '内耗'] as const;
 export type StateWord = (typeof STATE_WORDS)[number];
 
-/** 今天页「现在怎么样」最先看到的三个 */
-export const MOOD_FACES: { state: StateWord; face: string }[] = [
-  { state: '开心', face: '😊' },
-  { state: '一般', face: '😐' },
-  { state: '难过', face: '😢' },
-];
-
-/** 点完 5 分钟内又点了别的：当成点错了，改掉刚才那条，不另记一条；过了 5 分钟才写进 Notion */
+/** 记完 5 分钟以后才写进 Notion：这 5 分钟里删掉的（随心记长按删除）就不往 Notion 写了。随心记的表情在 lib/moods.ts */
 export const STATE_REPLACE_MS = 5 * 60 * 1000;
 
 /** 点了这些，灵会来「接住你」 */
