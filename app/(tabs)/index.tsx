@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } f
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { NextStepsSection } from '../../components/today/NextStepsSection';
 import { AgendaSection } from '../../components/today/AgendaSection';
@@ -11,6 +11,7 @@ import { CareSection } from '../../components/today/CareSection';
 import { PlaySection } from '../../components/today/PlaySection';
 import { FragmentsSection } from '../../components/today/FragmentsSection';
 import { BodySection } from '../../components/today/BodySection';
+import { WaterSection } from '../../components/today/WaterSection';
 import { WeightSheet } from '../../components/today/WeightSheet';
 import { TodoFormModal } from '../../components/todotab/TodoFormModal';
 import { CaptureFab } from '../../components/capture/CaptureFab';
@@ -22,6 +23,7 @@ import { deleteBody, endPeriod, importLegacyBody, listBody, startPeriod, type Bo
 import { isCompletedToday } from '../../lib/decay';
 import { buildDayDigest, dayWindow } from '../../lib/dayDigest';
 import { getPlaySession } from '../../lib/play';
+import { addCup, cupsToday, removeCup } from '../../lib/water';
 import { useDataBus } from '../../lib/dataBus';
 import { useCardStore } from '../../lib/store';
 import { useTodoStore } from '../../lib/todoStore';
@@ -38,8 +40,9 @@ import { ruleTodayLine, type TodayLineContext } from '../../lib/ling/templates';
 import type { ScheduleSlot, TodoItem } from '../../types';
 
 // 今天（需求文档 §8.1）：一页放下一天要用的东西，不用跳来跳去。从上到下：
-// 随心记（直接写；「现在怎么样」也在这儿：选个表情，单独记或者表情 + 一段话）→ 项目的下一步 → 作息和事项 → 娱乐出口（直接选、玩完列出几点到几点）
-// → 身体（体重、经期）→ 该照顾的（最底下，默认收着）。
+// 随心记（直接写；「现在怎么样」也在这儿：选个表情，单独记或者表情 + 一段话）→ 喝水（4 杯）→ 项目的下一步 → 作息和事项
+// → 娱乐出口（默认收着，正在玩时打开）→ 身体（体重、经期）→ 该照顾的（最底下，默认收着）。
+// 日期条上每天的数字是那天记了几条随心记。
 // 全部读本地，断网也一样快；Notion 的「下一步」用上次同步的缓存，后台再去拉新的。
 // 一天从 5 点算起（灵的设定里能改）：凌晨还没睡时这里还是前一天。
 
@@ -112,6 +115,9 @@ export default function TodayScreen() {
   /** 卡片里显示的那句「接住你」是回哪一条的：记了新的表情，旧的那句就不再冒出来 */
   const catchFor = useRef<string | null>(null);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [waterCups, setWaterCups] = useState(0);
+  /** 娱乐出口：她说不太用，默认收起来；有一局在玩（没到点或者到点了等她点）时自动打开 */
+  const [playOpen, setPlayOpen] = useState(false);
   const [weights, setWeights] = useState<BodyRecord[]>([]);
   const [periods, setPeriods] = useState<BodyRecord[]>([]);
   const [weighOpen, setWeighOpen] = useState(false);
@@ -205,6 +211,9 @@ export default function TodayScreen() {
     const ag = await loadAgenda(shownKey, { includeCarried: shownKey === key, dayStartHour: settings.dayStartHour });
     setAgenda(ag);
     setFragments(await fragmentsBetween(start, end));
+    setWaterCups(await cupsToday(key, settings.dayStartHour).catch(() => 0));
+    // 有一局在玩（包括已经到点、等她点「起来啦 / 再玩 10 分钟」的）就打开，不然到点的按钮看不见
+    if (await getPlaySession().catch(() => null)) setPlayOpen(true);
     fetchCards();
     loadNotion();
     loadBody();
@@ -319,17 +328,34 @@ export default function TodayScreen() {
     });
   }
 
+  /** 点了一个空杯子：喝了一杯，5 秒内能撤销；杯数变了喝水提醒跟着重排（喝够了的那个点就不叫了） */
+  async function onDrink() {
+    const entry = await addCup();
+    setWaterCups((n) => n + 1);
+    rescheduleAll().catch(() => []);
+    showToast({
+      text: '喝了一杯 · 500ml',
+      undo: async () => {
+        await removeCup(entry.id);
+        setWaterCups((n) => Math.max(0, n - 1));
+        rescheduleAll().catch(() => []);
+      },
+    });
+  }
+
   /** 随心记记一条：选了表情的，同时记进状态日志（5 分钟后写进 Notion），难受的那几种让灵来接住 */
   async function onAddFragment(text: string, mood: MoodFace | null) {
     if (!mood) {
       const f = await addFragment(text);
       setFragments((prev) => [...prev, f]);
+      setStripKey((k) => k + 1);
       return;
     }
     const note = moodNote(mood, text);
     const ev = await addStateEvent(mood.state, { note });
     const f = await addFragment(moodLine(mood, text), new Date(ev.at), { face: mood.face, state: mood.state, state_event_id: ev.id });
     setFragments((prev) => [...prev, f]);
+    setStripKey((k) => k + 1);
     setCatchText(null);
     catchFor.current = ev.id;
     const handle: CatchHandle = { cancelled: false, ids: [] };
@@ -348,6 +374,7 @@ export default function TodayScreen() {
   async function onDeleteFragment(f: Fragment) {
     await deleteFragment(f.id);
     setFragments((prev) => prev.filter((x) => x.id !== f.id));
+    setStripKey((k) => k + 1);
     const evId = f.state_event_id ?? null;
     if (evId && catchFor.current === evId) {
       catchFor.current = null;
@@ -358,6 +385,7 @@ export default function TodayScreen() {
       undo: async () => {
         const back = await addFragment(f.text, new Date(f.at), evId ? { face: f.face, state: f.state, state_event_id: evId } : undefined);
         setFragments((prev) => [...prev, back].sort((a, b) => a.at.localeCompare(b.at)));
+        setStripKey((k) => k + 1);
       },
       commit: evId
         ? () => {
@@ -438,10 +466,12 @@ export default function TodayScreen() {
         }}
         refreshKey={version + stripKey}
         fetchCounts={async (dates) => {
+          // 每天记了几条随心记（按 5 点换日算那一天）
           const out: Record<string, number> = {};
           for (const d of dates) {
             const k = dateToKey(d);
-            out[k] = agendaCount(await loadAgenda(k, { dayStartHour: settings.dayStartHour })).total;
+            const w = dayWindow(k, settings.dayStartHour);
+            out[k] = (await fragmentsBetween(w.start, w.end)).length;
           }
           return out;
         }}
@@ -464,6 +494,12 @@ export default function TodayScreen() {
                 <Text style={styles.catchLink}>去聊聊 ›</Text>
               </Pressable>
             ) : null}
+          </Section>
+        ) : null}
+
+        {isToday ? (
+          <Section title="喝水">
+            <WaterSection cups={waterCups} onDrink={onDrink} />
           </Section>
         ) : null}
 
@@ -507,7 +543,15 @@ export default function TodayScreen() {
         </Section>
 
         {isToday ? (
-          <Section title="娱乐出口">
+          <Section
+            title="娱乐出口"
+            right={
+              <Pressable onPress={() => setPlayOpen((v) => !v)} hitSlop={8} testID="play-toggle">
+                <Text style={styles.headLink}>{playOpen ? '收起' : '展开 ›'}</Text>
+              </Pressable>
+            }
+          >
+            {playOpen ? (
             <PlaySection
               version={version}
               dayStart={todayWindow.start}
@@ -518,6 +562,7 @@ export default function TodayScreen() {
                 bump();
               }}
             />
+            ) : null}
           </Section>
         ) : null}
 
@@ -603,15 +648,15 @@ const styles = StyleSheet.create({
   notion: { fontSize: fontSize.tiny, color: colors.textMuted },
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
   lingLine: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.purpleLight, borderRadius: radius.card, paddingHorizontal: spacing.md, paddingVertical: spacing.md, alignItems: 'flex-start' },
-  lingName: { color: colors.purpleDark, fontWeight: '700', fontSize: fontSize.body, lineHeight: 20 },
-  lingText: { flex: 1, color: colors.textPrimary, fontSize: fontSize.cardName, lineHeight: 20 },
+  lingName: { color: colors.purpleDark, fontWeight: '700', fontSize: fontSize.body, lineHeight: lh(20) },
+  lingText: { flex: 1, color: colors.textPrimary, fontSize: fontSize.cardName, lineHeight: lh(20) },
   card: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.md, gap: spacing.sm },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontSize: fontSize.secondary, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.5 },
   headLinks: { flexDirection: 'row', gap: spacing.md },
   headLink: { fontSize: fontSize.secondary, color: colors.purpleDark },
   catch: { backgroundColor: colors.purpleLight, borderRadius: radius.widget, padding: spacing.sm, gap: 4 },
-  catchText: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 19 },
+  catchText: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: lh(19) },
   catchLink: { fontSize: fontSize.secondary, color: colors.purpleDark, alignSelf: 'flex-end' },
   toast: {
     position: 'absolute',

@@ -11,6 +11,7 @@ import { useLingRuntime } from '../lib/ling/useLingRuntime';
 import { flushSync } from '../lib/timelogSync';
 import { runLegacyMigration } from '../lib/legacyMigration';
 import { useCardStore } from '../lib/store';
+import { applyStoredFontScale, setUiReady } from '../lib/uiSettings';
 import { checkLastSession, installGlobalErrorHandler, markSessionBackground, recordCrash, setCrashRoute, useCrashBanner } from '../lib/crashLog';
 
 // 越早越好：第一屏渲染之前就接管全局错误
@@ -79,6 +80,17 @@ function CrashBanner() {
 export default function RootLayout() {
   useLingRuntime();
 
+  // 字号：先按「其他 → 字号」存的档位放大，再挂页面（页面的样式是第一次打开时才生成的）
+  const [fontReady, setFontReady] = useState(false);
+  useEffect(() => {
+    applyStoredFontScale()
+      .catch(() => null)
+      .finally(() => setFontReady(true));
+  }, []);
+  useEffect(() => {
+    if (fontReady) setUiReady();
+  }, [fontReady]);
+
   // 出错记录：先看上次是不是用着用着没了，再开始记现在在哪个页面
   const pathname = usePathname();
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -140,6 +152,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
+        {fontReady ? (
         <Stack
           screenOptions={{
             headerShown: false,
@@ -165,7 +178,11 @@ export default function RootLayout() {
           <Stack.Screen name="todo-categories" options={{ presentation: 'modal' }} />
           <Stack.Screen name="care-groups" options={{ presentation: 'card' }} />
           <Stack.Screen name="schedule-template" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="reminders" options={{ presentation: 'card' }} />
         </Stack>
+        ) : (
+          <View style={{ flex: 1, backgroundColor: colors.background }} />
+        )}
         <CrashBanner />
       </SafeAreaProvider>
     </GestureHandlerRootView>

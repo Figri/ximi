@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, spacing } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 
 interface MonthCalendarViewProps {
   month: Date; // 任意一天代表这个月

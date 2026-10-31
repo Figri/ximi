@@ -20,6 +20,7 @@ import { deliverDue, rescheduleAll } from '../../lib/ling/proactive';
 import { modelLabel } from '../../lib/ai';
 import { endPlay, getPlaySession, type PlaySession } from '../../lib/play';
 import { useDataBus } from '../../lib/dataBus';
+import { fs, lh } from '../../constants/theme';
 
 // 「灵」：一条不断的对话线（需求文档 §6.7）。按天分隔，往上翻就是昨天；主动消息带时间，长按看为什么发、
 // 标判词；灵给了小建议时下面出「好了 / 一点 / 没用 / 做不到」；翻篇插一条分隔线，记忆照旧。
@@ -303,8 +304,8 @@ function LingRoom() {
 
 const styles = StyleSheet.create({
   playBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: room.surface },
-  playText: { color: room.accent, fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  playStop: { color: room.ink2, fontSize: 12 },
+  playText: { color: room.accent, fontSize: fs(13), fontWeight: '600', flexShrink: 1 },
+  playStop: { color: room.ink2, fontSize: fs(12) },
   container: { flex: 1, backgroundColor: room.bg },
   flex: { flex: 1 },
   header: {
@@ -317,33 +318,33 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: room.line,
   },
-  name: { color: room.ink, fontSize: 17, fontWeight: '700' },
-  sub: { color: room.ink3, fontSize: 11, marginTop: 2 },
+  name: { color: room.ink, fontSize: fs(17), fontWeight: '700' },
+  sub: { color: room.ink3, fontSize: fs(11), marginTop: 2 },
   headBtn: { borderWidth: 1, borderColor: room.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  headBtnText: { color: room.ink2, fontSize: 12 },
+  headBtnText: { color: room.ink2, fontSize: fs(12) },
   hint: { marginHorizontal: 16, marginTop: 10, backgroundColor: room.surface, borderRadius: 12, padding: 10 },
-  hintText: { color: room.accent, fontSize: 12 },
+  hintText: { color: room.accent, fontSize: fs(12) },
   list: { paddingHorizontal: 14, paddingVertical: 12, gap: 6, flexGrow: 1 },
-  empty: { color: room.ink3, fontSize: 13, textAlign: 'center', marginTop: 60 },
-  daySep: { color: room.ink3, fontSize: 11, textAlign: 'center', marginVertical: 8 },
+  empty: { color: room.ink3, fontSize: fs(13), textAlign: 'center', marginTop: 60 },
+  daySep: { color: room.ink3, fontSize: fs(11), textAlign: 'center', marginVertical: 8 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 10 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: room.line },
-  dividerText: { color: room.ink3, fontSize: 11 },
-  note: { color: room.ink3, fontSize: 11, textAlign: 'center', marginVertical: 4, paddingHorizontal: 20 },
+  dividerText: { color: room.ink3, fontSize: fs(11) },
+  note: { color: room.ink3, fontSize: fs(11), textAlign: 'center', marginVertical: 4, paddingHorizontal: 20 },
   noteAction: { color: room.accent, textDecorationLine: 'underline' },
   msgBlock: { maxWidth: '86%', gap: 3 },
   msgMine: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   msgLing: { alignSelf: 'flex-start', alignItems: 'flex-start' },
-  meta: { color: room.ink3, fontSize: 10, marginLeft: 4 },
+  meta: { color: room.ink3, fontSize: fs(10), marginLeft: 4 },
   bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
   bubbleLing: { backgroundColor: room.ling, borderTopLeftRadius: 4 },
   bubbleMine: { backgroundColor: room.me, borderTopRightRadius: 4 },
-  bubbleText: { color: room.ink, fontSize: 15, lineHeight: 21 },
-  feedbackTag: { color: room.ink3, fontSize: 10, marginLeft: 4 },
-  typing: { color: room.ink3, fontSize: 13 },
+  bubbleText: { color: room.ink, fontSize: fs(15), lineHeight: lh(21) },
+  feedbackTag: { color: room.ink3, fontSize: fs(10), marginLeft: 4 },
+  typing: { color: room.ink3, fontSize: fs(13) },
   quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   quick: { borderWidth: 1, borderColor: room.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  quickText: { color: room.ink2, fontSize: 13 },
+  quickText: { color: room.ink2, fontSize: fs(13) },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -363,9 +364,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     color: room.ink,
-    fontSize: 15,
+    fontSize: fs(15),
   },
   send: { backgroundColor: room.accent, borderRadius: 19, paddingHorizontal: 14, height: 38, justifyContent: 'center' },
   sendDisabled: { opacity: 0.4 },
-  sendText: { color: room.bg, fontWeight: '700', fontSize: 14 },
+  sendText: { color: room.bg, fontWeight: '700', fontSize: fs(14) },
 });

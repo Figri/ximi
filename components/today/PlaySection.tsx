@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import {
   endedRecently,
   endPlay,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.sm },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   playing: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, backgroundColor: colors.purpleLight, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 10 },
-  playingText: { color: colors.purpleDark, fontSize: fontSize.body, fontWeight: '600', flexShrink: 1, lineHeight: 19 },
+  playingText: { color: colors.purpleDark, fontSize: fontSize.body, fontWeight: '600', flexShrink: 1, lineHeight: lh(19) },
   box: { backgroundColor: colors.background, borderRadius: radius.widget, padding: spacing.md, gap: spacing.sm },
   label: { width: 40, fontSize: fontSize.secondary, color: colors.textSecondary },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
@@ -211,8 +211,8 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.purpleDark },
   chipText: { fontSize: fontSize.body, color: colors.textPrimary },
   chipTextOn: { color: '#fff', fontWeight: '600' },
-  ling: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 19 },
-  ended: { fontSize: fontSize.secondary, color: colors.textSecondary, lineHeight: 18 },
+  ling: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: lh(19) },
+  ended: { fontSize: fontSize.secondary, color: colors.textSecondary, lineHeight: lh(18) },
   btn: { backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 16, paddingVertical: 8 },
   btnOff: { opacity: 0.4 },
   btnText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },

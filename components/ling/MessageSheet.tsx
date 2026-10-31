@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { room } from '../../constants/room';
 import { KIND_LABEL } from '../../lib/ling/templates';
 import type { LingMessage } from '../../lib/ling/thread';
+import { fs, lh } from '../../constants/theme';
 
 // 长按灵的一条消息：看为什么发、标判词。点外面就关。
 
@@ -66,17 +67,17 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     gap: 12,
   },
-  quote: { color: room.ink2, fontSize: 13, lineHeight: 19 },
+  quote: { color: room.ink2, fontSize: fs(13), lineHeight: lh(19) },
   whyBox: { backgroundColor: room.inset, borderRadius: 12, padding: 12, gap: 4 },
-  whyLabel: { color: room.ink3, fontSize: 11 },
-  whyText: { color: room.ink, fontSize: 14 },
-  whyHint: { color: room.ink3, fontSize: 11 },
-  label: { color: room.ink3, fontSize: 12 },
+  whyLabel: { color: room.ink3, fontSize: fs(11) },
+  whyText: { color: room.ink, fontSize: fs(14) },
+  whyHint: { color: room.ink3, fontSize: fs(11) },
+  label: { color: room.ink3, fontSize: fs(12) },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { borderWidth: 1, borderColor: room.accent, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   tagOn: { backgroundColor: room.accent },
-  tagText: { color: room.accent, fontSize: 13 },
+  tagText: { color: room.accent, fontSize: fs(13) },
   tagTextOn: { color: room.bg, fontWeight: '700' },
   close: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: room.inset },
-  closeText: { color: room.ink, fontSize: 14 },
+  closeText: { color: room.ink, fontSize: fs(14) },
 });

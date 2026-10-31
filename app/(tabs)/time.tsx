@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, spacing } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { TimeBlockView } from '../../components/timetab/TimeBlockView';
 import { TimeAxisView } from '../../components/timetab/TimeAxisView';

@@ -1,5 +1,6 @@
 // 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）、
-// 时间页积分怎么加总（lib/pointsCalc.ts）；随心记的表情（lib/moods.ts）。
+// 时间页积分怎么加总（lib/pointsCalc.ts）；随心记的表情（lib/moods.ts）；灵的话别重样（lib/ling/templates.ts）；
+// 喝水哪天几杯、什么时候提醒（lib/waterPlan.ts）。
 // 不用装新依赖：用项目自带的 typescript 把这两个文件转成 CommonJS 放到临时目录再跑。
 // 跑法：npm test（有一条不对就以非 0 退出）。时间都按东八区算。
 process.env.TZ = 'Asia/Shanghai';
@@ -27,6 +28,8 @@ const { parseCapture, describeParsed } = load('lib/captureParse.ts');
 const { nextHabitReminder, describeFrequency, habitSubLabel } = load('lib/decay.ts');
 const { normalizePoints, formatPoints, dayKeyAt, mondayOf, summarizePoints, dayDetail } = load('lib/pointsCalc.ts');
 const { MOOD_FACES, moodLine, moodNote } = load('lib/moods.ts');
+const T = load('lib/ling/templates.ts');
+const { plannedWaterReminders, cupsOnDay, waterDayKey } = load('lib/waterPlan.ts');
 
 let failed = 0;
 let total = 0;
@@ -249,6 +252,43 @@ const moodCases = [
   ['状态日志事件：只点难过 → 空（Notion 那边写「难过（西米OS 打点）」）', moodNote(face('难过'), ''), null],
 ];
 for (const [name, got, want] of moodCases) report(eq(got, want), `表情 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+// ---------- 灵的话别重样（lib/ling/templates.ts） ----------
+const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+const pool = T.allFallbacks('miss_you');
+const varietyCases = [
+  ['一模一样算像', T.similarText('在干嘛呀，想你了，抱抱。', '在干嘛呀，想你了，抱抱。'), true],
+  ['只差标点和表情也算像', T.similarText('三个小时没理我了…想你了，快来让我亲一口 🥺', '三个小时没理我了，想你了，快来让我亲一口！'), true],
+  ['多两个字也算像', T.similarText('三个小时没理我了…想你了，快来让我亲一口', '你三个小时没理我了…想你了，快来让我亲一口嘛'), true],
+  ['意思不一样不算像', T.similarText('喝水时间到啦，第 2 杯', '三个小时没理我了…想你了'), false],
+  ['想你了备用话至少 12 条', pool.length >= 12, true],
+  ['备用话彼此都不像', pool.every((a, i) => pool.every((b, j) => i === j || !T.similarText(a, b))), true],
+];
+// 最近发过的一句（随机数每次都指向它）：挑的时候避开
+T.noteRecentLines([pool[0]]);
+const firstPick = T.fallbackText('miss_you', {}, () => 0);
+varietyCases.push(['刚发过的那句不再挑', firstPick !== pool[0], true]);
+// 连着要 6 条：不重样
+const six = Array.from({ length: 6 }, () => T.fallbackText('miss_you', {}, seq([0.1, 0.1, 0.1])));
+varietyCases.push(['连着 6 条没有重复的', new Set(six).size, 6]);
+varietyCases.push(['喝水备用话带第几杯', T.fallbackText('water', { n: 3 }).includes('第 3 杯'), true]);
+for (const [name, got, want] of varietyCases) report(eq(got, want), `灵的话 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+// ---------- 喝水（lib/waterPlan.ts） ----------
+const at = (s) => new Date(s);
+const hm = (list) => list.map((w) => `${w.dayKey.slice(5)} ${String(w.at.getHours()).padStart(2, '0')}:00 第${w.cup}杯`).join(' | ');
+const W = (iso) => ({ id: iso, at: new Date(iso).toISOString() });
+const waterCases = [
+  ['早上 8 点一杯没喝：往后 36 小时（到明天 20:00）8 个点', hm(plannedWaterReminders(at('2026-10-31T08:00:00+08:00'), 0, 5, 36)), '10-31 10:00 第1杯 | 10-31 14:00 第1杯 | 10-31 17:00 第1杯 | 10-31 20:00 第1杯 | 11-01 10:00 第1杯 | 11-01 14:00 第1杯 | 11-01 17:00 第1杯 | 11-01 20:00 第1杯'],
+  ['中午已经喝了两杯：14 点那次不叫，17、20 点照叫（该喝第 3 杯）', hm(plannedWaterReminders(at('2026-10-31T12:00:00+08:00'), 2, 5, 12)), '10-31 17:00 第3杯 | 10-31 20:00 第3杯'],
+  ['下午才喝了 1 杯：17 点叫的是第 2 杯（不是按点数的第 3 杯）', hm(plannedWaterReminders(at('2026-10-31T14:20:00+08:00'), 1, 5, 8)), '10-31 17:00 第2杯 | 10-31 20:00 第2杯'],
+  ['喝够 4 杯：今天不再叫，明天照常', hm(plannedWaterReminders(at('2026-10-31T15:00:00+08:00'), 4, 5, 24)), '11-01 10:00 第1杯 | 11-01 14:00 第1杯'],
+  ['正好 10:00 那一刻不算以后', hm(plannedWaterReminders(at('2026-10-31T10:00:00+08:00'), 0, 5, 5)), '10-31 14:00 第1杯'],
+  ['凌晨 1 点：还是前一天，那天的杯数不影响明天', hm(plannedWaterReminders(at('2026-11-01T01:00:00+08:00'), 4, 5, 14)), '11-01 10:00 第1杯 | 11-01 14:00 第1杯'],
+  ['凌晨 1 点喝的算前一天', waterDayKey(at('2026-11-01T01:00:00+08:00'), 5), '2026-10-31'],
+  ['这天喝了几杯', cupsOnDay([W('2026-10-31T09:00:00+08:00'), W('2026-10-31T23:30:00+08:00'), W('2026-11-01T01:00:00+08:00'), W('2026-11-01T09:00:00+08:00')], '2026-10-31', 5), 3],
+];
+for (const [name, got, want] of waterCases) report(eq(got, want), `喝水 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
 
 console.log(`\n${total - failed}/${total} 通过`);
 process.exit(failed ? 1 : 0);

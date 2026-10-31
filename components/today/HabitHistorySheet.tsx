@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { fetchActionHistory } from '../../lib/cards';
 import { describeFrequency } from '../../lib/decay';
 import type { Action, Card, Cat, Completion } from '../../types';
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   dateRepeat: { color: 'transparent' },
   time: { width: 44, fontSize: fontSize.body, color: colors.textSecondary },
   note: { flex: 1, fontSize: fontSize.secondary, color: colors.textMuted },
-  empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: 19 },
+  empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: lh(19) },
   close: { alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 8, borderRadius: radius.widget, backgroundColor: colors.background },
   closeText: { fontSize: fontSize.body, color: colors.textSecondary },
 });

@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } fr
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import { colors, fontSize, radius, spacing } from '../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../constants/theme';
 import {
   addGroup,
   deleteGroup,
@@ -230,14 +230,14 @@ const styles = StyleSheet.create({
   back: { fontSize: fontSize.body, color: colors.purpleDark, width: 48 },
   title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   list: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
-  hint: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: 17, marginBottom: spacing.sm },
+  hint: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: lh(17), marginBottom: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.card, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 12, marginBottom: spacing.sm },
   rowActive: { backgroundColor: colors.purpleLight },
   handle: { fontSize: 18, color: colors.textMuted },
   nameBox: { flex: 1, gap: 2 },
   name: { fontSize: fontSize.cardName, color: colors.textPrimary, fontWeight: '600' },
   count: { fontSize: fontSize.tiny, color: colors.textMuted },
-  renameInput: { flex: 1, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: 10, paddingVertical: 6, fontSize: fontSize.cardName, color: colors.textPrimary },
+  renameInput: { flex: 1, minWidth: 0, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: 10, paddingVertical: 6, fontSize: fontSize.cardName, color: colors.textPrimary },
   action: { fontSize: fontSize.body, color: colors.purpleDark },
   danger: { fontSize: fontSize.body, color: colors.redDark },
   footer: { gap: spacing.md, marginTop: spacing.xs },

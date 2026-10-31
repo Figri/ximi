@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { archiveCard, createCard, fetchActionsForCard, fetchAllTags, fetchCard, fetchCards, updateAction, updateCard } from '../../lib/cards';
 import { useCardStore } from '../../lib/store';
 import { rescheduleAll } from '../../lib/ling/proactive';
 import type { Action, FrequencyType, TimeOfDay } from '../../types';
+import { previousHabitRemindAt } from '../../lib/reminderReset';
 
 const TIME_SLOT_LABELS: Record<TimeOfDay, string> = {
   anytime: '⏰ 全天',
@@ -99,6 +100,8 @@ export default function HabitDetailScreen() {
         setRequiresSelection(primary.requires_selection);
         setRemindOn(!!primary.remind_at);
         if (primary.remind_at) setRemindAt(primary.remind_at);
+        // 10/31 旧提醒全关时原来的时间留了底：再打开提醒默认还是那个点
+        else previousHabitRemindAt(primary.id).then((t) => t && setRemindAt(t)).catch(() => {});
       }
     } finally {
       setLoading(false);
@@ -407,7 +410,7 @@ const styles = StyleSheet.create({
   },
   numberInput: { width: 64, textAlign: 'center', marginHorizontal: spacing.sm },
   timeInput: { width: 76, textAlign: 'center', marginHorizontal: spacing.sm },
-  help: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: 17, marginTop: spacing.xs },
+  help: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: lh(17), marginTop: spacing.xs },
   error: { fontSize: fontSize.secondary, color: colors.redDark, marginTop: spacing.md },
   labelRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   manageLink: { fontSize: fontSize.secondary, color: colors.purpleDark },

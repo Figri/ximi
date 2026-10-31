@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 import type { Fragment } from '../../lib/fragments';
 import type { MoodFace } from '../../lib/moods';
 import { MoodPicker } from './MoodPicker';
@@ -106,13 +106,13 @@ const styles = StyleSheet.create({
   moodBtnOn: { backgroundColor: colors.purpleLight, borderColor: colors.purpleDark },
   moodBtnText: { fontSize: 20, lineHeight: 24 },
   moodBtnIdle: { opacity: 0.45 },
-  input: { flex: 1, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 9, fontSize: fontSize.body, color: colors.textPrimary },
+  input: { flex: 1, minWidth: 0, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 9, fontSize: fontSize.reading, color: colors.textPrimary },
   send: { backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 14, paddingVertical: 9 },
   sendOff: { opacity: 0.4 },
   sendText: { color: '#fff', fontSize: fontSize.body, fontWeight: '700' },
   row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },
-  time: { width: 40, fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 1 },
-  text: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 18 },
+  time: { width: lh(40), fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 3 },
+  text: { flex: 1, fontSize: fontSize.reading, color: colors.textPrimary, lineHeight: lh(22) },
   more: { fontSize: fontSize.secondary, color: colors.purpleDark },
   hint: { fontSize: fontSize.tiny, color: colors.textMuted },
 });

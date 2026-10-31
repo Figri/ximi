@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { HabitTile } from './HabitTile';
 import { HabitHistorySheet } from './HabitHistorySheet';
 import { WeightSheet } from './WeightSheet';
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   collapsed: { gap: 4, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 10 },
   collapsedTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   summary: { flexShrink: 1, fontSize: fontSize.body, color: colors.textPrimary, fontWeight: '600' },
-  preview: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: 16 },
+  preview: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: lh(16) },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   seg: { flexDirection: 'row', backgroundColor: colors.background, borderRadius: radius.button, padding: 2 },
   segBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.button },

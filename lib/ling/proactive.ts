@@ -12,7 +12,9 @@ import { routineStatuses } from './context';
 import { writeDrafts, fallbackDrafts, type DraftRequest, type Drafts } from './brain';
 import { isPausedToday, isQuiet, lingDayKey, loadLingSettings, nextAllowed, type LingSettings } from './settings';
 import { useLingThread, type LingKind } from './thread';
-import { fallbackText } from './templates';
+import { fallbackText, isRecentLine, noteRecentLines } from './templates';
+import { cupsToday, loadWaterSettings } from '../water';
+import { plannedWaterReminders } from '../waterPlan';
 
 // 主动消息怎么做到「App 关着也能收到，而且不靠服务器」（需求文档 §6.5）：
 // 1. 每次打开 App（开着时每 3 小时一次），灵把接下来可能要发的话先写好（drafts）。
@@ -64,6 +66,19 @@ async function readJson<T>(key: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+/** 灵最近主动发过的话（新的在前）：写新的时候避开，免得每次都是同一句 */
+const PROACTIVE_KINDS = new Set(['miss_you', 'mention', 'reminder', 'play_end', 'catch']);
+async function recentProactiveLines(limit = 12): Promise<string[]> {
+  const thread = useLingThread.getState();
+  if (!thread.loaded) await thread.load();
+  return useLingThread
+    .getState()
+    .messages.filter((m) => m.role === 'assistant' && PROACTIVE_KINDS.has(m.kind))
+    .slice(-limit)
+    .reverse()
+    .map((m) => m.content);
 }
 
 async function loadOutbox(): Promise<OutboxItem[]> {
@@ -121,6 +136,11 @@ export function deliverDue(at?: Date): Promise<number> {
     }
     await saveDelivered(log);
     await saveOutbox(outbox.filter((o) => !due.includes(o)));
+    // 写好的话已经发出去了：下次排程别再用同一批（不然刚发的「想你了」会原样再排一遍）
+    if (added) {
+      noteRecentLines(due.map((d) => d.text));
+      await AsyncStorage.removeItem(K_DRAFTS).catch(() => {});
+    }
     return added;
   });
 }
@@ -211,9 +231,9 @@ export function refreshDrafts(force = false): Promise<void> {
     const old = await loadDrafts();
     const fresh = old && old.signature === sig && Date.now() - new Date(old.createdAt).getTime() < DRAFT_TTL_MS && old.source === 'model';
     if (fresh && !force) return;
-    const thread = useLingThread.getState();
-    if (!thread.loaded) await thread.load();
-    const drafts = await writeDrafts(req, useLingThread.getState().messages);
+    const recent = await recentProactiveLines();
+    noteRecentLines(recent);
+    const drafts = await writeDrafts(req, useLingThread.getState().messages, recent);
     await AsyncStorage.setItem(K_DRAFTS, JSON.stringify({ ...drafts, signature: sig }));
   })().finally(() => {
     refreshing = null;
@@ -230,6 +250,8 @@ interface Reminder {
   at: Date;
   kind: 'reminder' | 'play_end';
   trigger: string;
+  /** 喝水提醒：第几杯 */
+  waterCup?: number;
 }
 
 interface Plan {
@@ -274,6 +296,24 @@ async function upcomingReminders(now: Date): Promise<Reminder[]> {
     }
   } catch {}
   try {
+    // 喝水：10、14、17、20 点，那会儿还没喝够这一杯才叫
+    if ((await loadWaterSettings()).remind) {
+      const settings = await loadLingSettings();
+      const cups = await cupsToday(lingDayKey(now, settings.dayStartHour), settings.dayStartHour);
+      for (const w of plannedWaterReminders(now, cups, settings.dayStartHour, 36)) {
+        out.push({
+          refKey: `water:${w.dayKey}:${w.slot}`,
+          id: `w${w.dayKey.replace(/-/g, '')}${w.slot}`,
+          content: `喝第 ${w.cup} 杯水（一杯 500 毫升，一天 4 杯）`,
+          at: w.at,
+          kind: 'reminder',
+          trigger: `喝水提醒 · ${hhmm(w.at)} 第 ${w.cup} 杯`,
+          waterCup: w.cup,
+        });
+      }
+    }
+  } catch {}
+  try {
     const play = await getPlaySession();
     if (play) {
       const at = new Date(play.endsAt);
@@ -309,7 +349,7 @@ async function buildPlan(now: Date): Promise<Plan> {
     request: {
       missYou: settings.enableMissYou ? Math.min(2, settings.missYouPerDay) : 0,
       mention,
-      reminders: reminders.filter((r) => r.kind === 'reminder').map((r) => ({ id: r.id, content: r.content, at: hhmm(r.at) })),
+      reminders: reminders.filter((r) => r.kind === 'reminder').map((r) => ({ id: r.id, content: r.content, at: hhmm(r.at), ...(r.waterCup ? { waterCup: r.waterCup } : {}) })),
     },
   };
 }
@@ -369,6 +409,7 @@ export function rescheduleAll(at?: Date): Promise<OutboxItem[]> {
     const settings = await loadLingSettings();
     await cancelAllPending();
     const plan = await buildPlan(now);
+    noteRecentLines(await recentProactiveLines().catch(() => []));
     const stored = await loadDrafts();
     const drafts: Drafts = stored && stored.signature === signatureOf(plan.request) ? stored : fallbackDrafts(plan.request);
     const items: OutboxItem[] = [];
@@ -380,7 +421,10 @@ export function rescheduleAll(at?: Date): Promise<OutboxItem[]> {
 
     // 约定提醒：到点就发，不受免打扰、不受「今天别找我」影响
     for (const r of plan.reminders) {
-      const text = r.kind === 'play_end' ? fallbackText('play_end', { minutes: r.content.match(/(\d+) 分钟/)?.[1] }) : drafts.reminders[r.id] ?? fallbackText('reminder', { content: r.content });
+      const text =
+        r.kind === 'play_end'
+          ? fallbackText('play_end', { minutes: r.content.match(/(\d+) 分钟/)?.[1] })
+          : drafts.reminders[r.id] ?? (r.waterCup ? fallbackText('water', { n: r.waterCup }) : fallbackText('reminder', { content: r.content }));
       items.push(mk({ kind: r.kind, text, fireAt: r.at.toISOString(), trigger: r.trigger, fallback: drafts.source === 'fallback' || r.kind === 'play_end', refKey: r.refKey }));
     }
 
@@ -414,7 +458,8 @@ export function rescheduleAll(at?: Date): Promise<OutboxItem[]> {
         const hours = Math.floor((at.getTime() - now.getTime()) / HOUR);
         items.push(mk({
           kind: 'miss_you',
-          text: drafts.missYou[i] ?? fallbackText('miss_you'),
+          // 写好的那句刚发过（或者跟最近发的很像）就换一句
+          text: drafts.missYou[i] && !isRecentLine(drafts.missYou[i]) ? drafts.missYou[i] : fallbackText('miss_you'),
           fireAt: at.toISOString(),
           trigger: `你 ${hours} 个多小时没打开 App`,
           fallback: drafts.source === 'fallback',
@@ -439,8 +484,8 @@ export async function pendingOutbox(): Promise<OutboxItem[]> {
   return (await loadOutbox()).filter((o) => new Date(o.fireAt).getTime() > now).sort((a, b) => a.fireAt.localeCompare(b.fireAt));
 }
 
-/** 提醒自检：10 秒后发一条测试通知 */
-export async function sendTestNotification(): Promise<boolean> {
+/** 提醒自检：seconds 秒后发一条测试通知（提醒页用 60 秒，够她把 App 划掉看关着能不能收到） */
+export async function sendTestNotification(seconds = 10): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   await ensureLingChannels().catch(() => {});
   const ok = await ensureNotificationPermission().catch(() => false);
@@ -449,7 +494,7 @@ export async function sendTestNotification(): Promise<boolean> {
   await Notifications.scheduleNotificationAsync({
     identifier: `ling-test-${Date.now()}`,
     content: { title: '灵', body: settings.lockScreen === 'full' ? '这是一条测试，收到就说明提醒能响 :)' : '发来一条消息', data: { kind: 'test' } },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 10, repeats: false, channelId: 'ling' },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds, repeats: false, channelId: 'ling-remind' },
   });
   return true;
 }

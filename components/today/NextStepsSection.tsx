@@ -1,5 +1,5 @@
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import type { NextStep } from '../../lib/notion/sync';
 
 // 「项目的下一步」：来自 Notion 计划与待办（有下一步、不在想法池和已完成）。
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.sm },
   item: { backgroundColor: colors.background, borderRadius: radius.widget, padding: spacing.md, gap: 6 },
   project: { fontSize: fontSize.secondary, color: colors.textMuted },
-  step: { fontSize: fontSize.cardName, color: colors.textPrimary, lineHeight: 20 },
+  step: { fontSize: fontSize.cardName, color: colors.textPrimary, lineHeight: lh(20) },
   stepDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
   actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   doneBtn: { backgroundColor: colors.purpleLight, borderRadius: radius.button, paddingHorizontal: 12, paddingVertical: 6 },

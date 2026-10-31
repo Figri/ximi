@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, spacing } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 
 const SWIPE_THRESHOLD = 50;
 

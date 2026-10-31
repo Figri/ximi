@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, spacing } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 import { SLOTS } from '../../lib/schedule';
 import type { ScheduleSlot } from '../../types';
 

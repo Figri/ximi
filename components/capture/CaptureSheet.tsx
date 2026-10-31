@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { useCaptureStore } from '../../lib/captureStore';
 import { alternativesFor, analyze, convertSaved, KIND_NAME, loadDraft, removeSaved, saveDraft, saveParsed, type SavedCapture } from '../../lib/capture';
 import type { CaptureKind } from '../../lib/captureParse';
@@ -21,6 +21,7 @@ interface Entry {
 }
 
 export function CaptureSheet() {
+  const styles = (built ??= makeStyles());
   const { visible, mode, close } = useCaptureStore();
   const bump = useDataBus((s) => s.bump);
   const [text, setText] = useState('');
@@ -175,17 +176,19 @@ export function CaptureSheet() {
   );
 }
 
-const styles = StyleSheet.create({
+// 这个面板挂在底栏布局里，模块比「其他 → 字号」生效得早：样式第一次用到时再生成，才会跟着字号放大
+const makeStyles = () =>
+  StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.35)', justifyContent: 'flex-end' },
   avoider: { width: '100%' },
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm },
   title: { fontSize: fontSize.cardName, fontWeight: '700', color: colors.textPrimary },
   inputRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
-  input: { flex: 1, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: 12, paddingVertical: 10, fontSize: fontSize.cardName, color: colors.textPrimary },
+  input: { flex: 1, minWidth: 0, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: 12, paddingVertical: 10, fontSize: fontSize.cardName, color: colors.textPrimary },
   saveBtn: { backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 16, paddingVertical: 10 },
   saveBtnOff: { opacity: 0.4 },
   saveText: { color: '#fff', fontWeight: '700', fontSize: fontSize.body },
-  hint: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: 17 },
+  hint: { fontSize: fontSize.secondary, color: colors.textMuted, lineHeight: lh(17) },
   entry: { gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.purpleLight, paddingTop: spacing.sm },
   entryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   entryText: { flex: 1, fontSize: fontSize.body, color: colors.textSecondary },
@@ -198,3 +201,4 @@ const styles = StyleSheet.create({
   altUndo: { fontSize: fontSize.secondary, color: colors.redDark },
   error: { fontSize: fontSize.secondary, color: colors.redDark },
 });
+let built: ReturnType<typeof makeStyles> | null = null;

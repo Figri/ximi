@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, spacing } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 import { fetchPointsDetail, fetchPointsSummary } from '../../lib/points';
 import { formatPoints, type PointsDay, type PointsSummary, type ScoredLog } from '../../lib/pointsCalc';
 import { useTimeLogStore } from '../../lib/timelogStore';

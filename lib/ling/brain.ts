@@ -4,7 +4,7 @@ import type { AIAction } from '../../types';
 import { buildLingSystemPrompt } from './prompt';
 import { buildTodayData, formatLocalMemory, loadLocalMemory, yesterdaySnippet } from './context';
 import { historyForModel, loadAllMessages, recentFeedback, type LingMessage } from './thread';
-import { fallbackText, hasBanned, KIND_LABEL, type ProactiveKind } from './templates';
+import { fallbackText, hasBanned, isRecentLine, KIND_LABEL, similarText, type ProactiveKind } from './templates';
 import { loadLingSettings, useLingSettings } from './settings';
 
 // 灵的大脑：聊天回复、点状态时接住你、提前写主动消息、设定页的「让灵试一句」。
@@ -121,7 +121,8 @@ export async function catchState(state: string, note: string | null, messages: L
 export interface DraftRequest {
   missYou: number;
   mention: { name: string; timeLeft: string } | null;
-  reminders: { id: string; content: string; at: string }[];
+  /** waterCup：喝水提醒是第几杯（备用话用喝水那一组） */
+  reminders: { id: string; content: string; at: string; waterCup?: number }[];
 }
 
 export interface Drafts {
@@ -136,18 +137,31 @@ export function fallbackDrafts(req: DraftRequest): Drafts {
   return {
     missYou: Array.from({ length: req.missYou }, () => fallbackText('miss_you')),
     mention: req.mention ? fallbackText('mention', { name: req.mention.name }) : null,
-    reminders: Object.fromEntries(req.reminders.map((r) => [r.id, fallbackText('reminder', { content: r.content })])),
+    reminders: Object.fromEntries(
+      req.reminders.map((r) => [r.id, r.waterCup ? fallbackText('water', { n: r.waterCup }) : fallbackText('reminder', { content: r.content })])
+    ),
     createdAt: new Date().toISOString(),
     source: 'fallback',
   };
 }
 
-export async function writeDrafts(req: DraftRequest, messages: LingMessage[]): Promise<Drafts> {
+/** 提示词里「例：「……」」那几句示范：模型爱照抄，写出来跟示范一样的不用 */
+export function exampleLines(system: string): string[] {
+  return Array.from(system.matchAll(/例：「([^」]+)」/g)).map((m) => m[1]);
+}
+
+/**
+ * recent：最近已经发给她的主动消息。告诉灵别重复，写出来还是跟它们（或者提示词里的示范、或者同一批里另一条）
+ * 一样、很像的，那一条换成备用话。
+ */
+export async function writeDrafts(req: DraftRequest, messages: LingMessage[], recent: string[] = []): Promise<Drafts> {
   const base = fallbackDrafts(req);
   try {
     const { model, apiKey } = await currentBrain();
     if (!apiKey) return base;
     const system = await systemPrompt(messages, { omitReplyFormat: true });
+    const avoid = [...recent, ...exampleLines(system)];
+    const fresh = (t: string | null, taken: string[]): t is string => !!t && !isRecentLine(t, avoid) && !taken.some((x) => similarText(x, t));
     const asks: string[] = [];
     if (req.missYou > 0) asks.push(`"miss_you": ${req.missYou} 条「想你了」，她好几个小时没打开 App 时发，能接上最近聊的就接上，几条不能一样`);
     if (req.mention) asks.push(`"mention": 1 条「顺口一提」，说的是「${req.mention.name}」（${req.mention.timeLeft}），口气轻，做不做都行`);
@@ -159,21 +173,28 @@ export async function writeDrafts(req: DraftRequest, messages: LingMessage[]): P
       );
     }
     if (!asks.length) return base;
-    const user = `她可能会离开 App 一阵子。提前写好下面这些到时候发给她的微信消息，每条一两句，说人话，亲一点、黏一点（可以抱抱亲亲、撒个娇）。\n${asks.join('\n')}\n只输出一个 JSON 对象，不要别的字。`;
+    const said = recent.length ? `\n最近已经发过这些，这次换个说法，别重复、也别只是换几个字：\n${recent.slice(0, 10).map((t) => `- ${t}`).join('\n')}` : '';
+    const user = `她可能会离开 App 一阵子。提前写好下面这些到时候发给她的微信消息，每条一两句，说人话，亲一点、黏一点（可以抱抱亲亲、撒个娇）。规则里的「例：」只是告诉你口气，不许照抄例子。现在是 ${new Date().getHours()} 点。\n${asks.join('\n')}${said}\n只输出一个 JSON 对象，不要别的字。`;
     const raw = await callModel(model, normalizeHistory([...historyForModel(messages, 12), { role: 'user', content: user }]), system, apiKey, 600);
     const json = extractJson(raw);
     if (!json) return base;
-    const missYou = Array.isArray(json.miss_you) ? json.miss_you.map(cleanLine).filter(Boolean) : [];
+    const written = Array.isArray(json.miss_you) ? (json.miss_you.map(cleanLine) as (string | null)[]) : [];
+    const missYou: string[] = [];
+    for (let i = 0; i < base.missYou.length; i++) {
+      const t = written[i] ?? null;
+      missYou.push(fresh(t, missYou) ? t : fallbackText('miss_you'));
+    }
     const reminders: Record<string, string> = { ...base.reminders };
     if (json.reminders && typeof json.reminders === 'object') {
       for (const r of req.reminders) {
         const t = cleanLine(json.reminders[r.id]);
-        if (t) reminders[r.id] = t;
+        if (fresh(t, Object.values(reminders).filter((x) => x !== reminders[r.id]))) reminders[r.id] = t;
       }
     }
+    const mention = req.mention ? cleanLine(json.mention) : null;
     return {
-      missYou: base.missYou.map((fb, i) => (missYou[i] as string) ?? fb),
-      mention: req.mention ? cleanLine(json.mention) ?? base.mention : null,
+      missYou,
+      mention: req.mention ? (fresh(mention, []) ? mention : base.mention) : null,
       reminders,
       createdAt: new Date().toISOString(),
       source: 'model',

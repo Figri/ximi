@@ -4,7 +4,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Updates from 'expo-updates';
-import { colors, fontSize, radius, spacing } from '../../../constants/theme';
+import { colors, currentFontScale, FONT_SCALES, fontSize, lh, radius, spacing, type FontScaleKey } from '../../../constants/theme';
+import { loadUiSettings, saveUiSettings } from '../../../lib/uiSettings';
 import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/features';
 import { useLayoutStore } from '../../../lib/layoutStore';
 import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
@@ -54,6 +55,16 @@ export default function OtherScreen() {
   const [migrationText, setMigrationText] = useState('读取中……');
   const [migrating, setMigrating] = useState(false);
   const [crashes, setCrashes] = useState<CrashEntry[]>([]);
+  // 字号：选了就存，重启后生效（页面样式是打开时按当时的字号生成的）
+  const [fontKey, setFontKey] = useState<FontScaleKey>('standard');
+  const appliedKey = FONT_SCALES.find((f) => f.scale === currentFontScale())?.key ?? 'standard';
+  useEffect(() => {
+    loadUiSettings().then((s) => setFontKey(s.fontScale));
+  }, []);
+  async function pickFont(k: FontScaleKey) {
+    setFontKey(k);
+    await saveUiSettings({ fontScale: k });
+  }
 
   // 出错记录：每次回到这一页都重新读，刚出的错马上能看到
   useFocusEffect(
@@ -235,6 +246,36 @@ export default function OtherScreen() {
         <View style={styles.sectionDivider} />
 
         <Text style={styles.sectionLabel}>设置</Text>
+        <View style={styles.fontRow}>
+          <Text style={styles.templateLinkText}>🔠 字号</Text>
+          <View style={styles.fontChips}>
+            {FONT_SCALES.map((f) => (
+              <Pressable key={f.key} style={[styles.fontChip, fontKey === f.key && styles.fontChipOn]} onPress={() => pickFont(f.key)} testID={`font-${f.key}`} aria-selected={fontKey === f.key}>
+                <Text style={[styles.fontChipText, fontKey === f.key && styles.fontChipTextOn]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        {fontKey !== appliedKey ? (
+          <View style={styles.fontNote}>
+            <Text style={styles.updateMsg}>重启一下 App 就换成「{FONT_SCALES.find((f) => f.key === fontKey)?.label}」了（格子、日期条、底栏这些不跟着变）</Text>
+            <Pressable
+              style={styles.checkButton}
+              onPress={() => {
+                markSessionBackground();
+                if (typeof window !== 'undefined' && (window as any).location?.reload && !Updates.isEnabled) (window as any).location.reload();
+                else Updates.reloadAsync().catch((err) => setUpdateMsg(`没重启成：${err instanceof Error ? err.message : String(err)}，手动关掉再打开就行`));
+              }}
+              testID="font-restart"
+            >
+              <Text style={styles.checkButtonText}>现在重启</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/reminders')} testID="open-reminders">
+          <Text style={styles.templateLinkText}>🔔 提醒（喝水、收不到怎么办）</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
         <Pressable style={styles.templateLinkRow} onPress={() => router.push('/schedule-template')}>
           <Text style={styles.templateLinkText}>📅 日常作息模板</Text>
           <Text style={styles.moreArrow}>›</Text>
@@ -385,14 +426,30 @@ const styles = StyleSheet.create({
   versionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   versionKey: { fontSize: fontSize.secondary, color: colors.textMuted },
   versionValue: { fontSize: fontSize.secondary, color: colors.textPrimary, fontWeight: '600' },
-  versionWarning: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: 18 },
+  versionWarning: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: lh(18) },
   checkButton: { marginTop: spacing.xs, backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingVertical: spacing.sm, alignItems: 'center' },
   crashRow: { gap: 3, paddingBottom: spacing.sm, marginBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.purpleLight },
   crashHead: { fontSize: fontSize.tiny, color: colors.textMuted },
-  crashMsg: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: 16 },
+  crashMsg: { fontSize: fontSize.secondary, color: colors.redDark, lineHeight: lh(16) },
   crashStack: { fontSize: 10, color: colors.textSecondary, lineHeight: 14 },
   checkButtonText: { color: '#fff', fontSize: fontSize.body, fontWeight: '600' },
-  updateMsg: { fontSize: fontSize.secondary, color: colors.textSecondary, lineHeight: 18 },
+  updateMsg: { fontSize: fontSize.secondary, color: colors.textSecondary, lineHeight: lh(18) },
+  fontRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.sm,
+  },
+  fontChips: { flexDirection: 'row', gap: 6 },
+  fontChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.button, backgroundColor: colors.background },
+  fontChipOn: { backgroundColor: colors.purpleDark },
+  fontChipText: { fontSize: 13, color: colors.textSecondary },
+  fontChipTextOn: { color: '#fff', fontWeight: '700' },
+  fontNote: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.md, gap: spacing.xs, marginBottom: spacing.sm },
 
   // 编辑态：单列表（react-native-draggable-flatlist 这个版本不支持numColumns网格拖拽，
   // 浏览态照常是网格，编辑态为了保证"插入式"拖拽判定准确可靠，改成单列——这是经过

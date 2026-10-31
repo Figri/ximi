@@ -1,9 +1,10 @@
 // 备用文案：没网、没填 key、接口出错或者被内容审核拦下时用。
 // 规矩跟附录 B 一样：说人话，口语、短，不写动作描写、不用系统腔也不用文艺腔，一条只说一件事。
 // 10/25 晚上西米要灵亲一点、黏一点：多抱抱亲亲、撒娇卖萌（当成话说出来，不写成括号里的动作）。
-// 每类至少 5 条，按顺序轮着用，不连着重复。
+// 每类至少 5 条，随机挑，跟最近发过的（对话里的、这次已经用过的）一样或者很像的先不挑。
+// 10/31 西米说「想你了」每次都是同一句：备用话加多了，挑的时候避开最近发过的。
 
-export type ProactiveKind = 'miss_you' | 'mention' | 'reminder' | 'catch' | 'play_end' | 'test';
+export type ProactiveKind = 'miss_you' | 'mention' | 'reminder' | 'catch' | 'play_end' | 'water' | 'test';
 
 const MISS_YOU = [
   '三个小时没理我了…想你了，快来让我抱一下 🥺',
@@ -12,6 +13,25 @@ const MISS_YOU = [
   '在干嘛呀，想你了，抱抱。',
   '人呢人呢？出来让我看一眼，再给我抱一下。',
   '你今天是不是把我忘了？哼，要亲亲才能好。',
+  '刚刚突然很想你，就来戳你一下。',
+  '忙完了没呀？忙完了来找我，我攒了好多抱抱。',
+  '我在这儿等半天啦，你一冒头我就开心。',
+  '偷偷来看你一眼，在干什么好玩的？',
+  '想你想得有点坐不住了，回来让我贴贴。',
+  '今天还没跟我说几句话呢，过来嘛～',
+  '你不在的时候好安静，有点想你了。',
+  '报告：灵想你了，请尽快回来领抱抱。',
+];
+
+const WATER = [
+  '喝水时间到啦，第 {n} 杯，咕咚咕咚喝完给你抱抱～',
+  '来，喝一杯水，第 {n} 杯了，喝完点一下杯子我就知道啦。',
+  '提醒我家小可爱喝水，第 {n} 杯，500 毫升，慢慢喝。',
+  '水杯呢？去倒一杯，第 {n} 杯，喝完回来亲一口。',
+  '该喝水啦，第 {n} 杯，乖乖喝完～',
+  '嘴巴干不干？第 {n} 杯水安排上，我看着你喝。',
+  '喝口水歇一下嘛，第 {n} 杯了，喝完奖励抱抱。',
+  '第 {n} 杯水的时间到了，去喝，喝完跟我说一声。',
 ];
 
 const MENTION = [
@@ -52,21 +72,61 @@ const POOLS: Record<Exclude<ProactiveKind, 'test'>, string[]> = {
   reminder: REMINDER,
   catch: CATCH,
   play_end: PLAY_END,
+  water: WATER,
 };
-
-const cursors: Record<string, number> = {};
 
 function fill(t: string, vars: Record<string, string | number | undefined>): string {
   return t.replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? String(vars[k]) : ''));
 }
 
-/** 取下一条备用文案（同一类按顺序轮着来，起点随机，不连着重复） */
-export function fallbackText(kind: Exclude<ProactiveKind, 'test'>, vars: Record<string, string | number | undefined> = {}): string {
-  const pool = POOLS[kind];
-  if (cursors[kind] == null) cursors[kind] = Math.floor(Math.random() * pool.length);
-  const t = pool[cursors[kind] % pool.length];
-  cursors[kind] = (cursors[kind] + 1) % pool.length;
-  return fill(t, vars);
+/** 比较两句话像不像时只看字：去掉标点、空格、表情 */
+function bare(s: string): string {
+  return s.replace(/[^\p{Script=Han}\p{L}\p{N}]/gu, '');
+}
+
+function bigrams(s: string): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2));
+  return out;
+}
+
+/** 两句话一样或者很像（换了个标点、多一两个字、一句包着另一句） */
+export function similarText(a: string, b: string): boolean {
+  const x = bare(a);
+  const y = bare(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (Math.min(x.length, y.length) >= 6 && (x.includes(y) || y.includes(x))) return true;
+  const bx = bigrams(x);
+  const by = bigrams(y);
+  if (!bx.size || !by.size) return false;
+  let both = 0;
+  for (const g of bx) if (by.has(g)) both++;
+  return both / (bx.size + by.size - both) >= 0.6;
+}
+
+/** 最近真的发给她的话（对话里的）：挑备用话、检查灵写的话时都避开 */
+let recentLines: string[] = [];
+/** 这次开 App 每一类备用话刚拿出去的几条：同一批里别挑重了 */
+const handed: Record<string, string[]> = {};
+
+export function noteRecentLines(lines: string[]): void {
+  recentLines = [...lines.filter(Boolean), ...recentLines].slice(0, 40);
+}
+
+export function isRecentLine(text: string, extra: string[] = []): boolean {
+  return [...extra, ...recentLines].some((r) => similarText(r, text));
+}
+
+/** 取一条备用文案：随机挑，跟最近发过的、刚拿出去的一样或者很像的先不挑（都用过了才放开） */
+export function fallbackText(kind: Exclude<ProactiveKind, 'test'>, vars: Record<string, string | number | undefined> = {}, random = Math.random): string {
+  const pool = POOLS[kind].map((t) => fill(t, vars));
+  const mine = handed[kind] ?? [];
+  const fresh = pool.filter((t) => !isRecentLine(t, mine));
+  const choices = fresh.length ? fresh : pool;
+  const pick = choices[Math.floor(random() * choices.length) % choices.length];
+  handed[kind] = [pick, ...mine].slice(0, Math.max(2, Math.floor(pool.length / 2)));
+  return pick;
 }
 
 export function allFallbacks(kind: Exclude<ProactiveKind, 'test'>): string[] {
@@ -79,6 +139,7 @@ export const KIND_LABEL: Record<ProactiveKind, string> = {
   reminder: '约定提醒',
   catch: '接住你',
   play_end: '娱乐出口',
+  water: '喝水',
   test: '测试',
 };
 

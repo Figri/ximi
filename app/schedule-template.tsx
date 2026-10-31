@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSize, radius, spacing } from '../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../constants/theme';
 import { fetchLatestTemplateItems, saveNewTemplateVersion, SLOTS } from '../lib/schedule';
 import type { ScheduleSlot } from '../types';
 
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl * 3 },
   error: { fontSize: fontSize.secondary, color: colors.redDark, marginHorizontal: spacing.lg },
-  hint: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: 18 },
+  hint: { fontSize: fontSize.secondary, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: lh(18) },
   slotSection: { marginBottom: spacing.md },
   slotLabel: { fontSize: fontSize.secondary, color: colors.textMuted, fontWeight: '600', marginBottom: 4 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: spacing.sm },

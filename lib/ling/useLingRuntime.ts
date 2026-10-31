@@ -8,6 +8,8 @@ import { useLingSettings } from './settings';
 import { useLingThread } from './thread';
 import { syncAll } from '../notion/sync';
 import { useLingLock } from './lock';
+import { turnOffOldRemindersOnce } from '../reminderReset';
+import { uiReady } from '../uiSettings';
 
 const K_LEGACY_CANCELLED = 'ling_legacy_cancelled_v1';
 const DRAFT_REFRESH_MS = 3 * 3600 * 1000;
@@ -42,6 +44,8 @@ export function useLingRuntime() {
         await cancelLegacyNotifications();
         await AsyncStorage.setItem(K_LEGACY_CANCELLED, '1');
       }
+      // 10/31：旧的事项 / 习惯 / 日程提醒先全关（只跑一次，原来的时间留了底），排程之前做
+      await turnOffOldRemindersOnce().catch(() => 0);
       if (!cancelled) await onActive();
     })();
 
@@ -85,14 +89,14 @@ export function useLingRuntime() {
             if (isLingNotification(resp.notification.request.identifier)) {
               deliverDue()
                 .catch(() => 0)
-                .finally(() => router.push('/chat'));
+                .finally(() => uiReady.then(() => router.push('/chat')));
             }
           });
 
     if (Platform.OS !== 'web') {
       Notifications.getLastNotificationResponseAsync()
         .then((resp) => {
-          if (resp && isLingNotification(resp.notification.request.identifier)) router.push('/chat');
+          if (resp && isLingNotification(resp.notification.request.identifier)) uiReady.then(() => router.push('/chat'));
         })
         .catch(() => {});
     }

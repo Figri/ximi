@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
-import { colors, fontSize, radius, statusColorDark } from '../../constants/theme';
+import { colors, fixedFontSize as fontSize, radius, statusColorDark } from '../../constants/theme';
+// 布局卡死的地方：字号不跟着「其他 → 字号」放大（fixedFontSize）
 import type { Action, Card, Cat, DecayStatus } from '../../types';
 import { CatPickerModal } from '../common/CatPickerModal';
 

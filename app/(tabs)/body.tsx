@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PageTitle } from '../../components/common/PageTitle';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { addWeight, daysBetween, deleteBody, endPeriod, listBody, parseKg, startPeriod, type BodyRecord } from '../../lib/body';
 import { buildDayDigest } from '../../lib/dayDigest';
 import { lingDayKey, useLingSettings } from '../../lib/ling/settings';
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   btnGhost: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.purple, borderRadius: radius.widget, paddingHorizontal: 12, paddingVertical: 6 },
   btnGhostText: { color: colors.purpleDark, fontSize: fontSize.body },
   error: { color: colors.redDark, fontSize: fontSize.secondary },
-  muted: { color: colors.textMuted, fontSize: fontSize.secondary, lineHeight: 17 },
+  muted: { color: colors.textMuted, fontSize: fontSize.secondary, lineHeight: lh(17) },
   line: { color: colors.textPrimary, fontSize: fontSize.body },
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, paddingTop: spacing.sm },
   col: { flex: 1, alignItems: 'center', gap: 3 },

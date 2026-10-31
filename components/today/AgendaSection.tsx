@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { SLOT_LABEL, type AgendaRow } from '../../lib/today';
 import type { ScheduleSlot } from '../../types';
 
@@ -124,7 +124,7 @@ const BOX = 18;
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: 19 },
+  empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: lh(19) },
   slot: { flexDirection: 'row', gap: spacing.sm },
   slotLabel: { width: 34, fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 2 },
   slotRows: { flex: 1, gap: 2 },
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   circle: { width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   boxDone: { backgroundColor: colors.purpleDark, borderColor: colors.purpleDark },
   tick: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: 13 },
-  title: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 18 },
+  title: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, lineHeight: lh(18) },
   titleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
   titleCarried: { color: colors.textSecondary },
   star: { color: colors.yellowDark, fontSize: fontSize.secondary },
