@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 import type { Fragment } from '../../lib/fragments';
 import type { MoodFace } from '../../lib/moods';
 import { MoodPicker } from './MoodPicker';
+import { growInputProps } from './growInput';
 
 // 「随心记」：今天随手的一句话，直接在这儿写，回车就记下。晚上写进 Notion 日记的「今日碎片」。
 // 输入框左边的表情按钮：选一个「现在怎么样」，可以只记表情，也可以表情 + 一段话（也记进状态日志）。
 // 新的在上面，多了先收着；长按一条删掉（有撤销）。
+// 写的时候字多了输入框往下长，最多 4 行（再多在框里滚），回车还是「记」。
+// 空着的时候框按提示字的长短长，提示字写短，大字号窄屏上也是一行。
 
 function hhmm(iso: string): string {
   const d = new Date(iso);
@@ -71,14 +74,13 @@ export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props
         </Pressable>
         <TextInput
           ref={inputRef}
-          style={styles.input}
+          style={[styles.input, Platform.OS === 'web' && WEB_GROW]}
           value={text}
           onChangeText={setText}
-          placeholder={mood ? `${mood.label}，想说就接着写…` : '想到什么，随手记一句…'}
+          placeholder={mood ? `${mood.label}，接着写…` : '想到什么记一句…'}
           placeholderTextColor={colors.textMuted}
           returnKeyType="send"
-          onSubmitEditing={submit}
-          blurOnSubmit={false}
+          {...growInputProps(submit)}
           testID="fragment-input"
         />
         <Pressable style={[styles.send, !canSend && styles.sendOff]} onPress={submit} disabled={!canSend || busy} testID="fragment-send">
@@ -104,15 +106,35 @@ export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props
   );
 }
 
+/** 输入框一行的行高（跟下面一条条的字一样）；最多长到 4 行 */
+const LINE = lh(22);
+const PAD = 9;
+/** 网页上的 textarea 不会自己长高，让它按内容长（安卓上 multiline 本来就会） */
+const WEB_GROW = { fieldSizing: 'content' } as any;
+
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 2 },
-  moodBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, borderWidth: 2, borderColor: 'transparent' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginBottom: 2 },
+  moodBtn: { width: 38, height: 38, marginBottom: (LINE + PAD * 2 - 38) / 2, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, borderWidth: 2, borderColor: 'transparent' },
   moodBtnOn: { backgroundColor: colors.purpleLight, borderColor: colors.purpleDark },
   moodBtnText: { fontSize: 20, lineHeight: 24 },
   moodBtnIdle: { opacity: 0.45 },
-  input: { flex: 1, minWidth: 0, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 9, fontSize: fontSize.reading, color: colors.textPrimary },
-  send: { backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 14, paddingVertical: 9 },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.background,
+    borderRadius: radius.widget,
+    paddingHorizontal: spacing.md,
+    paddingTop: PAD,
+    paddingBottom: PAD,
+    fontSize: fontSize.reading,
+    lineHeight: LINE,
+    minHeight: LINE + PAD * 2,
+    maxHeight: LINE * 4 + PAD * 2 + 2,
+    color: colors.textPrimary,
+    textAlignVertical: 'top',
+  },
+  send: { height: LINE + PAD * 2, justifyContent: 'center', backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 14 },
   sendOff: { opacity: 0.4 },
   sendText: { color: '#fff', fontSize: fontSize.body, fontWeight: '700' },
   row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },

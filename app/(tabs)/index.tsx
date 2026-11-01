@@ -28,6 +28,7 @@ import { WATER_SLOTS } from '../../lib/waterPlan';
 import { cardsForDay, dayKindOf, DEFAULT_TODAY_LAYOUT, type TodayCardKey, type TodayLayout } from '../../lib/todayCards';
 import { loadTodayLayout } from '../../lib/todayLayout';
 import { updateItem } from '../../lib/todo';
+import { updateItem as updateScheduleItem } from '../../lib/schedule';
 import { useDataBus } from '../../lib/dataBus';
 import { useCardStore } from '../../lib/store';
 import { useTodoStore } from '../../lib/todoStore';
@@ -134,6 +135,7 @@ export default function TodayScreen() {
   const [stripKey, setStripKey] = useState(0);
   const toastRef = useRef<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const starQueue = useRef<Promise<unknown>>(Promise.resolve());
   const lineBusy = useRef(false);
 
   useEffect(() => {
@@ -329,6 +331,28 @@ export default function TodayScreen() {
         }
       },
     });
+  }
+
+  /**
+   * 事项右边的 ☆：收藏 / 取消收藏。页面上马上变（位置不动），写进存储按顺序排队，
+   * 连点好几个也不会两次读改写互相覆盖；长按打开的编辑弹窗拿到的也是改过的。
+   */
+  function onStar(row: AgendaRow) {
+    const next = !row.starred;
+    setAgenda((prev) => {
+      const out = { ...prev };
+      for (const slot of Object.keys(out) as ScheduleSlot[]) {
+        out[slot] = out[slot].map((r) => (r.key === row.key ? { ...r, starred: next, todo: r.todo ? { ...r.todo, important: next } : r.todo } : r));
+      }
+      return out;
+    });
+    starQueue.current = starQueue.current
+      .catch(() => {})
+      .then(async () => {
+        if (row.kind === 'todo' && row.todo) await updateItem(row.todo.id, { important: next });
+        else if (row.source === 'item' && row.refId) await updateScheduleItem(row.refId, { starred: next });
+      })
+      .catch(() => loadAgendaFor(dayKey));
   }
 
   /** 以前没做完的那条点了 ↑：挪到今天（日期改成今天），5 秒内能撤销 */
@@ -538,6 +562,7 @@ export default function TodayScreen() {
               onToggle={onToggle}
               onQuickAdd={onQuickAddTodo}
               onPullToToday={onPullToToday}
+              onStar={onStar}
               onEdit={(row) => {
                 if (!row.todo) return;
                 fetchTodoMeta();

@@ -2,11 +2,13 @@ import type { ScheduleCheckSource, ScheduleSlot, TodoItem } from '../types';
 import { fetchDayView, SLOTS, setChecked } from './schedule';
 import { fetchItemsForDate, formatRepeatLabel, isDoneOnDate, parseDateKey, setItemDone } from './todo';
 import { loadCompletions as loadTodoCompletions, loadItems as loadTodoItems } from './todoLocal';
+import { sortAgenda } from './agendaOrder';
 
 // 今天页「事项」（需求文档 §8.1 T-2、§8.5）：
 // 日程事项、事项模块里今天要做的、以前没做完的一次性事项（顺延，灰字，不标红）合成一张按时段排的单子。
 // 日程的作息模板（例行）11/1 起不放进今天页了（西米说作息另有安排），withRoutines: false；日程页照旧有。
-// 今天页上勾选、长按事项改；以前没做完的点 ↑ 挪到今天。
+// 今天页上勾选、长按事项改、右边 ☆ 收藏；以前没做完的点 ↑ 挪到今天。
+// 一个时段里：有钟点的按钟点，其余刚写的在最上面（11/2 起，收藏不挪位置，见 agendaOrder.ts）。
 
 export type AgendaKind = 'routine' | 'item' | 'todo';
 
@@ -17,6 +19,8 @@ export interface AgendaRow {
   slot: ScheduleSlot;
   done: boolean;
   starred: boolean;
+  /** 写下的时间（ISO），排序用：新的在上 */
+  createdAt: string | null;
   /** 事项设了提醒时间：'HH:MM' */
   time: string | null;
   /** 顺延的一次性事项：原来是哪天（'M/D'） */
@@ -72,6 +76,7 @@ export async function loadAgenda(
         slot,
         done: r.done,
         starred: r.starred,
+        createdAt: r.createdAt ?? null,
         time: null,
         carriedFrom: null,
         repeatLabel: null,
@@ -91,6 +96,7 @@ export async function loadAgenda(
       slot,
       done: isDoneOnDate(t, dayKey, completions),
       starred: t.important,
+      createdAt: t.created_at ?? null,
       time: t.reminder_enabled ? t.reminder_time : null,
       carriedFrom: null,
       repeatLabel: formatRepeatLabel(t),
@@ -100,9 +106,7 @@ export async function loadAgenda(
 
   if (opts.includeCarried) {
     const all = await loadTodoItems();
-    const carried = all
-      .filter((t) => t.repeat_type === 'none' && !t.done && t.date < dayKey)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const carried = all.filter((t) => t.repeat_type === 'none' && !t.done && t.date < dayKey);
     for (const t of carried) {
       out.allday.push({
         key: `todo:${t.id}`,
@@ -111,6 +115,7 @@ export async function loadAgenda(
         slot: 'allday',
         done: false,
         starred: t.important,
+        createdAt: t.created_at ?? null,
         time: null,
         carriedFrom: md(t.date),
         repeatLabel: null,
@@ -119,13 +124,8 @@ export async function loadAgenda(
     }
   }
 
-  // 同一格里：有时间的按时间排，星标的往前，其余保持原来的顺序
-  for (const slot of Object.keys(out) as ScheduleSlot[]) {
-    out[slot] = out[slot]
-      .map((r, i) => ({ r, i }))
-      .sort((a, b) => (a.r.time ?? '99').localeCompare(b.r.time ?? '99') || Number(b.r.starred) - Number(a.r.starred) || a.i - b.i)
-      .map((x) => x.r);
-  }
+  // 同一格里：有时间的按时间排，其余刚写的在最上面（以前没做完的那几件也是）
+  for (const slot of Object.keys(out) as ScheduleSlot[]) out[slot] = sortAgenda(out[slot]);
   return out;
 }
 

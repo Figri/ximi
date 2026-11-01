@@ -76,6 +76,8 @@ export interface ScheduleRow {
   starred: boolean;
   done: boolean;
   sort: number;
+  /** 事项写下的时间（今天页按它排，新的在上）；作息模板没有 */
+  createdAt?: string;
 }
 
 export interface DayView {
@@ -130,6 +132,7 @@ export async function fetchDayView(dateKey: string): Promise<DayView> {
       starred: it.starred,
       done: checkSet.has(`item:${it.id}`),
       sort: it.sort,
+      createdAt: it.created_at,
     };
     (rowsBySlot[slot] ?? rowsBySlot.allday).push(row);
   }

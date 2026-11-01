@@ -1,6 +1,6 @@
 // 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）、
 // 时间页积分怎么加总（lib/pointsCalc.ts）；随心记的表情（lib/moods.ts）；灵的话别重样（lib/ling/templates.ts）；
-// 喝水哪天几杯、什么时候提醒（lib/waterPlan.ts）；今天页卡片顺序和哪天显示哪些（lib/todayCards.ts）。
+// 喝水哪天几杯、什么时候提醒（lib/waterPlan.ts）；今天页卡片顺序和哪天显示哪些（lib/todayCards.ts）；事项的顺序（lib/agendaOrder.ts）。
 // 不用装新依赖：用项目自带的 typescript 把这两个文件转成 CommonJS 放到临时目录再跑。
 // 跑法：npm test（有一条不对就以非 0 退出）。时间都按东八区算。
 process.env.TZ = 'Asia/Shanghai';
@@ -32,6 +32,7 @@ const T = load('lib/ling/templates.ts');
 const { plannedWaterReminders, cupsOnDay, waterDayKey } = load('lib/waterPlan.ts');
 const TC = load('lib/todayCards.ts');
 const plan = load('lib/planCalc.ts');
+const AO = load('lib/agendaOrder.ts');
 
 let failed = 0;
 let total = 0;
@@ -348,6 +349,19 @@ const cardCases = [
   ['哪天算以前 / 今天 / 以后', ['2026-10-31', '2026-11-01', '2026-11-02'].map((d) => TC.dayKindOf(d, '2026-11-01')).join(','), 'past,today,future'],
 ];
 for (const [name, got, want] of cardCases) report(eq(got, want), `今天页卡片 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+// ---------- 今天页事项的顺序（lib/agendaOrder.ts） ----------
+const ag = (title, createdAt, time = null, starred = false) => ({ title, createdAt, time, starred });
+const names = (rows) => AO.sortAgenda(rows).map((r) => r.title).join(',');
+const orderCases = [
+  ['刚写的在最上面', names([ag('早', '2026-11-01T01:00:00Z'), ag('中', '2026-11-01T05:00:00Z'), ag('新', '2026-11-02T02:00:00Z')]), '新,中,早'],
+  ['收藏的不挪位置', names([ag('旧★', '2026-10-01T00:00:00Z', null, true), ag('新', '2026-11-02T00:00:00Z')]), '新,旧★'],
+  ['有钟点的按钟点、排在没钟点的前面', names([ag('无', '2026-11-02T09:00:00Z'), ag('10:30', '2026-11-02T08:00:00Z', '10:30'), ag('10:00', '2026-11-01T08:00:00Z', '10:00')]), '10:00,10:30,无'],
+  ['拿不到写下时间的当最早、同样的保持原来顺序', names([ag('甲', null), ag('乙', 'oops'), ag('新', '2026-11-02T00:00:00Z')]), '新,甲,乙'],
+  ['时区写法不一样也按真实先后', names([ag('A', '2026-11-02T08:00:00+08:00'), ag('B', '2026-11-02T01:00:00Z')]), 'B,A'],
+  ['不改原来的数组', (() => { const a = [ag('x', '2026-01-01T00:00:00Z'), ag('y', '2026-02-01T00:00:00Z')]; AO.sortAgenda(a); return a.map((r) => r.title).join(','); })(), 'x,y'],
+];
+for (const [name, got, want] of orderCases) report(eq(got, want), `事项顺序 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
 
 console.log(`\n${total - failed}/${total} 通过`);
 process.exit(failed ? 1 : 0);

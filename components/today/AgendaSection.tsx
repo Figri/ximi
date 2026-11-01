@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { colors, fixedFontSize, fontSize, radius, spacing, lh } from '../../constants/theme';
+import { growInputProps } from './growInput';
 import { SLOT_LABEL, type AgendaRow } from '../../lib/today';
 import type { ScheduleSlot } from '../../types';
 
 // 「事项」：最上面一行直接写新事项（回车就加，认得出「周三 10点」这种），不用先点 ＋。
 // 下面是全天 + 各个时段（今天页不再放作息模板；有的话还是方框，事项是圆圈）。没东西的时段不占地方。
-// 点框就勾（今天页给 5 秒撤销）；长按事项能改（日期、重复、提醒、删掉）。
+// 点框就勾（今天页给 5 秒撤销）；长按事项能改（日期、重复、提醒、删掉）；右边 ☆ 点一下收藏（★），再点取消。
+// 一个时段里刚写的在最上面（排序在 lib/agendaOrder.ts）。写的时候字多了输入框往下长，最多 4 行；事项也最多显示 4 行。
 // 以前没做完的一次性事项（顺延）先收成一行「以前没做完的 N 件」，点开再看；每条右边一个 ↑，点了挪到今天做。
 
 const ORDER: ScheduleSlot[] = ['allday', '08', '10', '12', '14', '16', '18', '20', '22'];
@@ -19,9 +21,19 @@ interface Props {
   onQuickAdd?: (text: string) => Promise<void>;
   /** 以前没做完的那条点了 ↑：挪到今天 */
   onPullToToday?: (row: AgendaRow) => void;
+  /** 右边的 ☆：收藏 / 取消收藏 */
+  onStar?: (row: AgendaRow) => void;
 }
 
-function Row({ r, onToggle, onEdit, onPull }: { r: AgendaRow; onToggle: (row: AgendaRow) => void; onEdit?: (row: AgendaRow) => void; onPull?: (row: AgendaRow) => void }) {
+interface RowProps {
+  r: AgendaRow;
+  onToggle: (row: AgendaRow) => void;
+  onEdit?: (row: AgendaRow) => void;
+  onPull?: (row: AgendaRow) => void;
+  onStar?: (row: AgendaRow) => void;
+}
+
+function Row({ r, onToggle, onEdit, onPull, onStar }: RowProps) {
   return (
     <Pressable
       style={styles.row}
@@ -34,16 +46,30 @@ function Row({ r, onToggle, onEdit, onPull }: { r: AgendaRow; onToggle: (row: Ag
       <View style={[r.kind === 'routine' ? styles.square : styles.circle, r.done && styles.boxDone]}>
         {r.done ? <Text style={styles.tick}>✓</Text> : null}
       </View>
-      <Text style={[styles.title, r.done && styles.titleDone, r.carriedFrom && !r.done && styles.titleCarried]} numberOfLines={2}>
+      <Text style={[styles.title, r.done && styles.titleDone, r.carriedFrom && !r.done && styles.titleCarried]} numberOfLines={4}>
         {r.time ? `${r.time} ` : ''}
         {r.title}
       </Text>
-      {r.starred ? <Text style={styles.star}>★</Text> : null}
       {r.carriedFrom ? <Text style={styles.tag}>{r.carriedFrom}</Text> : r.kind === 'routine' ? <Text style={styles.tag}>例行</Text> : r.repeatLabel ? <Text style={styles.tag}>{r.repeatLabel}</Text> : null}
       {r.carriedFrom && onPull ? (
         <Pressable style={styles.pull} onPress={() => onPull(r)} hitSlop={8} testID={`agenda-up-${r.title}`}>
           <Text style={styles.pullText}>↑</Text>
         </Pressable>
+      ) : null}
+      {r.kind !== 'routine' && onStar ? (
+        <Pressable
+          style={styles.starBtn}
+          onPress={() => onStar(r)}
+          hitSlop={8}
+          testID={`agenda-star-${r.title}`}
+          accessibilityRole="button"
+          accessibilityLabel={r.starred ? '取消收藏' : '收藏'}
+          aria-selected={r.starred}
+        >
+          <Text style={[styles.starIcon, r.starred && styles.starIconOn]}>{r.starred ? '★' : '☆'}</Text>
+        </Pressable>
+      ) : r.starred ? (
+        <Text style={styles.star}>★</Text>
       ) : null}
     </Pressable>
   );
@@ -67,14 +93,13 @@ function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
     <View style={styles.addRow}>
       <View style={styles.addCircle} />
       <TextInput
-        style={styles.addInput}
+        style={[styles.addInput, Platform.OS === 'web' && WEB_GROW]}
         value={text}
         onChangeText={setText}
         placeholder="加一件事…"
         placeholderTextColor={colors.textMuted}
         returnKeyType="done"
-        onSubmitEditing={submit}
-        blurOnSubmit={false}
+        {...growInputProps(submit)}
         testID="agenda-add"
       />
       {text.trim() ? (
@@ -86,7 +111,7 @@ function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
   );
 }
 
-export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToday }: Props) {
+export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToday, onStar }: Props) {
   const [showCarried, setShowCarried] = useState(false);
   const carried = (rows.allday ?? []).filter((r) => r.carriedFrom);
   const today: Record<string, AgendaRow[]> = {};
@@ -102,7 +127,7 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
           <Text style={styles.slotLabel}>{SLOT_LABEL[slot]}</Text>
           <View style={styles.slotRows}>
             {today[slot].map((r) => (
-              <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} />
+              <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onStar={onStar} />
             ))}
           </View>
         </View>
@@ -116,7 +141,7 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
           {showCarried ? (
             <View style={styles.slotRows}>
               {carried.map((r) => (
-                <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onPull={onPullToToday} />
+                <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onPull={onPullToToday} onStar={onStar} />
               ))}
               <Text style={styles.hint}>点 ↑ 挪到今天做；做了就勾掉；不要了长按改日期或删掉。</Text>
             </View>
@@ -128,6 +153,11 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
 }
 
 const BOX = 18;
+/** 输入框一行的行高；最多长到 4 行，再多就在框里滚 */
+const ADD_LINE = lh(19);
+const ADD_PAD = 9;
+/** 网页上的 textarea 不会自己长高，让它按内容长（安卓上 multiline 本来就会） */
+const WEB_GROW = { fieldSizing: 'content' } as any;
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
@@ -150,10 +180,24 @@ const styles = StyleSheet.create({
   carriedTitle: { fontSize: fontSize.body, color: colors.textSecondary },
   carriedLink: { fontSize: fontSize.secondary, color: colors.purpleDark },
   hint: { fontSize: fontSize.tiny, color: colors.textMuted, marginTop: 2 },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.sm, marginBottom: 2 },
-  addCircle: { width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, borderStyle: 'dashed' },
-  addInput: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, paddingVertical: 9 },
+  addRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.sm, marginBottom: 2 },
+  addCircle: { alignSelf: 'flex-start', marginTop: ADD_PAD + (ADD_LINE - BOX) / 2, width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, borderStyle: 'dashed' },
+  addInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: fontSize.body,
+    lineHeight: ADD_LINE,
+    color: colors.textPrimary,
+    paddingTop: ADD_PAD,
+    paddingBottom: ADD_PAD,
+    minHeight: ADD_LINE + ADD_PAD * 2,
+    maxHeight: ADD_LINE * 4 + ADD_PAD * 2 + 2,
+    textAlignVertical: 'top',
+  },
   pull: { width: 28, height: 24, borderRadius: 12, backgroundColor: colors.purpleLight, alignItems: 'center', justifyContent: 'center' },
   pullText: { color: colors.purpleDark, fontSize: 15, fontWeight: '800', lineHeight: 18 },
-  addSend: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '700', paddingHorizontal: 4 },
+  addSend: { fontSize: fontSize.body, lineHeight: ADD_LINE, color: colors.purpleDark, fontWeight: '700', paddingHorizontal: 4, paddingVertical: ADD_PAD },
+  starBtn: { width: 26, alignItems: 'center', justifyContent: 'center' },
+  starIcon: { fontSize: fixedFontSize.reading + 3, lineHeight: 22, color: colors.textMuted },
+  starIconOn: { color: colors.yellowDark },
 });
