@@ -37,9 +37,11 @@ interface WeekDateStripProps {
   today?: Date;
   /** 今天页自己的页头已经写了日期，这里就不再显示那一行 */
   hideDateRow?: boolean;
+  /** 长按某一天（时间页「对照」：套用 / 存日模板、清空这天的剧本）。不传就没有长按 */
+  onLongPressDate?: (date: Date) => void;
 }
 
-export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, today: todayProp, hideDateRow }: WeekDateStripProps) {
+export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, today: todayProp, hideDateRow, onLongPressDate }: WeekDateStripProps) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const today = todayProp ?? new Date();
   const weekStart = startOfWeek(date);
@@ -112,7 +114,13 @@ export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, tod
           const isToday = isSameDay(d, today);
           const count = counts[toDateKey(d)] ?? 0;
           return (
-            <Pressable key={d.toISOString()} style={styles.dayCol} onPress={() => onDateChange(d)}>
+            <Pressable
+              key={d.toISOString()}
+              style={styles.dayCol}
+              onPress={() => onDateChange(d)}
+              onLongPress={onLongPressDate ? () => onLongPressDate(d) : undefined}
+              delayLongPress={400}
+            >
               <View style={[styles.dayCircle, isSelected && styles.dayCircleSelected]}>
                 <Text style={[styles.dayNumber, isSelected && styles.dayNumberSelected]}>
                   {isToday && !isSelected ? '今' : d.getDate()}

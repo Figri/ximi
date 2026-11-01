@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   LayoutChangeEvent,
@@ -23,8 +23,8 @@ const LONG_PRESS_MS = 450;
 const MOVE_SLOP = 8;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const CELLS_PER_ROW = 12; // 每行12格，每格5分钟，写死
-const CELL_MINUTES = 5;
+/** 细格：每行 12 格，每格 5 分钟。「对照」传 6（一格 10 分钟） */
+const DEFAULT_CELLS_PER_ROW = 12;
 
 /** 格子上的积分胶囊大概要多宽（9 号粗体数字 + 左右留白）：这一段放不下就不画，免得「-999」被裁成「-99」看错 */
 function badgeFits(points: number, segmentWidth: number): boolean {
@@ -65,9 +65,30 @@ interface TimeBlockViewProps {
   date: Date;
   refreshKey: number;
   onChanged: () => void;
+  /** 每行几格（一行 = 一小时）。不传 = 12 格（细格）；「对照」传 6 */
+  cellsPerRow?: number;
+  /** 钟点和格子中间再放一列（「对照」的剧本列），拿到的是每行多高 */
+  renderLeft?: (rowHeight: number) => ReactNode;
+  /** 今天画一道「现在」的红线，钟点标红 */
+  showNow?: boolean;
 }
 
-export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProps) {
+/** 每分钟刷新一次「现在」 */
+function useNowMinute(enabled: boolean): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!enabled) return;
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, [enabled]);
+  return now;
+}
+
+export function TimeBlockView({ date, refreshKey, onChanged, cellsPerRow, renderLeft, showNow }: TimeBlockViewProps) {
+  const CELLS_PER_ROW = cellsPerRow && cellsPerRow > 0 ? cellsPerRow : DEFAULT_CELLS_PER_ROW;
+  const CELL_MINUTES = 60 / CELLS_PER_ROW;
+  const now = useNowMinute(!!showNow);
   const { categories, fetchAll } = useTimeLogStore();
   const [logs, setLogs] = useState<TimeLog[]>([]);
   const [firstLoad, setFirstLoad] = useState(true);
@@ -239,7 +260,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
       }
     }
     return rects;
-  }, [logs, categories, cellWidth, ROW_H, dayStart]);
+  }, [logs, categories, cellWidth, ROW_H, dayStart, CELL_MINUTES]);
 
   // 网格分隔线位置：行线/列线的坐标直接用 ROW_H/cellWidth 单独算，不靠一个个
   // 格子的宽度首尾相接拼出来——12列累计取整误差拼不齐导致右边缘留白条，就是
@@ -248,7 +269,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
   const colDividers = useMemo(() => {
     if (cellWidth <= 0) return [];
     return Array.from({ length: CELLS_PER_ROW - 1 }, (_, i) => (i + 1) * cellWidth);
-  }, [cellWidth]);
+  }, [cellWidth, CELLS_PER_ROW]);
 
   const rowDividers = useMemo(() => {
     if (ROW_H <= 0) return [];
@@ -284,7 +305,7 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     }
     flush(runStart, prev);
     return rects;
-  }, [selected, logRanges, cellWidth, ROW_H]);
+  }, [selected, logRanges, cellWidth, ROW_H, CELLS_PER_ROW, CELL_MINUTES]);
 
   function idxToRun(lo: number, hi: number): { start: Date; end: Date } {
     return {
@@ -314,6 +335,9 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
     onChanged();
   }
 
+  const isToday = !!showNow && now.toDateString() === date.toDateString();
+  const nowTop = isToday ? ((now.getHours() * 60 + now.getMinutes()) / 60) * ROW_H : -1;
+
   function handleAreaLayout(e: LayoutChangeEvent) {
     setAreaHeight(e.nativeEvent.layout.height);
   }
@@ -335,17 +359,20 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
             <View style={styles.hourCol}>
               {HOURS.map((h) => (
                 <View key={h} style={{ height: ROW_H, alignItems: 'flex-end', paddingRight: 2 }}>
-                  <Text style={styles.hourLabel} numberOfLines={1}>
+                  <Text style={[styles.hourLabel, isToday && h === now.getHours() && styles.hourLabelNow]} numberOfLines={1}>
                     {h}
                   </Text>
                 </View>
               ))}
             </View>
 
+            {renderLeft ? renderLeft(ROW_H) : null}
+
             <View
               ref={trackRef}
               style={styles.trackCol}
               onLayout={handleTrackLayout}
+              testID="time-track"
               {...panResponder.panHandlers}
             >
               {/* 底层：一整块矩形背景（不是288个拼接的小格子，右边缘天然不会留白条） */}
@@ -408,6 +435,13 @@ export function TimeBlockView({ date, refreshKey, onChanged }: TimeBlockViewProp
                   </View>
                 ) : null
               )}
+
+              {nowTop >= 0 ? (
+                <>
+                  <View style={[styles.nowLine, { top: nowTop - 1 }]} pointerEvents="none" testID="time-now-line" />
+                  <View style={[styles.nowDot, { top: nowTop - 4 }]} pointerEvents="none" />
+                </>
+              ) : null}
             </View>
           </>
         )}
@@ -453,6 +487,9 @@ const styles = StyleSheet.create({
   // 都在 20px 列宽内，不会触发默认的 numberOfLines 截断出"…"——这条必须是
   // RN 组件的真实宽度/字号，css专属的nowrap/ellipsis覆盖在原生端不生效
   hourLabel: { fontSize: 10, color: colors.textMuted },
+  hourLabelNow: { color: '#E5484D', fontWeight: '700' },
+  nowLine: { position: 'absolute', left: 0, right: 0, height: 2, backgroundColor: '#E5484D' },
+  nowDot: { position: 'absolute', right: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: '#E5484D' },
   trackCol: { flex: 1, position: 'relative', marginLeft: 2 },
   gridBackground: { width: '100%', backgroundColor: '#DCEBF7', borderRadius: 4 },
   gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#fff' },

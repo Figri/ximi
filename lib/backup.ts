@@ -52,6 +52,8 @@ export const BACKUP_KV_KEYS = [
   'water_settings_v1',
   'reminders_off_backup_v1',
   'ui_settings_v1',
+  'plan_days_v1',
+  'plan_templates_v1',
 ] as const;
 
 export interface BackupFile {
