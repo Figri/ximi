@@ -31,6 +31,7 @@ const { MOOD_FACES, moodLine, moodNote } = load('lib/moods.ts');
 const T = load('lib/ling/templates.ts');
 const { plannedWaterReminders, cupsOnDay, waterDayKey } = load('lib/waterPlan.ts');
 const TC = load('lib/todayCards.ts');
+const plan = load('lib/planCalc.ts');
 
 let failed = 0;
 let total = 0;
@@ -290,6 +291,47 @@ const waterCases = [
   ['这天喝了几杯', cupsOnDay([W('2026-10-31T09:00:00+08:00'), W('2026-10-31T23:30:00+08:00'), W('2026-11-01T01:00:00+08:00'), W('2026-11-01T09:00:00+08:00')], '2026-10-31', 5), 3],
 ];
 for (const [name, got, want] of waterCases) report(eq(got, want), `喝水 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+// ---------- 时间页剧本（lib/planCalc.ts）：周数、一周 7 天、并块、预填、坏数据 ----------
+{
+  const D = (y, m, d) => new Date(y, m - 1, d);
+  const weekCases = [
+    ['2026-10-26（周一）是第44周', plan.isoWeekNumber(D(2026, 10, 26)), 44],
+    ['2026-11-01（周日）还是第44周', plan.isoWeekNumber(D(2026, 11, 1)), 44],
+    ['2026-01-01（周四）是第1周', plan.isoWeekNumber(D(2026, 1, 1)), 1],
+    ['2025-12-29（周一）算 2026 年第1周', plan.isoWeekNumber(D(2025, 12, 29)), 1],
+    ['2027-01-01（周五）算 2026 年第53周', plan.isoWeekNumber(D(2027, 1, 1)), 53],
+    ['2027-01-04（周一）是第1周', plan.isoWeekNumber(D(2027, 1, 4)), 1],
+  ];
+  for (const [name, got, want] of weekCases) report(got === want, `剧本 周数 ${name}: ${got}${got === want ? '' : `（应该是 ${want}）`}`);
+
+  const wk = plan.weekKeysOf(D(2026, 11, 1));
+  report(eq(wk, ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']), `剧本 周日所在那周从周一开始：${wk.join(',')}`);
+  const wk2 = plan.weekKeysOf(D(2026, 12, 30));
+  report(wk2[0] === '2026-12-28' && wk2[6] === '2027-01-03', `剧本 跨年那周：${wk2[0]}…${wk2[6]}`);
+  report(plan.dayLabel('2026-10-27') === '周二 10/27', `剧本 日期小字：${plan.dayLabel('2026-10-27')}`);
+
+  const day = plan.emptyDay();
+  for (let h = 0; h < 9; h++) day[h] = { c: 'sleep', d: '' };
+  day[9] = { c: 'eat', d: '面包' };
+  day[10] = { c: 'proj', d: '写代码' };
+  day[11] = { c: 'proj', d: '写代码' };
+  day[12] = { c: 'proj', d: '开会' };
+  day[23] = { c: 'chore', d: '' };
+  const blocks = plan.mergeBlocks(day).map((b) => `${b.start}-${b.end}:${b.slot.c}${b.slot.d ? '/' + b.slot.d : ''}`);
+  report(eq(blocks, ['0-9:sleep', '9-10:eat/面包', '10-12:proj/写代码', '12-13:proj/开会', '23-24:chore']), `剧本 连着一样的并一块、字不一样不并：${blocks.join(' ')}`);
+  report(plan.mergeBlocks(plan.emptyDay()).length === 0, '剧本 空的一天没有块');
+
+  const days = { '2026-10-26': day, '2026-10-27': day.map((s) => (s ? { ...s } : null)) };
+  report(eq(plan.uniformSlot(days, ['2026-10-26', '2026-10-27'], 10, 12), { c: 'proj', d: '写代码' }), '剧本 两天同一段一样 → 弹窗预填');
+  report(plan.uniformSlot(days, ['2026-10-26'], 11, 13) === null, '剧本 一段里不一样 → 不预填');
+  report(plan.uniformSlot(days, ['2026-10-26', '2026-10-28'], 10, 11) === null, '剧本 有一天是空的 → 不预填');
+
+  const messy = plan.normalizeDay([{ c: 'a', d: 'x' }, null, { c: '' }, 'oops', { c: 'b' }]);
+  report(messy.length === 24 && eq(messy.slice(0, 5), [{ c: 'a', d: 'x' }, null, null, null, { c: 'b', d: '' }]), '剧本 坏数据：补满 24 格、没有分类的当空');
+  report(plan.isEmptyDay(plan.normalizeDay(null)), '剧本 读到 null 当空的一天');
+  report(/^#[0-9a-f]{6}$/.test(plan.planTint('#2E6DB4')) && plan.planTint('#2E6DB4') !== '#2e6db4', `剧本 浅色底：${plan.planTint('#2E6DB4')}`);
+  report(plan.planInk('#F5B841') === '#a77d2c', `剧本 深色字：${plan.planInk('#F5B841')}`);
+}
 
 // ---------- 今天页卡片（lib/todayCards.ts） ----------
 const all = TC.TODAY_CARDS.map((c) => c.key).join(',');

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,11 +16,55 @@ import { fetchTodayPoints } from '../../lib/points';
 import { formatPoints } from '../../lib/pointsCalc';
 import { useDataBus } from '../../lib/dataBus';
 import { usePushedPage } from '../../components/common/PageTitle';
+import { PlanColumn, type PlanPick } from '../../components/timetab/PlanColumn';
+import { PlanSheet } from '../../components/timetab/PlanSheet';
+import { PlanWeekView } from '../../components/timetab/PlanWeekView';
+import { DayMenu, TemplateSheet } from '../../components/timetab/PlanMenus';
+import { useTimeLogStore } from '../../lib/timelogStore';
+import {
+  dateKeyOf,
+  dateOfKey,
+  ensureDefaultForWeek,
+  ensurePlansLoaded,
+  isoWeekNumber,
+  loadTimeView,
+  saveTimeView,
+  WEEKDAY_CN,
+  weekKeysOf,
+  writeDays,
+  type DaySlots,
+  type TimeView,
+} from '../../lib/plan';
+import type { TimeCategory } from '../../types';
 
 type ViewMode = 'day' | 'month' | 'stats' | 'points';
 type DayView = 'block' | 'axis'; // block=时间块, axis=时间轴
 
 const SUB_TITLES: Record<Exclude<ViewMode, 'day'>, string> = { points: '积分统计', stats: '时间统计', month: '月历' };
+
+/** 时间页最上面那条切换：周日程（一周填剧本）/ 对照（一天：剧本对实际，10 分钟一格）/ 细格（原来那页，5 分钟一格） */
+const VIEWS: { key: TimeView; label: string }[] = [
+  { key: 'week', label: '周日程' },
+  { key: 'compare', label: '对照' },
+  { key: 'fine', label: '细格' },
+];
+
+function wd(key: string): string {
+  return WEEKDAY_CN[(dateOfKey(key).getDay() + 6) % 7];
+}
+
+/** 改剧本弹窗标题右边的小字 */
+function pickSubtitle(keys: string[]): string {
+  if (keys.length === 0) return '';
+  const first = dateOfKey(keys[0]);
+  if (keys.length === 1) return `${first.getMonth() + 1}月${first.getDate()}日 周${wd(keys[0])}`;
+  return `周${wd(keys[0])}到周${wd(keys[keys.length - 1])} · ${keys.length} 天`;
+}
+
+function shortDate(key: string): string {
+  const d = dateOfKey(key);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 export default function TimelineScreen() {
   const pushed = usePushedPage();
@@ -32,6 +76,56 @@ export default function TimelineScreen() {
   // 顶栏下沿离页面顶有多远（含状态栏留白）：菜单从这儿往下展开
   const [headerBottom, setHeaderBottom] = useState(0);
   const [todayPoints, setTodayPoints] = useState<number | null>(null);
+
+  // 周日程 / 对照 / 细格：上次停在哪个，下次进来还是哪个（读出来之前先不画主体，免得闪一下细格）
+  const [view, setViewState] = useState<TimeView | null>(null);
+  const [pick, setPick] = useState<PlanPick | null>(null);
+  const [dayMenuKey, setDayMenuKey] = useState<string | null>(null);
+  const [tplOpen, setTplOpen] = useState(false);
+  const [toast, setToast] = useState<{ text: string; undo?: Record<string, DaySlots | null>; id: number } | null>(null);
+  const categories = useTimeLogStore((s) => s.categories);
+  const fetchCategories = useTimeLogStore((s) => s.fetchAll);
+  const categoryById = useMemo(() => {
+    const m: Record<string, TimeCategory> = {};
+    for (const c of categories) m[c.id] = c;
+    return m;
+  }, [categories]);
+
+  useEffect(() => {
+    loadTimeView().then(setViewState);
+    ensurePlansLoaded();
+    if (categories.length === 0) fetchCategories();
+  }, []);
+
+  function setView(v: TimeView) {
+    setViewState(v);
+    saveTimeView(v);
+  }
+
+  const showToast = useCallback((text: string, undo?: Record<string, DaySlots | null>) => {
+    setToast({ text, undo, id: Date.now() });
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const weekKeys = weekKeysOf(date);
+  const weekId = weekKeys[0];
+  const todayKey = dateKeyOf(new Date());
+
+  // 第一次看到这周（周日程、对照都算）、还空着、设了默认周模板：自动填好，底下能撤销
+  useEffect(() => {
+    if (view !== 'week' && view !== 'compare') return;
+    let alive = true;
+    ensureDefaultForWeek(weekKeys, todayKey).then((r) => {
+      if (alive && r) showToast(`这周按默认周模板「${r.name}」填好了`, r.before);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [view, weekId]);
 
   // 月历格子的底色/摘要——MonthCalendarView本身不跟任何数据源绑死，
   // 数据在这个页面自己算好再传下去
@@ -105,8 +199,51 @@ export default function TimelineScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {mode === 'day' ? (
+        <View style={styles.switchRow}>
+          <View style={styles.switchBox}>
+            {VIEWS.map((v) => (
+              <Pressable key={v.key} style={[styles.switchItem, view === v.key && styles.switchItemOn]} onPress={() => setView(v.key)} testID={`time-view-${v.key}`}>
+                <Text style={[styles.switchText, view === v.key && styles.switchTextOn]}>{v.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
       <View style={styles.headerRow} onLayout={(e: LayoutChangeEvent) => setHeaderBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
-        {mode === 'day' ? (
+        {mode === 'day' && view === 'week' ? (
+          <>
+            {/* 周日程：‹ 第44周 › 10/26–11/1，不在本周时多一个「本周」；右边「模板」「⋯」 */}
+            <View style={styles.dateBox}>
+              {pushed ? (
+                <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={10}>
+                  <Text style={styles.back}>‹</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => setDate((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 7))} hitSlop={8} testID="week-prev">
+                <Text style={styles.weekArrow}>‹</Text>
+              </Pressable>
+              <Text style={styles.dateText} testID="week-title">{`第${isoWeekNumber(date)}周`}</Text>
+              <Pressable onPress={() => setDate((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7))} hitSlop={8} testID="week-next">
+                <Text style={styles.weekArrow}>›</Text>
+              </Pressable>
+              <Text style={styles.weekRange}>{`${shortDate(weekKeys[0])}–${shortDate(weekKeys[6])}`}</Text>
+              {!weekKeys.includes(todayKey) ? (
+                <Pressable style={styles.thisWeek} onPress={() => setDate(new Date())} hitSlop={6} testID="week-this">
+                  <Text style={styles.thisWeekText}>本周</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <View style={styles.headerIcons}>
+              <Pressable style={styles.tplButton} onPress={() => setTplOpen(true)} hitSlop={4} testID="week-templates">
+                <Text style={styles.tplButtonText}>模板</Text>
+              </Pressable>
+              <Pressable style={styles.moreButton} onPress={() => setMenuOpen((v) => !v)} hitSlop={6} testID="time-more">
+                <Text style={styles.moreButtonText}>⋯</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : mode === 'day' ? (
           <>
             {/* 左边：日期 + 今；右边：今日积分 + ⋯（分类、标签、月历、统计都收进 ⋯） */}
             <View style={styles.dateBox}>
@@ -139,16 +276,58 @@ export default function TimelineScreen() {
         )}
       </View>
 
-      {mode === 'day' && (
+      {mode === 'day' && view === 'fine' && (
         <WeekDateStrip date={date} onDateChange={setDate} refreshKey={refreshKey} fetchCounts={fetchLogCountsForRange} hideDateRow />
       )}
 
       {mode === 'day' &&
+        view === 'fine' &&
         (dayView === 'block' ? (
-          <TimeBlockView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
+          <TimeBlockView key="fine" date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
         ) : (
           <TimeAxisView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
         ))}
+
+      {/* 对照：左边每个钟头的剧本，右边一格 10 分钟的实际（就是细格那份记录） */}
+      {mode === 'day' && view === 'compare' && (
+        <WeekDateStrip
+          date={date}
+          onDateChange={setDate}
+          refreshKey={refreshKey}
+          fetchCounts={fetchLogCountsForRange}
+          hideDateRow
+          onLongPressDate={(d) => setDayMenuKey(dateKeyOf(d))}
+        />
+      )}
+      {mode === 'day' &&
+        view === 'compare' &&
+        (dayView === 'block' ? (
+          <TimeBlockView
+            key="compare"
+            date={date}
+            refreshKey={refreshKey}
+            onChanged={bumpRefresh}
+            cellsPerRow={6}
+            showNow
+            renderLeft={(rowHeight) => (
+              <PlanColumn dateKey={dateKeyOf(date)} rowHeight={rowHeight} isToday={dateKeyOf(date) === todayKey} categoryById={categoryById} onPick={setPick} />
+            )}
+          />
+        ) : (
+          <TimeAxisView date={date} refreshKey={refreshKey} onChanged={bumpRefresh} />
+        ))}
+
+      {/* 周日程：一周 7 列填剧本 */}
+      {mode === 'day' && view === 'week' && (
+        <PlanWeekView
+          weekKeys={weekKeys}
+          todayKey={todayKey}
+          categoryById={categoryById}
+          onPick={setPick}
+          onDayLongPress={setDayMenuKey}
+          onSwipeWeek={(delta) => setDate((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta * 7))}
+        />
+      )}
       {mode === 'month' && (
         <MonthCalendarView
           month={date}
@@ -164,11 +343,45 @@ export default function TimelineScreen() {
       {mode === 'stats' && <StatsView />}
       {mode === 'points' && <PointsStatsView refreshKey={refreshKey} onChanged={bumpRefresh} />}
 
-      {mode === 'day' && (
+      {mode === 'day' && (view === 'fine' || view === 'compare') && (
         <Pressable style={styles.viewToggleFab} onPress={() => setDayView((v) => (v === 'block' ? 'axis' : 'block'))} testID="time-view-toggle">
           <Text style={styles.viewToggleFabText}>{dayView === 'block' ? '☰' : '田'}</Text>
         </Pressable>
       )}
+
+      <PlanSheet
+        pick={pick}
+        subtitle={pick ? pickSubtitle(pick.keys) : ''}
+        onClose={() => setPick(null)}
+        onSaved={() => setPick(null)}
+        onDeleted={(before) => {
+          setPick(null);
+          showToast('删掉了这段剧本', before);
+        }}
+      />
+      <DayMenu dayKey={dayMenuKey} weekKeys={dayMenuKey ? weekKeysOf(dateOfKey(dayMenuKey)) : weekKeys} allowCopy={view === 'week'} onClose={() => setDayMenuKey(null)} onToast={showToast} />
+      <TemplateSheet visible={tplOpen} weekKeys={weekKeys} onClose={() => setTplOpen(false)} onToast={showToast} />
+
+      {toast && mode === 'day' ? (
+        <View style={styles.toast} testID="plan-toast">
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast.text}
+          </Text>
+          {toast.undo ? (
+            <Pressable
+              onPress={() => {
+                const undo = toast.undo!;
+                setToast(null);
+                writeDays(undo);
+              }}
+              hitSlop={8}
+              testID="plan-toast-undo"
+            >
+              <Text style={styles.toastUndo}>撤销</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* ⋯ 的小菜单：点外面就收起 */}
       {menuOpen ? (
@@ -225,6 +438,35 @@ const styles = StyleSheet.create({
   },
   moreButtonText: { fontSize: 18, lineHeight: 20, color: colors.purpleDark, fontWeight: '800' },
   subHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  switchRow: { alignItems: 'center', paddingTop: 2 },
+  switchBox: { flexDirection: 'row', backgroundColor: colors.purpleLight, borderRadius: 14, padding: 2 },
+  switchItem: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 12 },
+  switchItemOn: { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  switchText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  switchTextOn: { color: colors.purpleDark, fontWeight: '800' },
+  weekArrow: { fontSize: 22, lineHeight: 24, color: colors.textMuted, paddingHorizontal: 2 },
+  weekRange: { fontSize: fontSize.secondary, color: colors.textMuted, marginLeft: 2, marginTop: 3 },
+  thisWeek: { paddingHorizontal: 8, height: 24, borderRadius: radius.button, backgroundColor: colors.blueLight, alignItems: 'center', justifyContent: 'center' },
+  thisWeekText: { fontSize: fontSize.secondary, color: colors.blueDark, fontWeight: '700' },
+  tplButton: { paddingHorizontal: 12, height: 32, borderRadius: radius.button, backgroundColor: colors.purpleLight, alignItems: 'center', justifyContent: 'center' },
+  tplButtonText: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '800' },
+  toast: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    backgroundColor: colors.textPrimary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 30,
+    elevation: 30,
+  },
+  toastText: { flex: 1, color: '#fff', fontSize: fontSize.body },
+  toastUndo: { color: '#CBB8EC', fontSize: fontSize.body, fontWeight: '800' },
   backText: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '600' },
   subTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   viewToggleFab: {

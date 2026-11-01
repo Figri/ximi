@@ -53,6 +53,8 @@ export const BACKUP_KV_KEYS = [
   'reminders_off_backup_v1',
   'ui_settings_v1',
   'today_layout_v1',
+  'plan_days_v1',
+  'plan_templates_v1',
 ] as const;
 
 export interface BackupFile {
