@@ -4,10 +4,10 @@ import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { SLOT_LABEL, type AgendaRow } from '../../lib/today';
 import type { ScheduleSlot } from '../../types';
 
-// 「作息和事项」：最上面一行直接写新事项（回车就加，认得出「周三 10点」这种），不用先点 ＋。
-// 下面是全天 + 各个时段，作息（例行）是方框，事项是圆圈。没东西的时段不占地方。
+// 「事项」：最上面一行直接写新事项（回车就加，认得出「周三 10点」这种），不用先点 ＋。
+// 下面是全天 + 各个时段（今天页不再放作息模板；有的话还是方框，事项是圆圈）。没东西的时段不占地方。
 // 点框就勾（今天页给 5 秒撤销）；长按事项能改（日期、重复、提醒、删掉）。
-// 以前没做完的一次性事项（顺延）先收成一行「以前没做完的 N 件」，点开再看，不挤占今天的。
+// 以前没做完的一次性事项（顺延）先收成一行「以前没做完的 N 件」，点开再看；每条右边一个 ↑，点了挪到今天做。
 
 const ORDER: ScheduleSlot[] = ['allday', '08', '10', '12', '14', '16', '18', '20', '22'];
 
@@ -17,9 +17,11 @@ interface Props {
   onEdit?: (row: AgendaRow) => void;
   /** 直接写的一句：存成事项 */
   onQuickAdd?: (text: string) => Promise<void>;
+  /** 以前没做完的那条点了 ↑：挪到今天 */
+  onPullToToday?: (row: AgendaRow) => void;
 }
 
-function Row({ r, onToggle, onEdit }: { r: AgendaRow; onToggle: (row: AgendaRow) => void; onEdit?: (row: AgendaRow) => void }) {
+function Row({ r, onToggle, onEdit, onPull }: { r: AgendaRow; onToggle: (row: AgendaRow) => void; onEdit?: (row: AgendaRow) => void; onPull?: (row: AgendaRow) => void }) {
   return (
     <Pressable
       style={styles.row}
@@ -38,6 +40,11 @@ function Row({ r, onToggle, onEdit }: { r: AgendaRow; onToggle: (row: AgendaRow)
       </Text>
       {r.starred ? <Text style={styles.star}>★</Text> : null}
       {r.carriedFrom ? <Text style={styles.tag}>{r.carriedFrom}</Text> : r.kind === 'routine' ? <Text style={styles.tag}>例行</Text> : r.repeatLabel ? <Text style={styles.tag}>{r.repeatLabel}</Text> : null}
+      {r.carriedFrom && onPull ? (
+        <Pressable style={styles.pull} onPress={() => onPull(r)} hitSlop={8} testID={`agenda-up-${r.title}`}>
+          <Text style={styles.pullText}>↑</Text>
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -63,7 +70,7 @@ function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
         style={styles.addInput}
         value={text}
         onChangeText={setText}
-        placeholder="加一件事，回车就加（周三 10点 带猫打疫苗）"
+        placeholder="加一件事…"
         placeholderTextColor={colors.textMuted}
         returnKeyType="done"
         onSubmitEditing={submit}
@@ -79,7 +86,7 @@ function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
   );
 }
 
-export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd }: Props) {
+export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToday }: Props) {
   const [showCarried, setShowCarried] = useState(false);
   const carried = (rows.allday ?? []).filter((r) => r.carriedFrom);
   const today: Record<string, AgendaRow[]> = {};
@@ -109,9 +116,9 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd }: Props) {
           {showCarried ? (
             <View style={styles.slotRows}>
               {carried.map((r) => (
-                <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} />
+                <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onPull={onPullToToday} />
               ))}
-              <Text style={styles.hint}>做了就勾掉；不想要了长按它，改日期或者删掉。</Text>
+              <Text style={styles.hint}>点 ↑ 挪到今天做；做了就勾掉；不要了长按改日期或删掉。</Text>
             </View>
           ) : null}
         </View>
@@ -146,5 +153,7 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: spacing.sm, marginBottom: 2 },
   addCircle: { width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, borderStyle: 'dashed' },
   addInput: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, paddingVertical: 9 },
+  pull: { width: 28, height: 24, borderRadius: 12, backgroundColor: colors.purpleLight, alignItems: 'center', justifyContent: 'center' },
+  pullText: { color: colors.purpleDark, fontSize: 15, fontWeight: '800', lineHeight: 18 },
   addSend: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '700', paddingHorizontal: 4 },
 });

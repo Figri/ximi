@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment as Keyed, useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +24,10 @@ import { isCompletedToday } from '../../lib/decay';
 import { buildDayDigest, dayWindow } from '../../lib/dayDigest';
 import { getPlaySession } from '../../lib/play';
 import { addCup, cupsToday, removeCup } from '../../lib/water';
+import { WATER_SLOTS } from '../../lib/waterPlan';
+import { cardsForDay, dayKindOf, DEFAULT_TODAY_LAYOUT, type TodayCardKey, type TodayLayout } from '../../lib/todayCards';
+import { loadTodayLayout } from '../../lib/todayLayout';
+import { updateItem } from '../../lib/todo';
 import { useDataBus } from '../../lib/dataBus';
 import { useCardStore } from '../../lib/store';
 import { useTodoStore } from '../../lib/todoStore';
@@ -40,8 +44,9 @@ import { ruleTodayLine, type TodayLineContext } from '../../lib/ling/templates';
 import type { ScheduleSlot, TodoItem } from '../../types';
 
 // 今天（需求文档 §8.1）：一页放下一天要用的东西，不用跳来跳去。从上到下：
-// 随心记（直接写；「现在怎么样」也在这儿：选个表情，单独记或者表情 + 一段话）→ 喝水（4 杯）→ 项目的下一步 → 作息和事项
-// → 娱乐出口（默认收着，正在玩时打开）→ 身体（体重、经期）→ 该照顾的（最底下，默认收着）。
+// 灵的一句话 → 随心记（直接写；「现在怎么样」也在这儿：选个表情，单独记或者表情 + 一段话）→ 喝水（4 杯）→ 项目的下一步
+// → 事项 → 娱乐出口（默认收着，正在玩时打开）→ 身体（体重、经期）→ 该照顾的（默认收着）。
+// 11/1 起这个顺序和显示隐藏她自己调（右上角「调整」，lib/todayCards.ts）；翻到以前的日子看那天的随心记、喝水、事项。
 // 日期条上每天的数字是那天记了几条随心记。
 // 全部读本地，断网也一样快；Notion 的「下一步」用上次同步的缓存，后台再去拉新的。
 // 一天从 5 点算起（灵的设定里能改）：凌晨还没睡时这里还是前一天。
@@ -116,6 +121,8 @@ export default function TodayScreen() {
   const catchFor = useRef<string | null>(null);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waterCups, setWaterCups] = useState(0);
+  /** 卡片顺序和显示隐藏（「调整」页里改，回到这页时重读） */
+  const [layout, setLayout] = useState<TodayLayout>(DEFAULT_TODAY_LAYOUT);
   /** 娱乐出口：她说不太用，默认收起来；有一局在玩（没到点或者到点了等她点）时自动打开 */
   const [playOpen, setPlayOpen] = useState(false);
   const [weights, setWeights] = useState<BodyRecord[]>([]);
@@ -135,7 +142,7 @@ export default function TodayScreen() {
 
   const loadAgendaFor = useCallback(
     async (key: string) => {
-      setAgenda(await loadAgenda(key, { includeCarried: key === lingDayKey(new Date(), settings.dayStartHour), dayStartHour: settings.dayStartHour }));
+      setAgenda(await loadAgenda(key, { includeCarried: key === lingDayKey(new Date(), settings.dayStartHour), dayStartHour: settings.dayStartHour, withRoutines: false }));
     },
     [settings.dayStartHour]
   );
@@ -208,10 +215,12 @@ export default function TodayScreen() {
     const key = lingDayKey(t, settings.dayStartHour);
     const { start, end } = dayWindow(key, settings.dayStartHour);
     const shownKey = selected ?? key;
-    const ag = await loadAgenda(shownKey, { includeCarried: shownKey === key, dayStartHour: settings.dayStartHour });
+    const ag = await loadAgenda(shownKey, { includeCarried: shownKey === key, dayStartHour: settings.dayStartHour, withRoutines: false });
     setAgenda(ag);
-    setFragments(await fragmentsBetween(start, end));
-    setWaterCups(await cupsToday(key, settings.dayStartHour).catch(() => 0));
+    const shown = shownKey === key ? { start, end } : dayWindow(shownKey, settings.dayStartHour);
+    setFragments(await fragmentsBetween(shown.start, shown.end));
+    setWaterCups(await cupsToday(shownKey, settings.dayStartHour).catch(() => 0));
+    setLayout(await loadTodayLayout());
     // 有一局在玩（包括已经到点、等她点「起来啦 / 再玩 10 分钟」的）就打开，不然到点的按钮看不见
     if (await getPlaySession().catch(() => null)) setPlayOpen(true);
     fetchCards();
@@ -220,6 +229,17 @@ export default function TodayScreen() {
     const c = agendaCount(ag);
     loadLine(key, shownKey === key ? c.total - c.done : 0).catch(() => {});
   }, [settings.dayStartHour, selected, fetchCards, loadNotion, loadLine]);
+
+  /** 翻到哪天：那天的事项、随心记、喝水 */
+  const loadDay = useCallback(
+    async (key: string) => {
+      await loadAgendaFor(key);
+      const w = dayWindow(key, settings.dayStartHour);
+      setFragments(await fragmentsBetween(w.start, w.end));
+      setWaterCups(await cupsToday(key, settings.dayStartHour).catch(() => 0));
+    },
+    [loadAgendaFor, settings.dayStartHour]
+  );
 
   const loadBody = useCallback(async () => {
     // 旧版工具箱里记的体重、生理期，第一次打开时搬进「身体」（搬过的不会重复）
@@ -311,7 +331,24 @@ export default function TodayScreen() {
     });
   }
 
-  /** 「作息和事项」里直接写的一句 → 事项（记在正在看的那天；说了哪天就记哪天），给 5 秒撤销 */
+  /** 以前没做完的那条点了 ↑：挪到今天（日期改成今天），5 秒内能撤销 */
+  async function onPullToToday(row: AgendaRow) {
+    if (!row.todo) return;
+    const from = row.todo.date;
+    await updateItem(row.todo.id, { date: todayKey });
+    await loadAgendaFor(dayKey);
+    rescheduleAll().catch(() => []);
+    showToast({
+      text: `挪到今天了：${row.title}`,
+      undo: async () => {
+        await updateItem(row.todo!.id, { date: from });
+        await loadAgendaFor(dayKey);
+        rescheduleAll().catch(() => []);
+      },
+    });
+  }
+
+  /** 「事项」里直接写的一句 → 事项（记在正在看的那天；说了哪天就记哪天），给 5 秒撤销 */
   async function onQuickAddTodo(text: string) {
     const saved = await quickAddTodo(text, dayKey);
     await loadAgendaFor(dayKey);
@@ -330,11 +367,17 @@ export default function TodayScreen() {
 
   /** 点了一个空杯子：喝了一杯，5 秒内能撤销；杯数变了喝水提醒跟着重排（喝够了的那个点就不叫了） */
   async function onDrink() {
-    const entry = await addCup();
+    // 翻到以前的日子是补记：算在那天第几杯对应的那个点
+    let at = new Date();
+    if (!isToday) {
+      at = keyToDate(dayKey);
+      at.setHours(WATER_SLOTS[Math.min(waterCups, WATER_SLOTS.length - 1)], 0, 0, 0);
+    }
+    const entry = await addCup(at);
     setWaterCups((n) => n + 1);
     rescheduleAll().catch(() => []);
     showToast({
-      text: '喝了一杯 · 500ml',
+      text: isToday ? '喝了一杯 · 500ml' : `补记了一杯 · ${mdLabel}`,
       undo: async () => {
         await removeCup(entry.id);
         setWaterCups((n) => Math.max(0, n - 1));
@@ -442,107 +485,69 @@ export default function TodayScreen() {
   const selectedDate = keyToDate(dayKey);
   const todayDate = keyToDate(todayKey);
   const todayWindow = dayWindow(todayKey, settings.dayStartHour);
+  const dayKind = dayKindOf(dayKey, todayKey);
+  const mdLabel = `${selectedDate.getMonth() + 1}/${selectedDate.getDate()}`;
+  /** 以前 / 以后的日子标题前面带上日期 */
+  const titled = (name: string) => (isToday ? name : `${mdLabel} 的${name}`);
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.pageTitle}>
-          今天 <Text style={styles.headerSub}>{`${todayDate.getMonth() + 1}月${todayDate.getDate()}日 ${WEEK[todayDate.getDay()]}`}</Text>
-        </Text>
-        {notionLine ? (
-          <Pressable onPress={() => router.push('/notion-connect')} hitSlop={8}>
-            <Text style={styles.notion}>{notionLine}</Text>
-          </Pressable>
-        ) : null}
-      </View>
-      <WeekDateStrip
-        date={selectedDate}
-        today={todayDate}
-        hideDateRow
-        onDateChange={(d) => {
-          const k = dateToKey(d);
-          setSelected(k === todayKey ? null : k);
-          loadAgendaFor(k);
-        }}
-        refreshKey={version + stripKey}
-        fetchCounts={async (dates) => {
-          // 每天记了几条随心记（按 5 点换日算那一天）
-          const out: Record<string, number> = {};
-          for (const d of dates) {
-            const k = dateToKey(d);
-            const w = dayWindow(k, settings.dayStartHour);
-            out[k] = (await fragmentsBetween(w.start, w.end)).length;
-          }
-          return out;
-        }}
-      />
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {isToday ? (
+  function renderCard(k: TodayCardKey) {
+    switch (k) {
+      case 'ling':
+        return (
           <Pressable style={styles.lingLine} onPress={() => router.push(routeForFeature('chat') as any)} testID="today-line">
             <Text style={styles.lingName}>灵</Text>
             <Text style={styles.lingText}>{line || ' '}</Text>
           </Pressable>
-        ) : null}
-
-        {isToday ? (
-          <Section title="随心记">
-            <FragmentsSection fragments={fragments} onAdd={onAddFragment} onDelete={onDeleteFragment} />
-            {catchText ? (
+        );
+      case 'fragments':
+        return (
+          <Section title={titled('随心记')}>
+            <FragmentsSection fragments={fragments} onAdd={onAddFragment} onDelete={onDeleteFragment} readOnly={!isToday} />
+            {isToday && catchText ? (
               <Pressable style={styles.catch} onPress={() => router.push(routeForFeature('chat') as any)} testID="today-catch">
                 <Text style={styles.catchText}>灵：{catchText}</Text>
                 <Text style={styles.catchLink}>去聊聊 ›</Text>
               </Pressable>
             ) : null}
           </Section>
-        ) : null}
-
-        {isToday ? (
-          <Section title="喝水">
-            <WaterSection cups={waterCups} onDrink={onDrink} />
+        );
+      case 'water':
+        return (
+          <Section title={titled('喝水')}>
+            <WaterSection cups={waterCups} onDrink={onDrink} past={!isToday} />
           </Section>
-        ) : null}
-
-        {isToday && steps.length ? (
+        );
+      case 'next':
+        return steps.length ? (
           <Section title="项目的下一步">
             <NextStepsSection steps={steps.slice(0, 3)} pendingId={pendingStep} error={stepError} onDone={onStepDone} />
           </Section>
-        ) : null}
-
-        <Section
-          title={isToday ? '作息和事项' : `${selectedDate.getMonth() + 1}/${selectedDate.getDate()} 的作息和事项`}
-          right={
-            <View style={styles.headLinks}>
-              {!isToday ? (
-                <Pressable
-                  onPress={() => {
-                    setSelected(null);
-                    loadAgendaFor(todayKey);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.headLink}>回到今天</Text>
-                </Pressable>
-              ) : null}
+        ) : null;
+      case 'agenda':
+        return (
+          <Section
+            title={titled('事项')}
+            right={
               <Pressable onPress={() => router.push(routeForFeature('schedule') as any)} hitSlop={8}>
                 <Text style={styles.headLink}>排一排 ›</Text>
               </Pressable>
-            </View>
-          }
-        >
-          <AgendaSection
-            rows={agenda}
-            onToggle={onToggle}
-            onQuickAdd={onQuickAddTodo}
-            onEdit={(row) => {
-              if (!row.todo) return;
-              fetchTodoMeta();
-              setEditingTodo(row.todo);
-            }}
-          />
-        </Section>
-
-        {isToday ? (
+            }
+          >
+            <AgendaSection
+              rows={agenda}
+              onToggle={onToggle}
+              onQuickAdd={onQuickAddTodo}
+              onPullToToday={onPullToToday}
+              onEdit={(row) => {
+                if (!row.todo) return;
+                fetchTodoMeta();
+                setEditingTodo(row.todo);
+              }}
+            />
+          </Section>
+        );
+      case 'play':
+        return (
           <Section
             title="娱乐出口"
             right={
@@ -552,21 +557,21 @@ export default function TodayScreen() {
             }
           >
             {playOpen ? (
-            <PlaySection
-              version={version}
-              dayStart={todayWindow.start}
-              dayEnd={todayWindow.end}
-              onChanged={() => {
-                rescheduleAll().catch(() => []);
-                loadLine(todayKey, 0).catch(() => {});
-                bump();
-              }}
-            />
+              <PlaySection
+                version={version}
+                dayStart={todayWindow.start}
+                dayEnd={todayWindow.end}
+                onChanged={() => {
+                  rescheduleAll().catch(() => []);
+                  loadLine(todayKey, 0).catch(() => {});
+                  bump();
+                }}
+              />
             ) : null}
           </Section>
-        ) : null}
-
-        {isToday ? (
+        );
+      case 'body':
+        return (
           <Section
             title="身体"
             right={
@@ -584,13 +589,77 @@ export default function TodayScreen() {
               onPeriodEnd={onPeriodEnd}
             />
           </Section>
-        ) : null}
-
-        {isToday ? (
+        );
+      case 'care':
+        return (
           <Section title="该照顾的">
             <CareSection />
           </Section>
+        );
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>
+          今天 <Text style={styles.headerSub}>{`${todayDate.getMonth() + 1}月${todayDate.getDate()}日 ${WEEK[todayDate.getDay()]}`}</Text>
+        </Text>
+        <View style={styles.headerRight}>
+          {notionLine ? (
+            <Pressable onPress={() => router.push('/notion-connect')} hitSlop={8} style={styles.notionBox}>
+              <Text style={styles.notion} numberOfLines={1}>
+                {notionLine}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => router.push('/today-layout')} hitSlop={8} testID="today-layout">
+            <Text style={styles.layoutLink}>调整</Text>
+          </Pressable>
+        </View>
+      </View>
+      <WeekDateStrip
+        date={selectedDate}
+        today={todayDate}
+        hideDateRow
+        onDateChange={(d) => {
+          const k = dateToKey(d);
+          setSelected(k === todayKey ? null : k);
+          loadDay(k);
+        }}
+        refreshKey={version + stripKey}
+        fetchCounts={async (dates) => {
+          // 每天记了几条随心记（按 5 点换日算那一天）
+          const out: Record<string, number> = {};
+          for (const d of dates) {
+            const k = dateToKey(d);
+            const w = dayWindow(k, settings.dayStartHour);
+            out[k] = (await fragmentsBetween(w.start, w.end)).length;
+          }
+          return out;
+        }}
+      />
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {!isToday ? (
+          <View style={styles.otherDay}>
+            <Text style={styles.otherDayText}>正在看 {mdLabel}{dayKind === 'past' ? '（以前）' : ''}</Text>
+            <Pressable
+              onPress={() => {
+                setSelected(null);
+                loadDay(todayKey);
+              }}
+              hitSlop={8}
+            >
+              <Text style={styles.headLink}>回到今天</Text>
+            </Pressable>
+          </View>
         ) : null}
+
+        {cardsForDay(layout, dayKind).map((k) => (
+          <Keyed key={k}>{renderCard(k)}</Keyed>
+        ))}
+
         <View style={{ height: 96 }} />
       </ScrollView>
       </KeyboardAvoidingView>
@@ -642,7 +711,12 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xs },
+  header: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xs, gap: spacing.sm },
+  headerRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.md, flexShrink: 1 },
+  notionBox: { flexShrink: 1 },
+  layoutLink: { fontSize: fontSize.body, color: colors.purpleDark, fontWeight: '600' },
+  otherDay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.blueLight, borderRadius: radius.widget, paddingHorizontal: spacing.md, paddingVertical: 8 },
+  otherDayText: { fontSize: fontSize.body, color: colors.blueDark, fontWeight: '600' },
   pageTitle: { fontSize: fontSize.pageTitle, fontWeight: '700', color: colors.textPrimary },
   headerSub: { fontSize: fontSize.body, fontWeight: '400', color: colors.textSecondary },
   notion: { fontSize: fontSize.tiny, color: colors.textMuted },

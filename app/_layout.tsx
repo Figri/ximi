@@ -179,6 +179,7 @@ export default function RootLayout() {
           <Stack.Screen name="care-groups" options={{ presentation: 'card' }} />
           <Stack.Screen name="schedule-template" options={{ presentation: 'modal' }} />
           <Stack.Screen name="reminders" options={{ presentation: 'card' }} />
+          <Stack.Screen name="today-layout" options={{ presentation: 'card' }} />
         </Stack>
         ) : (
           <View style={{ flex: 1, backgroundColor: colors.background }} />

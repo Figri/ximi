@@ -3,9 +3,10 @@ import { fetchDayView, SLOTS, setChecked } from './schedule';
 import { fetchItemsForDate, formatRepeatLabel, isDoneOnDate, parseDateKey, setItemDone } from './todo';
 import { loadCompletions as loadTodoCompletions, loadItems as loadTodoItems } from './todoLocal';
 
-// 今天页「作息和事项」（需求文档 §8.1 T-2、§8.5）：
-// 日程的作息模板（例行）、日程事项、事项模块里今天要做的、以前没做完的一次性事项（顺延，灰字，不标红）
-// 合成一张按时段排的单子。今天页上勾选、长按事项改；作息和日程事项在日程页排，新的用右下角 ＋。
+// 今天页「事项」（需求文档 §8.1 T-2、§8.5）：
+// 日程事项、事项模块里今天要做的、以前没做完的一次性事项（顺延，灰字，不标红）合成一张按时段排的单子。
+// 日程的作息模板（例行）11/1 起不放进今天页了（西米说作息另有安排），withRoutines: false；日程页照旧有。
+// 今天页上勾选、长按事项改；以前没做完的点 ↑ 挪到今天。
 
 export type AgendaKind = 'routine' | 'item' | 'todo';
 
@@ -55,11 +56,15 @@ function md(dateKey: string): string {
   return `${m}/${d}`;
 }
 
-export async function loadAgenda(dayKey: string, opts: { includeCarried?: boolean; dayStartHour?: number } = {}): Promise<Record<ScheduleSlot, AgendaRow[]>> {
+export async function loadAgenda(
+  dayKey: string,
+  opts: { includeCarried?: boolean; dayStartHour?: number; withRoutines?: boolean } = {}
+): Promise<Record<ScheduleSlot, AgendaRow[]>> {
   const out: Record<ScheduleSlot, AgendaRow[]> = { allday: [], '08': [], '10': [], '12': [], '14': [], '16': [], '18': [], '20': [], '22': [] };
   const view = await fetchDayView(dayKey);
   for (const [slot, rows] of Object.entries(view.rowsBySlot) as [ScheduleSlot, typeof view.rowsBySlot.allday][]) {
     for (const r of rows) {
+      if (r.source === 'template' && opts.withRoutines === false) continue;
       out[slot].push({
         key: r.key,
         kind: r.source === 'template' ? 'routine' : 'item',

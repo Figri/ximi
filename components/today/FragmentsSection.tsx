@@ -21,9 +21,11 @@ interface Props {
   /** mood 是选着的表情（没选是 null）；text 可以是空的（只记表情） */
   onAdd: (text: string, mood: MoodFace | null) => Promise<void>;
   onDelete: (f: Fragment) => void;
+  /** 翻到以前的日子：只看（长按照样能删），不显示输入框 */
+  readOnly?: boolean;
 }
 
-export function FragmentsSection({ fragments, onAdd, onDelete }: Props) {
+export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props) {
   const [text, setText] = useState('');
   const [mood, setMood] = useState<MoodFace | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -62,6 +64,7 @@ export function FragmentsSection({ fragments, onAdd, onDelete }: Props) {
 
   return (
     <View style={styles.wrap}>
+      {readOnly ? null : (
       <View style={styles.inputRow}>
         <Pressable style={[styles.moodBtn, mood && styles.moodBtnOn]} onPress={openPicker} hitSlop={4} testID="fragment-mood">
           <Text style={[styles.moodBtnText, !mood && styles.moodBtnIdle]}>{mood ? mood.face : '🙂'}</Text>
@@ -82,6 +85,8 @@ export function FragmentsSection({ fragments, onAdd, onDelete }: Props) {
           <Text style={styles.sendText}>记</Text>
         </Pressable>
       </View>
+      )}
+      {readOnly && !fragments.length ? <Text style={styles.hint}>这天没写随心记</Text> : null}
       {shown.map((f) => (
         <Pressable key={f.id} style={styles.row} onLongPress={() => onDelete(f)} delayLongPress={450} testID={`fragment-${f.id}`}>
           <Text style={styles.time}>{hhmm(f.at)}</Text>

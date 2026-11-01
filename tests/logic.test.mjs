@@ -1,6 +1,6 @@
 // 纯逻辑的自动测试：随手记一句话怎么归类（lib/captureParse.ts）、习惯到日子提醒和文案（lib/decay.ts）、
 // 时间页积分怎么加总（lib/pointsCalc.ts）；随心记的表情（lib/moods.ts）；灵的话别重样（lib/ling/templates.ts）；
-// 喝水哪天几杯、什么时候提醒（lib/waterPlan.ts）。
+// 喝水哪天几杯、什么时候提醒（lib/waterPlan.ts）；今天页卡片顺序和哪天显示哪些（lib/todayCards.ts）。
 // 不用装新依赖：用项目自带的 typescript 把这两个文件转成 CommonJS 放到临时目录再跑。
 // 跑法：npm test（有一条不对就以非 0 退出）。时间都按东八区算。
 process.env.TZ = 'Asia/Shanghai';
@@ -30,6 +30,7 @@ const { normalizePoints, formatPoints, dayKeyAt, mondayOf, summarizePoints, dayD
 const { MOOD_FACES, moodLine, moodNote } = load('lib/moods.ts');
 const T = load('lib/ling/templates.ts');
 const { plannedWaterReminders, cupsOnDay, waterDayKey } = load('lib/waterPlan.ts');
+const TC = load('lib/todayCards.ts');
 
 let failed = 0;
 let total = 0;
@@ -289,6 +290,22 @@ const waterCases = [
   ['这天喝了几杯', cupsOnDay([W('2026-10-31T09:00:00+08:00'), W('2026-10-31T23:30:00+08:00'), W('2026-11-01T01:00:00+08:00'), W('2026-11-01T09:00:00+08:00')], '2026-10-31', 5), 3],
 ];
 for (const [name, got, want] of waterCases) report(eq(got, want), `喝水 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
+
+// ---------- 今天页卡片（lib/todayCards.ts） ----------
+const all = TC.TODAY_CARDS.map((c) => c.key).join(',');
+const lay = (order, hidden = []) => TC.normalizeLayout({ order, hidden });
+const cardCases = [
+  ['没存过 → 默认顺序', TC.normalizeLayout(null).order.join(','), all],
+  ['存的是乱的：不认识的丢掉、重复的去掉、漏的按默认位置补回去', TC.normalizeLayout({ order: ['care', 'xx', 'care', 'water'] }).order.join(','), 'ling,fragments,care,water,next,agenda,play,body'],
+  ['藏起来的去重、不认识的丢掉', TC.normalizeLayout({ hidden: ['xx', 'play', 'play'] }).hidden.join(','), 'play'],
+  ['以后加的新卡片插回默认位置（喝水跟在随心记后面）', TC.normalizeLayout({ order: ['agenda', 'fragments', 'ling', 'next', 'play', 'body', 'care'] }).order.join(','), 'agenda,fragments,water,ling,next,play,body,care'],
+  ['今天：按她排的顺序、藏起来的不画', TC.cardsForDay(lay(['water', 'fragments', 'agenda', 'ling', 'next', 'play', 'body', 'care'], ['body', 'ling']), 'today').join(','), 'water,fragments,agenda,next,play,care'],
+  ['以前的日子：只有随心记、喝水、事项（照她的顺序）', TC.cardsForDay(lay(['water', 'care', 'agenda', 'fragments']), 'past').join(','), 'water,agenda,fragments'],
+  ['以前的日子：藏起来的照样不画', TC.cardsForDay(lay(TC.DEFAULT_TODAY_LAYOUT.order, ['water']), 'past').join(','), 'fragments,agenda'],
+  ['以后的日子：只有事项', TC.cardsForDay(TC.DEFAULT_TODAY_LAYOUT, 'future').join(','), 'agenda'],
+  ['哪天算以前 / 今天 / 以后', ['2026-10-31', '2026-11-01', '2026-11-02'].map((d) => TC.dayKindOf(d, '2026-11-01')).join(','), 'past,today,future'],
+];
+for (const [name, got, want] of cardCases) report(eq(got, want), `今天页卡片 ${name}: ${JSON.stringify(got)}${eq(got, want) ? '' : `（应该是 ${JSON.stringify(want)}）`}`);
 
 console.log(`\n${total - failed}/${total} 通过`);
 process.exit(failed ? 1 : 0);

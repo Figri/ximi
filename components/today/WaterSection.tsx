@@ -48,9 +48,12 @@ function Cup({ filled, next, onPress, index }: { filled: boolean; next: boolean;
 interface Props {
   cups: number;
   onDrink: () => void;
+  /** 翻到以前的日子：写「这天」，点空杯子是补记 */
+  past?: boolean;
 }
 
-export function WaterSection({ cups, onDrink }: Props) {
+export function WaterSection({ cups, onDrink, past }: Props) {
+  const day = past ? '这天' : '今天';
   const done = Math.min(cups, WATER_SLOTS.length);
   return (
     <View style={styles.wrap}>
@@ -61,8 +64,8 @@ export function WaterSection({ cups, onDrink }: Props) {
       </View>
       <Text style={styles.sum} testID="water-sum">
         {cups >= WATER_SLOTS.length
-          ? `今天 ${cups * CUP_ML}ml，喝够啦 🎉`
-          : `今天 ${cups * CUP_ML} / ${WATER_SLOTS.length * CUP_ML} ml · 喝了一杯就点一个空杯子`}
+          ? `${day} ${cups * CUP_ML}ml，喝够啦 🎉`
+          : `${day} ${cups * CUP_ML} / ${WATER_SLOTS.length * CUP_ML} ml · ${past ? '忘了点就补一下' : '喝了一杯就点一个空杯子'}`}
       </Text>
     </View>
   );
