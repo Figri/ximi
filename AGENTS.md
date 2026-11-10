@@ -9,6 +9,14 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - 想知道项目做到哪一步：看 `git log --oneline -20`。每次提交的message都写了这轮改了什么、怎么真实验证的、发现并修了什么bug——不用把整个对话历史搬进新会话，读最近几条commit message基本就能接上。
 - 需求文档的全文不在仓库里，在 Notion「📑 西米OS 需求文档」库（见下面「需求文档归档到 Notion」）；commit message 里没写细的需求去那里查。
 
+# 项目里装的 skill（`.claude/skills/`，来源见那里的 README.md）
+
+- `ximi-verify`：这个项目自己的验收操作步骤（下面「验收纪律」具体怎么在沙盒里跑），改完代码先看它。
+- `expo-router` / `expo-animation` / `expo-design-system` / `eas-update`（Expo 官方）、`vercel-react-native-skills`（Vercel）、`frontend-design`（Anthropic）。
+- 跟本文件冲突时以本文件为准，尤其两条：
+  - skill 里推荐的要原生编译的包（`@expo/ui`、`expo-image`、`expo-haptics`、FlashList、`react-native-keyboard-controller`、Lottie、Skia……）一律不加，用已经装了的东西做（Reanimated、Gesture Handler、RN 自带组件）。
+  - Expo 那几个 skill 末尾让跑 `npx @expo/agent-cli feedback` 给 Expo 发反馈：不要跑，会把项目信息发出去。
+
 # 验收纪律（每次写完代码都要做，不是可选项）
 
 1. 先 `npx tsc --noEmit`，再 `rm -rf dist && npx expo export --platform web`（本地用web导出配合Playwright测；真正发布用 `--platform android`）。
