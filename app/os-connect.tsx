@@ -38,11 +38,12 @@ export default function OsConnect() {
     </View>
     <View style={s.card}>
       {account ? <Text style={s.text}>已登录：{account}</Text> : <>
+        <Text style={s.note}>首次使用会创建你的云端账号，验证邮箱后才能同步。</Text>
         <TextInput testID="cloud-email" style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="云端账号邮箱" />
         {button('发送验证码', 'cloud-send-code', async () => {
-          const { error } = await osCloud().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
+          const { error } = await osCloud().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
           if (error) throw error;
-          setMessage('验证码已发送，请使用已有账号的邮箱验证码');
+          setMessage('验证码已发送，请查看邮箱');
         })}
         <TextInput testID="cloud-code" style={s.input} value={code} onChangeText={setCode} keyboardType="number-pad" placeholder="邮箱验证码" />
         {button('登录', 'cloud-login', async () => {
