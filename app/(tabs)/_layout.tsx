@@ -6,11 +6,7 @@ import { FEATURES, FEATURE_BY_KEY } from '../../lib/features';
 import { useLayoutStore } from '../../lib/layoutStore';
 import { CaptureSheet } from '../../components/capture/CaptureSheet';
 
-// 底栏按用户自定义的布局动态渲染：全部功能屏幕都声明在这里（expo-router 的
-// Tabs 本身是静态声明式的，改不了这点），在底栏里展示的那几个给正常 href，
-// 不展示的给 href:null——href:null 的屏幕不占底栏按钮位置、但依然可以被
-// router.push 跳转到（"其他"页里"更多功能"那些图标点进去走的就是这条路）。
-// "其他"永远最后一个声明，所以永远在底栏最右边、永远展示。
+// 底栏固定为今日、习惯、时间、其他。其余页面保留路由，由其他页进入。
 export default function TabsLayout() {
   const { topKeys, load } = useLayoutStore();
 
@@ -19,7 +15,7 @@ export default function TabsLayout() {
   }, []);
 
   const topSet = new Set(topKeys);
-  // 渲染顺序 = 底栏从左到右的顺序：按 topKeys 的顺序先摆 3 个展示的，
+  // 渲染顺序 = 底栏从左到右的顺序：先摆三个固定入口，
   // 再摆其余不展示的（href:null，顺序无所谓，反正不出现在底栏上），
   // "其他"固定摆最后。
   const orderedKeys = [

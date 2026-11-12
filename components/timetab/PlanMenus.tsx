@@ -338,7 +338,6 @@ export function TemplateSheet({ visible, weekKeys, onClose, onToast }: TemplateS
     <Sheet visible={visible} onClose={onClose} testID="tpl-sheet">
       <View style={styles.titleRow}>
         <Text style={styles.title}>模板</Text>
-        <Text style={styles.titleNote}>套用以后能撤销 · 长按改名、删除</Text>
       </View>
 
       <Text style={styles.sec}>周模板</Text>

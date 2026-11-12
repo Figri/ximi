@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import * as Updates from 'expo-updates';
 import { colors, currentFontScale, FONT_SCALES, fontSize, lh, radius, spacing, type FontScaleKey } from '../../../constants/theme';
 import { loadUiSettings, saveUiSettings } from '../../../lib/uiSettings';
@@ -14,7 +13,6 @@ import { clearCrashes, loadCrashes, markSessionBackground, type CrashEntry } fro
 import { loadNotionIds } from '../../../lib/notion/discover';
 
 const ICON_SIZE = 60;
-const DIVIDER_SENTINEL = '__divider__';
 
 function fmtTime(iso: string) {
   const d = new Date(iso);
@@ -41,12 +39,7 @@ function FeatureIcon({ feature, onPress }: { feature: Feature; onPress: () => vo
 }
 
 export default function OtherScreen() {
-  const { topKeys, save } = useLayoutStore();
-  const [mode, setMode] = useState<'browse' | 'edit'>('browse');
-  const [editData, setEditData] = useState<string[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-
+  const { topKeys } = useLayoutStore();
   const [checking, setChecking] = useState(false);
   // 检查更新的结果写在按钮下面，不弹系统框；下好了多一个「现在重启」
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
@@ -119,107 +112,13 @@ export default function OtherScreen() {
 
   const bottomKeys = ASSIGNABLE_KEYS.filter((k) => !topKeys.includes(k));
 
-  function enterEdit() {
-    setEditData([...topKeys, DIVIDER_SENTINEL, ...bottomKeys]);
-    setMode('edit');
-  }
-
-  function handleCancelEdit() {
-    setMode('browse');
-  }
-
-  function showToast(text: string) {
-    setToast(text);
-    toastOpacity.setValue(1);
-    Animated.timing(toastOpacity, { toValue: 0, duration: 400, delay: 1200, useNativeDriver: true }).start(() => setToast(null));
-  }
-
-  async function handleSaveEdit() {
-    const top3 = editData.filter((k) => k !== DIVIDER_SENTINEL).slice(0, 3);
-    await save(top3);
-    setMode('browse');
-    showToast('已保存');
-  }
-
-  // 插入式拖动：divider哨兵始终被过滤掉再按"前3/其余"重新切一刀插回原位置，
-  // 它自己从不参与拖拽判定（renderItem没给它接onLongPress={drag}），纯靠这里
-  // 每次重新摆放位置来"钉"在第3项后面——不管前面拖成什么样，它永远紧跟在
-  // 当前的前3个后面，天然实现"挤出第3个→新的候选自动顶上来"
-  function handleDragEnd({ data }: { data: string[] }) {
-    const withoutDivider = data.filter((k) => k !== DIVIDER_SENTINEL);
-    const top3 = withoutDivider.slice(0, 3);
-    const rest = withoutDivider.slice(3);
-    setEditData([...top3, DIVIDER_SENTINEL, ...rest]);
-  }
-
-  function renderEditItem({ item, drag, isActive }: RenderItemParams<string>) {
-    if (item === DIVIDER_SENTINEL) {
-      return (
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerLabel}>更多功能</Text>
-          <View style={styles.dividerLine} />
-        </View>
-      );
-    }
-    const feature = FEATURE_BY_KEY[item];
-    return (
-      <ScaleDecorator>
-        <Pressable
-          style={[styles.editRow, isActive && styles.editRowActive]}
-          onLongPress={drag}
-          delayLongPress={150}
-        >
-          <Text style={styles.editRowEmoji}>{feature.icon}</Text>
-          <Text style={styles.editRowLabel}>{feature.label}</Text>
-          <Text style={styles.editRowHandle}>⠿</Text>
-        </Pressable>
-      </ScaleDecorator>
-    );
-  }
-
-  if (mode === 'edit') {
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={handleCancelEdit}>
-            <Text style={styles.cancelText}>取消</Text>
-          </Pressable>
-          <Text style={styles.pageTitle}>调整底栏</Text>
-          <Pressable onPress={handleSaveEdit}>
-            <Text style={styles.saveText}>保存</Text>
-          </Pressable>
-        </View>
-        <DraggableFlatList
-          data={editData}
-          keyExtractor={(k) => k}
-          renderItem={renderEditItem}
-          onDragEnd={handleDragEnd}
-          contentContainerStyle={styles.editListContent}
-          ListHeaderComponent={<Text style={styles.sectionLabel}>底栏显示（长按拖动排序，拖到下面会被换下去）</Text>}
-        />
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <Text style={styles.pageTitle}>其他</Text>
-        <Pressable onPress={enterEdit}>
-          <Text style={styles.editText}>编辑</Text>
-        </Pressable>
+
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.sectionLabel}>底栏显示</Text>
-        <View style={styles.grid}>
-          {topKeys.map((k) => (
-            <FeatureIcon key={k} feature={FEATURE_BY_KEY[k]} onPress={() => router.push(FEATURE_BY_KEY[k].route as any)} />
-          ))}
-        </View>
-
-        <View style={styles.sectionDivider} />
-
         <Text style={styles.sectionLabel}>更多功能</Text>
         <View style={styles.grid}>
           {bottomKeys.map((k) => (
@@ -363,11 +262,7 @@ export default function OtherScreen() {
         </View>
       </ScrollView>
 
-      {toast && (
-        <Animated.View style={[styles.toast, { opacity: toastOpacity }]} pointerEvents="none">
-          <Text style={styles.toastText}>{toast}</Text>
-        </Animated.View>
-      )}
+
       <CaptureFab />
     </SafeAreaView>
   );

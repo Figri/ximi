@@ -57,3 +57,7 @@ assert.deepEqual(bodies.find(r=>r.id==='old-period'),original);
 assert.equal(bodies.filter(r=>r.kind==='period_day').length,1);
 assert.equal(bodies.find(r=>r.kind==='period_day').note,'今天的描述');
 console.log('✓ 生理期直接勾选、取消和描述保存，原有周期记录不被改写');
+
+assert.deepEqual(D.weekDays('2026-01-01'), ['2025-12-29','2025-12-30','2025-12-31','2026-01-01','2026-01-02','2026-01-03','2026-01-04']);
+assert.equal(D.weekDays('2026-11-15')[0], '2026-11-09');
+console.log('✓ 周视图周一开始，周日与跨年仍连续七天');

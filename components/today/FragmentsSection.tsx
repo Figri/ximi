@@ -8,8 +8,8 @@ import { growInputProps } from './growInput';
 
 // 「随心记」：今天随手的一句话，直接在这儿写，回车就记下。晚上写进 Notion 日记的「今日碎片」。
 // 输入框左边的表情按钮：选一个「现在怎么样」，可以只记表情，也可以表情 + 一段话（也记进状态日志）。
-// 新的在上面，多了先收着；长按一条删掉（有撤销）。
-// 写的时候字多了输入框往下长，最多 4 行（再多在框里滚），回车还是「记」。
+// 新的在上面，多了先收着；长按一条打开编辑弹窗。
+// 写的时候字多了输入框往下长，最多 7 行（再多在框里滚），回车还是「记」。
 // 空着的时候框按提示字的长短长，提示字写短，大字号窄屏上也是一行。
 
 function hhmm(iso: string): string {
@@ -23,12 +23,12 @@ interface Props {
   fragments: Fragment[];
   /** mood 是选着的表情（没选是 null）；text 可以是空的（只记表情） */
   onAdd: (text: string, mood: MoodFace | null) => Promise<void>;
-  onDelete: (f: Fragment) => void;
-  /** 翻到以前的日子：只看（长按照样能删），不显示输入框 */
+  onEdit: (f: Fragment) => void;
+  /** 翻到以前的日子：只看（长按编辑），不显示输入框 */
   readOnly?: boolean;
 }
 
-export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props) {
+export function FragmentsSection({ fragments, onAdd, onEdit, readOnly }: Props) {
   const [text, setText] = useState('');
   const [mood, setMood] = useState<MoodFace | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -90,7 +90,7 @@ export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props
       )}
       {readOnly && !fragments.length ? <Text style={styles.hint}>这天没写随心记</Text> : null}
       {shown.map((f) => (
-        <Pressable key={f.id} style={styles.row} onLongPress={() => onDelete(f)} delayLongPress={450} testID={`fragment-${f.id}`}>
+        <Pressable key={f.id} style={styles.row} onLongPress={() => onEdit(f)} delayLongPress={450} testID={`fragment-${f.id}`}>
           <Text style={styles.time}>{hhmm(f.at)}</Text>
           <Text style={styles.text}>{f.text}</Text>
         </Pressable>
@@ -100,13 +100,12 @@ export function FragmentsSection({ fragments, onAdd, onDelete, readOnly }: Props
           <Text style={styles.more}>{all ? '收起' : `还有 ${newestFirst.length - FOLD} 条 ›`}</Text>
         </Pressable>
       ) : null}
-      {fragments.length ? <Text style={styles.hint}>长按一条能删掉</Text> : null}
       <MoodPicker visible={pickerOpen} selected={mood} onPick={pick} onClose={() => setPickerOpen(false)} />
     </View>
   );
 }
 
-/** 输入框一行的行高（跟下面一条条的字一样）；最多长到 4 行 */
+/** 输入框一行的行高（跟下面一条条的字一样）；最多长到 7 行 */
 const LINE = lh(22);
 const PAD = 9;
 /** 网页上的 textarea 不会自己长高，让它按内容长（安卓上 multiline 本来就会） */
@@ -129,8 +128,8 @@ const styles = StyleSheet.create({
     paddingBottom: PAD,
     fontSize: fontSize.reading,
     lineHeight: LINE,
-    minHeight: LINE + PAD * 2,
-    maxHeight: LINE * 4 + PAD * 2 + 2,
+    minHeight: LINE * 2 + PAD * 2,
+    maxHeight: LINE * 7 + PAD * 2 + 2,
     color: colors.textPrimary,
     textAlignVertical: 'top',
   },

@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, T
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { db } from '../../lib/localdb';
 import { parseKg } from '../../lib/body';
 import { addCatEvent, deleteCatEvent, fetchCat, fetchCatEvents } from '../../lib/cats';
 import { catTodos, parseNextDate, scheduleNextForCat, type CatTodo } from '../../lib/catTodos';
@@ -10,7 +11,7 @@ import { rescheduleAll } from '../../lib/ling/proactive';
 import type { Cat, CatEvent, CatEventType } from '../../types';
 
 // 一只猫的页（需求文档 §8.8）：疫苗、驱虫、看医生、体重的记录；记的时候填了「下次」，就在那天建一条事项，
-// 今天页和猫咪页都能看到。记错了长按那条删掉，5 秒内能撤销（跟身体页一样）。
+// 今天页和猫咪页都能看到。长按记录打开编辑弹窗，删除在弹窗中操作。
 
 const EVENT_TYPES: { type: CatEventType; emoji: string }[] = [
   { type: '绝育', emoji: '✂️' },
@@ -27,6 +28,7 @@ export default function CatDetailScreen() {
   const [events, setEvents] = useState<CatEvent[]>([]);
   const [todos, setTodos] = useState<CatTodo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<CatEvent | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [undo, setUndo] = useState<{ text: string; event: CatEvent } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,9 +120,8 @@ export default function CatDetailScreen() {
 
         <Text style={styles.sectionTitle}>事件时间线</Text>
         {events.length === 0 && <Text style={styles.empty}>还没有记录，点上面「加事件」加一条</Text>}
-        {events.length ? <Text style={styles.hint}>记错了长按那条就删掉，5 秒内能撤销</Text> : null}
         {events.map((e) => (
-          <Pressable key={e.id} style={styles.eventRow} onLongPress={() => remove(e)} delayLongPress={450} testID={`cat-event-${e.event_type}`}>
+          <Pressable key={e.id} style={styles.eventRow} onLongPress={() => setEditing(e)} delayLongPress={450} testID={`cat-event-${e.event_type}`}>
             <Text style={styles.eventEmoji}>{EVENT_TYPES.find((t) => t.type === e.event_type)?.emoji ?? '📝'}</Text>
             <View style={styles.eventBody}>
               <Text style={styles.eventTitle}>
@@ -144,10 +145,13 @@ export default function CatDetailScreen() {
       ) : null}
 
       <AddEventModal
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
+        item={editing}
+        visible={addOpen || !!editing}
+        onDelete={async () => { if (editing) { await remove(editing); setEditing(null); } }}
+        onClose={() => { setAddOpen(false); setEditing(null); }}
         onAdded={() => {
           setAddOpen(false);
+          setEditing(null);
           load();
         }}
         catId={cat.id}
@@ -160,6 +164,8 @@ export default function CatDetailScreen() {
 const NEEDS_NEXT: CatEventType[] = ['疫苗', '驱虫', '看医生'];
 
 function AddEventModal({
+  item,
+  onDelete,
   visible,
   onClose,
   onAdded,
@@ -167,6 +173,8 @@ function AddEventModal({
   catName,
 }: {
   visible: boolean;
+  item?: CatEvent | null;
+  onDelete?: () => Promise<void>;
   onClose: () => void;
   onAdded: () => void;
   catId: string;
@@ -178,6 +186,12 @@ function AddEventModal({
   const [next, setNext] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    setType(item?.event_type ?? '体重'); setValue(item?.value == null ? '' : String(item.value));
+    setDescription(item?.description ?? ''); setNext(''); setError(null);
+  }, [visible, item]);
 
   async function handleSave() {
     setError(null);
@@ -195,12 +209,11 @@ function AddEventModal({
     setSaving(true);
     try {
       // 跟今天页「记体重」一样存带时间的 ISO：同一天记两次也分得清哪次在后
-      await addCatEvent(catId, {
-        event_type: type,
-        description: description.trim() || null,
-        value: kg,
-        event_date: new Date().toISOString(),
-      });
+      const patch = { event_type: type, description: description.trim() || null, value: kg };
+      if (item) {
+        const { error } = await db.from('cat_events').update(patch).eq('id', item.id);
+        if (error) throw new Error(error.message);
+      } else await addCatEvent(catId, { ...patch, event_date: new Date().toISOString() });
       if (nextDate) {
         await scheduleNextForCat(catId, catName, type === '看医生' ? '复查' : type, nextDate);
         rescheduleAll().catch(() => []);
@@ -221,7 +234,7 @@ function AddEventModal({
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView behavior="padding">
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>加一条事件</Text>
+            <Text style={styles.sheetTitle}>{item ? '编辑事件' : '加一条事件'}</Text>
             <View style={styles.typeRow}>
               {EVENT_TYPES.map((t) => (
                 <Pressable
@@ -240,6 +253,7 @@ function AddEventModal({
                 style={styles.input}
                 value={value}
                 onChangeText={setValue}
+                testID="cat-edit-value"
                 placeholder="多少 kg"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="decimal-pad"
@@ -249,6 +263,7 @@ function AddEventModal({
               style={[styles.input, styles.notesInput]}
               value={description}
               onChangeText={setDescription}
+              testID="cat-edit-description"
               placeholder="备注（可以不填）"
               placeholderTextColor={colors.textMuted}
               multiline
@@ -264,6 +279,9 @@ function AddEventModal({
               />
             )}
             {error ? <Text style={styles.error}>{error}</Text> : null}
+            {item && onDelete ? <Pressable testID="cat-delete" disabled={saving} onPress={async () => {
+              setSaving(true); try { await onDelete(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
+            }}><Text style={styles.error}>删除</Text></Pressable> : null}
             <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving} testID="cat-save">
               <Text style={styles.saveButtonText}>{saving ? '保存中…' : '保存'}</Text>
             </Pressable>

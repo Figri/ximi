@@ -38,7 +38,7 @@ function Row({ r, onToggle, onEdit, onPull, onStar }: RowProps) {
     <Pressable
       style={styles.row}
       onPress={() => onToggle(r)}
-      onLongPress={r.kind === 'todo' && onEdit ? () => onEdit(r) : undefined}
+      onLongPress={onEdit ? () => onEdit(r) : undefined}
       delayLongPress={400}
       hitSlop={4}
       testID={`agenda-${r.title}`}

@@ -7,7 +7,8 @@ import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { NextStepsSection } from '../../components/today/NextStepsSection';
 import { AgendaSection } from '../../components/today/AgendaSection';
-import { HabitsSection } from '../../components/today/HabitsSection';
+import { RecordEditModal } from '../../components/common/RecordEditModal';
+import { db } from '../../lib/localdb';
 import { CareSection } from '../../components/today/CareSection';
 import { PlaySection } from '../../components/today/PlaySection';
 import { FragmentsSection } from '../../components/today/FragmentsSection';
@@ -131,6 +132,8 @@ export default function TodayScreen() {
   const [weights, setWeights] = useState<BodyRecord[]>([]);
   const [periods, setPeriods] = useState<BodyRecord[]>([]);
   const [weighOpen, setWeighOpen] = useState(false);
+  const [editingFragment, setEditingFragment] = useState<Fragment | null>(null);
+  const [editingAgenda, setEditingAgenda] = useState<AgendaRow | null>(null);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   /** 这一页自己加 / 改 / 删了事项：日期条上每天的件数跟着重算（别处改的走 dataBus 的 version） */
@@ -439,7 +442,7 @@ export default function TodayScreen() {
       .finally(() => loadLine(todayKey, 0).catch(() => {}));
   }
 
-  /** 长按删一条：5 秒内能撤销；带表情的，没撤销才把状态日志那行（已经进 Notion 的归档）和灵的那句接住一起拿掉 */
+  /** 弹窗里删除一条：5 秒内能撤销；带表情的，没撤销才把状态日志那行（已经进 Notion 的归档）和灵的那句接住一起拿掉 */
   async function onDeleteFragment(f: Fragment) {
     await deleteFragment(f.id);
     setFragments((prev) => prev.filter((x) => x.id !== f.id));
@@ -528,13 +531,8 @@ export default function TodayScreen() {
       case 'fragments':
         return (
           <Section title={titled('随心记')}>
-            <FragmentsSection fragments={fragments} onAdd={onAddFragment} onDelete={onDeleteFragment} readOnly={!isToday} />
-            {isToday && catchText ? (
-              <Pressable style={styles.catch} onPress={() => router.push(routeForFeature('chat') as any)} testID="today-catch">
-                <Text style={styles.catchText}>灵：{catchText}</Text>
-                <Text style={styles.catchLink}>去聊聊 ›</Text>
-              </Pressable>
-            ) : null}
+            <FragmentsSection fragments={fragments} onAdd={onAddFragment} onEdit={setEditingFragment} readOnly={!isToday} />
+
           </Section>
         );
       case 'water':
@@ -566,12 +564,11 @@ export default function TodayScreen() {
               onPullToToday={onPullToToday}
               onStar={onStar}
               onEdit={(row) => {
-                if (!row.todo) return;
+                if (!row.todo) { setEditingAgenda(row); return; }
                 fetchTodoMeta();
                 setEditingTodo(row.todo);
               }}
             />
-            <HabitsSection date={dayKey} today={todayKey} onDateChange={key=>{setSelected(key===todayKey?null:key);loadDay(key);}} />
           </Section>
         );
       case 'play':
@@ -631,7 +628,7 @@ export default function TodayScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>
-          今天 <Text style={styles.headerSub}>{`${todayDate.getMonth() + 1}月${todayDate.getDate()}日 ${WEEK[todayDate.getDay()]}`}</Text>
+          今日 <Text style={styles.headerSub}>{`${todayDate.getMonth() + 1}月${todayDate.getDate()}日 ${WEEK[todayDate.getDay()]}`}</Text>
         </Text>
         <View style={styles.headerRight}>
           {notionLine ? (
@@ -641,9 +638,7 @@ export default function TodayScreen() {
               </Text>
             </Pressable>
           ) : null}
-          <Pressable onPress={() => router.push('/today-layout')} hitSlop={8} testID="today-layout">
-            <Text style={styles.layoutLink}>调整</Text>
-          </Pressable>
+
         </View>
       </View>
       <WeekDateStrip
@@ -684,7 +679,7 @@ export default function TodayScreen() {
           </View>
         ) : null}
 
-        {cardsForDay(layout, dayKind).filter(k=>k!=='care'&&k!=='water').map((k) => (
+        {(['fragments', 'agenda'] as TodayCardKey[]).map((k) => (
           <Keyed key={k}>{renderCard(k)}</Keyed>
         ))}
 
@@ -714,6 +709,23 @@ export default function TodayScreen() {
           completeWeighHabit(catIds);
           loadBody();
         }}
+      />
+      <RecordEditModal
+        visible={!!editingFragment} title="编辑随心记" text={editingFragment?.text ?? ''}
+        onClose={() => setEditingFragment(null)}
+        onSave={async (text) => {
+          if (!editingFragment) return;
+          const { error } = await db.from('fragments').update({ text, updated_at: new Date().toISOString() }).eq('id', editingFragment.id);
+          if (error) throw new Error(error.message);
+          await loadDay(dayKey); bump();
+        }}
+        onDelete={async () => { if (editingFragment) await onDeleteFragment(editingFragment); }}
+      />
+      <RecordEditModal
+        visible={!!editingAgenda} title="编辑事项" text={editingAgenda?.title ?? ''}
+        onClose={() => setEditingAgenda(null)}
+        onSave={async (text) => { if (editingAgenda?.refId) await updateScheduleItem(editingAgenda.refId, { title: text }); await loadAgendaFor(dayKey); bump(); }}
+        onDelete={async () => { if (editingAgenda?.refId) { const { deleteItem } = await import('../../lib/schedule'); await deleteItem(editingAgenda.refId); } await loadAgendaFor(dayKey); bump(); }}
       />
       <TodoFormModal
         visible={!!editingTodo}

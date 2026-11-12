@@ -65,7 +65,7 @@ export function HabitHistorySheet({ target, cats, onClose, onEdit, onEditEntry, 
               </Text>
               <ScrollView style={styles.list} contentContainerStyle={styles.listInner}>
                 {rows == null ? <Text style={styles.empty}>读取中…</Text> : null}
-                {rows && !rows.length ? <Text style={styles.empty}>还没做过。做了点一下圆圈就会记在这儿。</Text> : null}
+                {rows && !rows.length ? <Text style={styles.empty}>暂无记录</Text> : null}
                 {(rows ?? []).map((r) => {
                   const d = dateOf(completionDay(r,dayStartHour));
                   const k = dayKey(d);
@@ -73,7 +73,7 @@ export function HabitHistorySheet({ target, cats, onClose, onEdit, onEditEntry, 
                   lastDay = k;
                   const who = (r.selected_cats ?? []).map((id) => catName.get(id)).filter(Boolean).join('、');
                   return (
-                    <Pressable key={r.id} style={styles.row} testID="history-row" onPress={()=>onEditEntry?.(r)}>
+                    <Pressable key={r.id} style={styles.row} testID="history-row" onLongPress={()=>onEditEntry?.(r)} delayLongPress={400}>
                       <Text style={[styles.date, !firstOfDay && styles.dateRepeat]}>
                         {firstOfDay ? `${d.getMonth() + 1}/${d.getDate()} ${WEEK[d.getDay()]}` : ''}
                       </Text>

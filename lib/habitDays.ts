@@ -25,3 +25,10 @@ export function monthDays(month: string): (string | null)[] {
 export function shiftMonth(month: string, delta: number): string {
   const d = dateOf(`${month}-01`); d.setMonth(d.getMonth()+delta); return dateKey(d).slice(0,7);
 }
+
+/** 周一开始；跨年也保持同一周连续七天。 */
+export function weekDays(key: string): string[] {
+  const d = dateOf(key);
+  const monday = shiftDay(key, -((d.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => shiftDay(monday, i));
+}

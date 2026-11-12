@@ -2,6 +2,10 @@ import { useCallback, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RecordEditModal } from '../../components/common/RecordEditModal';
+import { db } from '../../lib/localdb';
+import { dateOf } from '../../lib/habitDays';
+import { useDataBus } from '../../lib/dataBus';
 import { PageTitle } from '../../components/common/PageTitle';
 import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { addWeight, daysBetween, deleteBody, endPeriod, listBody, parseKg, startPeriod, type BodyRecord } from '../../lib/body';
@@ -9,7 +13,7 @@ import { buildDayDigest } from '../../lib/dayDigest';
 import { lingDayKey, useLingSettings } from '../../lib/ling/settings';
 
 // 身体（需求文档 §8.9）：体重曲线；睡眠从「睡觉」时间块自动算；经期默认私密——不进灵的提示词和主动消息。
-// 删除都给 5 秒撤销，不弹系统确认框。
+// 长按记录打开编辑弹窗，删除只放在弹窗中。
 
 function keyOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -25,9 +29,9 @@ export default function BodyScreen() {
   const [weights, setWeights] = useState<BodyRecord[]>([]);
   const [periods, setPeriods] = useState<BodyRecord[]>([]);
   const [sleep, setSleep] = useState<{ key: string; hours: number | null }[]>([]);
+  const [editing, setEditing] = useState<BodyRecord | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ text: string; restore: () => Promise<void> } | null>(null);
 
   const load = useCallback(async () => {
     setWeights(await listBody('weight'));
@@ -60,21 +64,6 @@ export default function BodyScreen() {
     await addWeight(today, Math.round(v * 10) / 10);
     setDraft('');
     load();
-  }
-
-  function remove(r: BodyRecord, label: string) {
-    deleteBody(r.id).then(load);
-    setUndo({
-      text: `删了${label}`,
-      restore: async () => {
-        if (r.kind === 'weight') await addWeight(r.date, r.value ?? 0, r.note);
-        else {
-          const p = await startPeriod(r.date);
-          if (r.end_date) await endPeriod(p.id, r.end_date);
-        }
-      },
-    });
-    setTimeout(() => setUndo((u) => (u && u.text === `删了${label}` ? null : u)), 5000);
   }
 
   const recent = weights.slice(0, 12).reverse();
@@ -112,7 +101,7 @@ export default function BodyScreen() {
                 {recent.map((w) => {
                   const h = max === min ? 50 : 16 + ((w.value! - min) / (max - min)) * 64;
                   return (
-                    <Pressable key={w.id} style={styles.col} onLongPress={() => remove(w, `${md(w.date)} 的体重`)} delayLongPress={450}>
+                    <Pressable key={w.id} style={styles.col} onLongPress={() => setEditing(w)} testID={`body-weight-${w.id}`} delayLongPress={450}>
                       <Text style={styles.colValue}>{w.value}</Text>
                       <View style={[styles.colBar, { height: h }]} />
                       <Text style={styles.colLabel}>{md(w.date)}</Text>
@@ -123,7 +112,6 @@ export default function BodyScreen() {
             ) : (
               <Text style={styles.muted}>还没记过。</Text>
             )}
-            {recent.length ? <Text style={styles.muted}>长按一根柱子可以删掉。</Text> : null}
           </View>
 
           <View style={styles.card}>
@@ -159,7 +147,7 @@ export default function BodyScreen() {
             {periods.slice(0, 6).map((p, i) => {
               const prev = periods[i + 1];
               return (
-                <Pressable key={p.id} style={styles.periodRow} onLongPress={() => remove(p, `${md(p.date)} 那次经期`)} delayLongPress={450}>
+                <Pressable key={p.id} style={styles.periodRow} onLongPress={() => setEditing(p)} testID={`body-period-${p.id}`} delayLongPress={450}>
                   <Text style={styles.line}>
                     {md(p.date)} – {p.end_date ? md(p.end_date) : '还没结束'}
                     {p.end_date ? `（${daysBetween(p.date, p.end_date) + 1} 天）` : ''}
@@ -172,23 +160,29 @@ export default function BodyScreen() {
           <View style={{ height: 60 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-      {undo ? (
-        <View style={styles.toast}>
-          <Text style={styles.toastText}>{undo.text}</Text>
-          <Pressable
-            onPress={async () => {
-              const u = undo;
-              setUndo(null);
-              await u.restore();
-              load();
-            }}
-            hitSlop={10}
-            testID="body-undo"
-          >
-            <Text style={styles.toastUndo}>撤销</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <RecordEditModal visible={!!editing} title={`编辑${editing?.kind === 'weight' ? '体重' : '经期'} · ${editing?.date ?? ''}`} allowEmpty
+        heading={editing?.kind === 'weight' ? String(editing.value ?? '') : editing?.end_date ?? ''}
+        headingLabel={editing?.kind === 'weight' ? '体重 kg' : '结束日期 YYYY-MM-DD（可留空）'} text={editing?.note ?? ''}
+        onClose={() => setEditing(null)}
+        onSave={async (note, heading) => {
+          if (!editing) return;
+          let patch: Partial<BodyRecord> = { note };
+          if (editing.kind === 'weight') {
+            const value = parseKg(heading ?? '', 20, 300);
+            if (value == null) throw new Error('请填写有效体重');
+            patch.value = value;
+          } else {
+            const end = heading?.trim() || null;
+            if (end) { dateOf(end); if (end < editing.date) throw new Error('结束日期不能早于开始日期'); }
+            patch.end_date = end;
+          }
+          const { error } = await db.from('body_records').update(patch).eq('id', editing.id);
+          if (error) throw new Error(error.message);
+          await load(); useDataBus.getState().bump();
+        }}
+        onDelete={async () => { if (editing) { await deleteBody(editing.id); await load(); useDataBus.getState().bump(); } }}
+      />
+
     </SafeAreaView>
   );
 }

@@ -64,7 +64,8 @@ export async function endPeriod(id: string, date: string | null): Promise<void> 
 }
 
 export async function deleteBody(id: string): Promise<void> {
-  await db.from(TABLE).delete().eq('id', id);
+  const { error } = await db.from(TABLE).delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 /** 两个日期之间差几天（含头不含尾） */

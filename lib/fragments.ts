@@ -32,7 +32,8 @@ export async function addFragment(text: string, at = new Date(), mood?: Fragment
 }
 
 export async function deleteFragment(id: string): Promise<void> {
-  await db.from('fragments').delete().eq('id', id);
+  const { error } = await db.from('fragments').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 export async function fragmentsBetween(start: Date, end: Date): Promise<Fragment[]> {
