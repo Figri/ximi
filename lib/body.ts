@@ -4,7 +4,7 @@ import { db } from './localdb';
 // 身体（需求文档 §8.9）：体重、经期。经期默认私密：不进灵的提示词、不进主动消息，只存在手机里和你自己的备份里。
 // 睡眠不用记，从「睡觉」时间块自动算（dayDigest），并写进 Notion 日记属性。
 
-export type BodyKind = 'weight' | 'period';
+export type BodyKind = 'weight' | 'period' | 'period_day';
 
 export interface BodyRecord {
   id: string;

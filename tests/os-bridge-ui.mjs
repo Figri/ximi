@@ -50,12 +50,10 @@ try {
   await page.getByTestId('review-search').scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(dir, 'review.png') });
   await page.goto(`${url}/os-connect`);
-  await page.getByTestId('cloud-email').fill('test@example.invalid');
-  await page.getByTestId('cloud-send-code').click();
-  assert.match(await page.getByTestId('cloud-message').textContent(), /尚未配置/);
-  assert.match(await page.getByTestId('cloud-status').textContent(), /尚未同步/);
+  await page.getByTestId('cloud-back-today').waitFor();
+  assert.equal(await page.getByTestId('cloud-email').count(),0);
   await page.screenshot({ path: resolve(dir, 'connection.png') });
-  console.log('✓ 未配置云端时明确显示失败，未伪造已连接/同步成功');
+  console.log('✓ 邮件登录流程已撤下，旧入口直接返回今日');
   await page.goto(`${url}/os-consent`);
   await page.getByTestId('consent-message').waitFor();
   assert.match(await page.getByTestId('consent-message').textContent(), /缺少授权请求/);

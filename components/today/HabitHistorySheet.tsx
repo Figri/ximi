@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { fetchActionHistory } from '../../lib/cards';
 import { describeFrequency } from '../../lib/decay';
+import { completionDay, dateOf } from '../../lib/habitDays';
 import type { Action, Card, Cat, Completion } from '../../types';
 
 // 长按一个习惯：以前哪天做的（新的在上面），选了猫的带上是哪几只。底下能去改这个习惯。
@@ -25,9 +26,11 @@ interface Props {
   cats: Cat[];
   onClose: () => void;
   onEdit: (card: Card) => void;
+  onEditEntry?: (row: Completion) => void;
+  dayStartHour?: number;
 }
 
-export function HabitHistorySheet({ target, cats, onClose, onEdit }: Props) {
+export function HabitHistorySheet({ target, cats, onClose, onEdit, onEditEntry, dayStartHour=5 }: Props) {
   const [rows, setRows] = useState<Completion[] | null>(null);
 
   useEffect(() => {
@@ -64,23 +67,23 @@ export function HabitHistorySheet({ target, cats, onClose, onEdit }: Props) {
                 {rows == null ? <Text style={styles.empty}>读取中…</Text> : null}
                 {rows && !rows.length ? <Text style={styles.empty}>还没做过。做了点一下圆圈就会记在这儿。</Text> : null}
                 {(rows ?? []).map((r) => {
-                  const d = new Date(r.completed_at);
+                  const d = dateOf(completionDay(r,dayStartHour));
                   const k = dayKey(d);
                   const firstOfDay = k !== lastDay;
                   lastDay = k;
                   const who = (r.selected_cats ?? []).map((id) => catName.get(id)).filter(Boolean).join('、');
                   return (
-                    <View key={r.id} style={styles.row} testID="history-row">
+                    <Pressable key={r.id} style={styles.row} testID="history-row" onPress={()=>onEditEntry?.(r)}>
                       <Text style={[styles.date, !firstOfDay && styles.dateRepeat]}>
                         {firstOfDay ? `${d.getMonth() + 1}/${d.getDate()} ${WEEK[d.getDay()]}` : ''}
                       </Text>
                       <Text style={styles.time}>
-                        {`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`}
+                        {r.backfilled?'补记':new Date(r.completed_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}
                       </Text>
-                      <Text style={styles.note} numberOfLines={1}>
-                        {[who, r.notes].filter(Boolean).join(' · ')}
+                      <Text style={styles.note}>
+                        {[who, r.notes, r.backfilled&&r.recorded_at?`补记于 ${new Date(r.recorded_at).toLocaleString()}`:null].filter(Boolean).join(' · ')}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </ScrollView>

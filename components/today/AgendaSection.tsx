@@ -112,7 +112,7 @@ function QuickAdd({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
 }
 
 export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToday, onStar }: Props) {
-  const [showCarried, setShowCarried] = useState(false);
+  const [showCarried, setShowCarried] = useState(true);
   const carried = (rows.allday ?? []).filter((r) => r.carriedFrom);
   const today: Record<string, AgendaRow[]> = {};
   for (const s of ORDER) today[s] = (rows[s] ?? []).filter((r) => !r.carriedFrom);
@@ -135,7 +135,7 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
       {carried.length ? (
         <View style={styles.carried}>
           <Pressable style={styles.carriedHead} onPress={() => setShowCarried((v) => !v)} hitSlop={4} testID="agenda-carried">
-            <Text style={styles.carriedTitle}>以前没做完的 {carried.length} 件</Text>
+            <Text style={styles.carriedTitle}>历史事项 {carried.length} 件</Text>
             <Text style={styles.carriedLink}>{showCarried ? '收起' : '看看 ›'}</Text>
           </Pressable>
           {showCarried ? (
@@ -143,7 +143,6 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
               {carried.map((r) => (
                 <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onPull={onPullToToday} onStar={onStar} />
               ))}
-              <Text style={styles.hint}>点 ↑ 挪到今天做；做了就勾掉；不要了长按改日期或删掉。</Text>
             </View>
           ) : null}
         </View>

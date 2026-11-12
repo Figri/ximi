@@ -186,7 +186,7 @@ export default function CareGroupsScreen() {
           containerStyle={styles.flex}
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={<Text style={styles.hint}>长按一行上下拖，今天页「该照顾的」就按这个顺序排。习惯分到哪一类，在长按习惯 → 改这个习惯里选。</Text>}
+          ListHeaderComponent={<Text style={styles.hint}>长按一行上下拖，事项里的习惯分类会按这个顺序排。每个习惯的分类可以在编辑习惯时选择。</Text>}
           ListFooterComponent={
             <View style={styles.footer}>
               <Text style={styles.other}>其他（没分类的）· {otherCount} 个习惯 · 永远在最后</Text>

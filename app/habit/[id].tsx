@@ -250,10 +250,10 @@ export default function HabitDetailScreen() {
         <TextInput style={styles.input} value={emoji} onChangeText={setEmoji} maxLength={4} />
 
         <Text style={styles.label}>名字</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：刷牙" />
+        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="比如：刷牙" testID="habit-name" />
 
         <View style={styles.labelRow}>
-          <Text style={styles.label}>分类（今天页「该照顾的」按它分组）</Text>
+          <Text style={styles.label}>分类</Text>
           <Pressable onPress={() => router.push('/care-groups')} hitSlop={8}>
             <Text style={styles.manageLink}>分类管理 ›</Text>
           </Pressable>

@@ -58,6 +58,11 @@ export interface Completion {
   notes: string | null;
   selected_cats: string[] | null;
   undone: boolean;
+  /** Selected day for check-in; actual tap time remains in completed_at. */
+  record_date?: string;
+  backfilled?: boolean;
+  recorded_at?: string;
+  habit_batch_id?: string;
 }
 
 export interface CardLink {

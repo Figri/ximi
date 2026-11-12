@@ -47,7 +47,8 @@
     "test:bridge": "node tests/os-bridge.test.mjs",
     "test:bridge-ui": "node tests/os-bridge-ui.mjs",
     "test:login": "node tests/os-login.test.mjs",
-    "test:login-ui": "node tests/os-login-ui.mjs"
+    "test:habits": "node tests/habits.test.mjs",
+    "test:habits-ui": "node tests/habits-ui.mjs"
   },
   "private": true
 }

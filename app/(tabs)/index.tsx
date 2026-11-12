@@ -7,6 +7,7 @@ import { colors, fontSize, radius, spacing, lh } from '../../constants/theme';
 import { WeekDateStrip } from '../../components/timetab/WeekDateStrip';
 import { NextStepsSection } from '../../components/today/NextStepsSection';
 import { AgendaSection } from '../../components/today/AgendaSection';
+import { HabitsSection } from '../../components/today/HabitsSection';
 import { CareSection } from '../../components/today/CareSection';
 import { PlaySection } from '../../components/today/PlaySection';
 import { FragmentsSection } from '../../components/today/FragmentsSection';
@@ -570,6 +571,7 @@ export default function TodayScreen() {
                 setEditingTodo(row.todo);
               }}
             />
+            <HabitsSection date={dayKey} today={todayKey} onDateChange={key=>{setSelected(key===todayKey?null:key);loadDay(key);}} />
           </Section>
         );
       case 'play':
@@ -682,7 +684,7 @@ export default function TodayScreen() {
           </View>
         ) : null}
 
-        {cardsForDay(layout, dayKind).map((k) => (
+        {cardsForDay(layout, dayKind).filter(k=>k!=='care'&&k!=='water').map((k) => (
           <Keyed key={k}>{renderCard(k)}</Keyed>
         ))}
 
