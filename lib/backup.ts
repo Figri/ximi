@@ -25,6 +25,7 @@ export const BACKUP_TABLES = [
   'ling_messages',
   'state_events',
   'fragments',
+  'os_reviews',
   'body_records',
 ] as const;
 
@@ -92,6 +93,8 @@ export function parseBackup(json: string): BackupFile {
 export async function importBackup(json: string): Promise<{ counts: Record<string, number>; previous: string }> {
   const file = parseBackup(json);
   const previous = (await exportBackup()).json;
+  // An old restore is not a new edit. Keep cloud sync stopped for reconciliation.
+  await AsyncStorage.setItem('os_sync_restore_block_v1', new Date().toISOString());
   const counts: Record<string, number> = {};
   for (const t of BACKUP_TABLES) {
     const rows = Array.isArray(file.tables[t]) ? file.tables[t] : [];

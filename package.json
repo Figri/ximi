@@ -17,6 +17,7 @@
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.23",
     "react": "19.2.3",
+    "react-dom": "^19.2.3",
     "react-native": "0.86.3",
     "react-native-draggable-flatlist": "^4.0.3",
     "react-native-gesture-handler": "~2.32.0",
@@ -24,19 +25,27 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-url-polyfill": "^4.0.0",
+    "react-native-web": "^0.21.4",
     "react-native-worklets": "0.10.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@playwright/test": "^1.65.0",
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "zod": "^4.3.6"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node tests/logic.test.mjs"
+    "test": "node tests/logic.test.mjs",
+    "test:bridge": "node tests/os-bridge.test.mjs",
+    "test:bridge-ui": "node tests/os-bridge-ui.mjs"
   },
   "private": true
 }
