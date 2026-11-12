@@ -6,6 +6,8 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 - 纯OTA应用：EAS Update + GitHub Actions，不走原生重新构建，永远不加需要原生编译的新依赖。
 - 开发分支固定是 `claude/clever-einstein-4j55to`，push到这个分支会自动触发"EAS 自动发布更新" workflow。
+- 2026-11-12 用户明确要求：App 功能完成测试后，直接通过上述发布分支发布到手机可试用的版本，并检查 EAS 发布结果；交付不能只停在代码提交、补丁或草稿 PR。她在手机里验收，不审查代码。
+- 2026-11-12 用户明确要求：按没有开发经验来解释技术用途。能直接完成的配置由代理完成；必须由用户操作时，给具体页面链接、逐步入口、按钮、要填写的内容及预期结果，不只说“配置 OAuth / 配好环境”。
 - 想知道项目做到哪一步：看 `git log --oneline -20`。每次提交的message都写了这轮改了什么、怎么真实验证的、发现并修了什么bug——不用把整个对话历史搬进新会话，读最近几条commit message基本就能接上。
 - 需求文档的全文不在仓库里，在 Notion「📑 西米OS 需求文档」库（见下面「需求文档归档到 Notion」）；commit message 里没写细的需求去那里查。
 
