@@ -48,7 +48,8 @@
     "test:bridge-ui": "node tests/os-bridge-ui.mjs",
     "test:login": "node tests/os-login.test.mjs",
     "test:habits": "node tests/habits.test.mjs",
-    "test:habits-ui": "node tests/habits-ui.mjs"
+    "test:habits-ui": "node tests/habits-ui.mjs",
+    "postinstall": "node scripts/fix-draggable-scroll.cjs"
   },
   "private": true
 }

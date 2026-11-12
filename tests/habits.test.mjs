@@ -99,3 +99,13 @@ for(const c of colorCards)assert.deepEqual(tones[c.id],expanded[c.id]);
 function contrastWhite(hex){const rgb=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=0.04045?x/12.92:((x+0.055)/1.055)**2.4);return 1.05/(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]+0.05);}
 for(const t of Object.values(tones).filter(t=>t.solid.startsWith('#')))assert.ok(contrastWhite(t.solid)>=4.5,t.solid);
 console.log('✓ 三视图共用频率默认顺序与手动排序，24种习惯颜色不重复且稳定，勾选白字对比度合格');
+
+assert.equal(P.habitFrequencyLabel({...presentationItems[0],action:{frequency_type:'fixed_day',fixed_days:[5,1,3]}}),'每周一、三、五');
+assert.equal(P.habitFrequencyLabel({...presentationItems[0],action:{frequency_type:'fixed_day',fixed_days:[1,2,3,4,5,6,7]}}),'每天');
+assert.equal(P.habitFrequencyLabel({...presentationItems[0],action:{frequency_type:'interval',interval_days:3}}),'每 3 天');
+assert.equal(P.habitFrequencyLabel({...presentationItems[0],action:{frequency_type:'manual'}}),'不定期');
+assert.equal(P.habitFrequencyLabel({...presentationItems[0],period:true}),'按需记录');
+assert.deepEqual(P.habitFrequencyGroups([]),[]);
+assert.deepEqual(P.habitFrequencyGroups([presentationItems[1],presentationItems[3]]).map(g=>g.key),['daily']);
+assert.deepEqual(P.habitFrequencyGroups(presentationItems).map(g=>g.key),['daily','weekly']);
+console.log('✓ 频率文字按星期排序、每天/间隔/不定期/身体记录；频率分栏只显示非空栏');

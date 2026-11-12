@@ -58,14 +58,14 @@ try{
  await page.getByTestId('habits-today').click();await expect(page.getByTestId('habit-row-c4')).toHaveCount(0);
  const fab=await page.getByTestId('habit-create').boundingBox();assert.ok(fab.x>300&&fab.y>650);
  console.log('✓ 新增按钮在右下角；周日习惯仅周日出现，间隔习惯未到期隐藏');
- await expect(page.getByTestId('header-morning')).toHaveCount(0);await expect(page.getByTestId('habit-row-c1')).toContainText('上午');await expect(page.getByTestId('habit-row-c3')).toContainText('下午');
+ await expect(page.getByTestId('header-morning')).toContainText('上午');await expect(page.getByTestId('header-day')).toContainText('下午');await expect(page.getByTestId('header-evening')).toContainText('晚上');await expect(page.getByTestId('habit-frequency-c1')).toHaveText('每天');
  assert.doesNotMatch(await page.locator('body').innerText(),/长按|点一下|旧分类|分类/);
  await checked('habit-check-c1',false);await page.getByTestId('habit-check-c1').click();await checked('habit-check-c1',true);
  await longPress('habit-check-c1');await expect(page.getByTestId('habit-name')).toHaveValue('洗漱');
  await page.getByTestId('habit-note-input').fill('完成洗漱\n今天慢慢来');await save();
  await page.reload();await checked('habit-check-c1',true);await expect(page.getByTestId('habit-row-c1')).toContainText('今天慢慢来');
  await page.getByTestId('habit-check-c1').click();await checked('habit-check-c1',false);
- console.log('✓ 默认日视图、时段小标记、勾选/取消动画入口、长按弹窗描述、重开保留');
+ console.log('✓ 默认日视图、时段分栏与频率文字、勾选/取消动画入口、长按弹窗描述、重开保留');
  await page.getByTestId('habit-day-list').evaluate(n=>{window.__habitList=n;});
  // 实际拖拽，不能用按钮或直接改存储代替。
  const handle=await page.getByTestId('habit-drag-c2').boundingBox();const first=await page.getByTestId('habit-row-c1').boundingBox();
@@ -94,6 +94,10 @@ try{
  await page.getByTestId('habits-week').click();
  const weekOrder=await page.locator('[data-testid^="habit-week-row-"]').evaluateAll(ns=>ns.map(n=>n.dataset.testid.replace('habit-week-row-','')));assert.deepEqual(weekOrder.filter(id=>dailyOrder.includes(id)),dailyOrder);
  assert.ok(weekOrder.indexOf('c2')<weekOrder.indexOf('c4'));assert.ok(weekOrder.indexOf('c4')<weekOrder.indexOf('c6'));
+ await expect(page.getByTestId('habit-frequency-group-daily')).toBeVisible();await expect(page.getByTestId('habit-frequency-group-weekly')).toBeVisible();await expect(page.getByTestId('habit-frequency-group-interval')).toBeVisible();await expect(page.getByTestId('habit-frequency-c4')).toHaveText('每周日');await expect(page.getByTestId('habit-frequency-c5')).toHaveText('每 3 天');
+ await expect(page.getByTestId('habit-week-date-2026-11-12')).toHaveAttribute('aria-current','date');
+ const todayBg=await page.getByTestId('habit-week-column-c1-2026-11-12').evaluate(n=>getComputedStyle(n).backgroundColor);const otherBg=await page.getByTestId('habit-week-column-c1-2026-11-11').evaluate(n=>getComputedStyle(n).backgroundColor);assert.notEqual(todayBg,otherBg);
+ await page.getByTestId('habit-week-date-2026-11-11').click();await expect(page.getByTestId('habit-week-date-2026-11-12')).toHaveAttribute('aria-current','date');await page.getByTestId('habit-week-date-2026-11-12').click();
  await expect(page.getByText('上午',{exact:true})).toHaveCount(0);await expect(page.getByText('下午',{exact:true})).toHaveCount(0);await expect(page.getByText('晚上',{exact:true})).toHaveCount(0);
  await expect(page.getByTestId('habit-week-row-c6')).toBeVisible();await expect(page.getByTestId('habit-week-c6-2026-11-12')).toHaveAttribute('aria-disabled','true');
  await expect(page.getByTestId('habit-week-count-2026-11-12')).toHaveText('0/4');
@@ -110,12 +114,16 @@ try{
  await page.getByTestId('habits-month').click();
  await expect(page.getByText('上午',{exact:true})).toHaveCount(0);await expect(page.getByText('下午',{exact:true})).toHaveCount(0);
  await expect(page.getByTestId('habit-month-card-c6')).toBeVisible();
- const monthOrder=await page.locator('[data-testid^="habit-month-card-"]').evaluateAll(ns=>ns.map(n=>n.dataset.testid.replace('habit-month-card-','')));assert.deepEqual(monthOrder,weekOrder);
- const mHeight=(await page.getByTestId('habit-month-card-c1').boundingBox()).height;assert.ok(mHeight<300);console.log('✓ 日周月统一顺序、高频默认在前、不同习惯不同颜色，月表更紧凑');
+ const monthOrder=await page.locator('[data-testid^="habit-month-card-"]').evaluateAll(ns=>ns.map(n=>n.dataset.testid.replace('habit-month-card-','')));assert.deepEqual(monthOrder.filter(id=>['c1','c2','c3'].includes(id)),weekOrder.filter(id=>['c1','c2','c3'].includes(id)));
+ await expect(page.getByTestId('habit-frequency-c4')).toHaveText('每周日');await expect(page.getByTestId('habit-frequency-c1')).toHaveText('每天');
+ const mHeight=(await page.getByTestId('habit-month-card-c1').boundingBox()).height;assert.ok(mHeight<=210);
+ await page.getByTestId('habit-overview-list').evaluate(n=>{n.scrollTop=0;});
+ const firstThree=await page.locator('[data-testid^="habit-month-card-"]').evaluateAll(ns=>ns.slice(0,3).map(n=>({top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom})));const navTop=await page.getByRole('tab',{name:/习惯/}).evaluate(n=>n.parentElement.getBoundingClientRect().top);assert.ok(firstThree[2].bottom<=navTop,JSON.stringify({firstThree,navTop}));console.log('✓ 时段/频率分栏、栏内顺序与颜色保留，月卡弱化日历且一屏完整放下三项');
  await expect(page.getByTestId('habit-month-card-c1')).toBeVisible();await expect(page.getByTestId('habit-month-card-c2')).toBeVisible();
  assert.equal(await page.getByTestId('habit-month-card-c1').locator('[data-testid^="habit-month-c1-"]').count(),30);
  await checked('habit-month-c2-2026-11-09',true);await checked('habit-month-c1-2026-11-11',true);
- await page.getByTestId('habits-prev').click();await page.getByTestId('habit-month-c2-2026-10-31').click();await checked('habit-month-c2-2026-10-31',true);
+ await checked('habit-month-quick-c1',false);await page.getByTestId('habit-month-quick-c1').click();await checked('habit-month-c1-2026-11-12',true);await page.getByTestId('habit-month-quick-c1').click();await checked('habit-month-c1-2026-11-12',false);await checked('habit-month-c1-2026-11-11',true);
+ await page.getByTestId('habits-prev').click();await page.getByTestId('habit-month-c2-2026-10-31').tap();await checked('habit-month-c2-2026-10-31',true);await checked('habit-month-c2-2026-10-30',false);
  await longPress('habit-month-c2-2026-10-31');await page.getByTestId('habit-history').click();await expect(page.getByTestId('history-row').filter({hasText:'10/31'})).toContainText('补记');await page.getByTestId('history-close').click();
  await page.getByTestId('habits-next').click();await checked('habit-month-c2-2026-11-09',true);
  await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);await page.getByTestId('habit-month-card-c1').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(shots,'month.png')});
@@ -190,7 +198,7 @@ try{
  const empty=await browser.newPage({viewport:{width:360,height:800},timezoneId:'Asia/Shanghai'});await empty.clock.install({time:new Date('2026-11-12T12:00:00+08:00')});
  await empty.route('https://**',r=>r.abort());empty.on('pageerror',e=>errors.push(e.message));
  await empty.addInitScript(()=>{localStorage.setItem('ldb_v1_settings_meta',JSON.stringify({chunks:1}));localStorage.setItem('ldb_v1_settings_0',JSON.stringify([{key:'habit_period_hidden',value:true}]));});
- await empty.goto(`${origin}/habits`);await expect(empty.getByTestId('habits-select-all')).toHaveCount(0);await empty.getByTestId('habits-week').click();await expect(empty.getByTestId('habit-week-count-2026-11-12')).toHaveText('0/0');await empty.getByTestId('habit-create').click();await expect(empty.getByTestId('habit-paste')).toBeDisabled();await empty.close();
+ await empty.goto(`${origin}/habits`);await expect(empty.getByTestId('habits-select-all')).toHaveCount(0);await empty.getByTestId('habits-week').click();await expect(empty.getByTestId('habit-week-count-2026-11-12')).toHaveText('0/0');await expect(empty.locator('[data-testid^="habit-frequency-group-"]')).toHaveCount(0);await expect(empty.getByTestId('header-morning')).toHaveCount(0);await empty.getByTestId('habit-create').click();await expect(empty.getByTestId('habit-paste')).toBeDisabled();await empty.close();
  console.log('✓ 空习惯显示0/0且无批量入口，没有已复制设置时粘贴禁用');
  for(const [key,label] of [['today','今日'],['habits','习惯'],['time','时间'],['other','其他']]){
    await page.getByRole('tab',{name:new RegExp(label)}).click();
@@ -202,28 +210,55 @@ try{
  const scrolling=await browser.newPage({viewport:{width:412,height:915},hasTouch:true,isMobile:true,timezoneId:'Asia/Shanghai'});scrolling.setDefaultTimeout(12000);
  await scrolling.clock.install({time:new Date('2026-11-12T12:00:00+08:00')});await scrolling.route('https://**',r=>r.abort());scrolling.on('pageerror',e=>errors.push(e.message));
  await scrolling.addInitScript(()=>{
-   const cards=Array.from({length:18},(_,i)=>({id:`r${String(i).padStart(2,'0')}`,name:`习惯 ${i+1}`,type:'habit',display_type:'habit',archived:false,time_of_day:'morning',created_at:'2026-10-01T00:00:00Z'}));
+   const cards=Array.from({length:36},(_,i)=>({id:`r${String(i).padStart(2,'0')}`,name:`习惯 ${i+1}`,type:'habit',display_type:'habit',archived:false,time_of_day:'morning',created_at:'2026-10-01T00:00:00Z'}));
    const actions=cards.map(c=>({id:`a-${c.id}`,card_id:c.id,is_primary:true,frequency_type:'interval',interval_days:1}));
    for(const [name,rows] of Object.entries({cards,actions,settings:[{key:'habit_period_hidden',value:true}]})){localStorage.setItem(`ldb_v1_${name}_meta`,JSON.stringify({chunks:1}));localStorage.setItem(`ldb_v1_${name}_0`,JSON.stringify(rows));}
  });
- await scrolling.goto(`${origin}/habits`);await scrolling.getByTestId('habit-day-list').waitFor();
- await scrolling.mouse.move(200,500);await scrolling.mouse.wheel(0,420);
+ await scrolling.goto(`${origin}/habits`);await scrolling.getByTestId('habit-day-list').waitFor();await expect(scrolling.getByTestId('header-day')).toHaveCount(0);await expect(scrolling.getByTestId('header-evening')).toHaveCount(0);await scrolling.getByTestId('habits-week').click();await expect(scrolling.getByTestId('habit-frequency-group-daily')).toBeVisible();await expect(scrolling.getByTestId('habit-frequency-group-weekly')).toHaveCount(0);await expect(scrolling.getByTestId('habit-frequency-group-interval')).toHaveCount(0);await expect(scrolling.getByTestId('habit-frequency-group-manual')).toHaveCount(0);
+ const weekDateY=(await scrolling.getByTestId('habit-week-date-2026-11-12').boundingBox()).y;
+ await scrolling.mouse.move(200,500);await scrolling.mouse.wheel(0,350);await expect.poll(()=>scrolling.getByTestId('habit-overview-list').evaluate(n=>n.scrollTop)).toBeGreaterThan(200);
+ assert.ok(Math.abs((await scrolling.getByTestId('habit-week-date-2026-11-12').boundingBox()).y-weekDateY)<2);await scrolling.screenshot({path:resolve(shots,'week-today-sticky.png')});
+ await scrolling.getByTestId('habits-day').click();
+ await scrolling.mouse.move(200,500);await scrolling.mouse.wheel(0,900);
  await expect.poll(()=>scrolling.getByTestId('habit-day-list').evaluate(n=>n.scrollTop)).toBeGreaterThan(200);
  const beforeScroll=await scrolling.getByTestId('habit-day-list').evaluate(n=>{window.__sameList=n;return n.scrollTop;});
- const drag=await scrolling.getByTestId('habit-drag-r09').boundingBox(),drop=await scrolling.getByTestId('habit-row-r08').boundingBox();
+ const drag=await scrolling.getByTestId('habit-drag-r20').boundingBox(),drop=await scrolling.getByTestId('habit-row-r19').boundingBox();
  await scrolling.mouse.move(drag.x+drag.width/2,drag.y+drag.height/2);await scrolling.mouse.down();await scrolling.waitForTimeout(350);await scrolling.mouse.move(drag.x+drag.width/2,drop.y+6,{steps:18});await scrolling.waitForTimeout(200);await scrolling.mouse.up();
- await expect.poll(()=>scrolling.evaluate(()=>JSON.parse(localStorage.getItem('ldb_v1_settings_0')).find(r=>r.key==='habit_order_v3')?.value?.indexOf('r09'))).toBe(8);
+ await expect.poll(()=>scrolling.evaluate(()=>JSON.parse(localStorage.getItem('ldb_v1_settings_0')).find(r=>r.key==='habit_order_v3')?.value?.indexOf('r20'))).toBe(19);
  assert.equal(await scrolling.getByTestId('habit-day-list').evaluate(n=>n===window.__sameList),true);
  const afterScroll=await scrolling.getByTestId('habit-day-list').evaluate(n=>n.scrollTop);assert.ok(Math.abs(afterScroll-beforeScroll)<8,`before=${beforeScroll}, after=${afterScroll}`);
- await expect(scrolling.getByTestId('habit-check-r09')).not.toHaveAttribute('aria-disabled','true');
- await scrolling.screenshot({path:resolve(shots,'drag-no-refresh.png')});await scrolling.close();
- console.log('✓ 18项长列表真实滚动后拖拽：原列表节点保留、位置不跳回顶部、保存后不置忙刷新');
+ await expect(scrolling.getByTestId('habit-check-r20')).not.toHaveAttribute('aria-disabled','true');
+ await scrolling.screenshot({path:resolve(shots,'drag-no-refresh.png')});
+ // 重排后马上再次拖动，验证重新测量的坐标及自动滚动方向。
+ const edge=await scrolling.getByTestId('habit-drag-r20').boundingBox();
+ const edgeStart=await scrolling.getByTestId('habit-day-list').evaluate(n=>n.scrollTop);
+ await scrolling.mouse.move(edge.x+edge.width/2,edge.y+edge.height/2);await scrolling.mouse.down();await scrolling.waitForTimeout(350);
+ await scrolling.mouse.move(edge.x+edge.width/2,840,{steps:22});await scrolling.waitForTimeout(500);
+ assert.ok(await scrolling.getByTestId('habit-day-list').evaluate(n=>n.scrollTop)>edgeStart+10);
+ await scrolling.mouse.up();await scrolling.waitForTimeout(600);await scrolling.close();
+ console.log('✓ 36项长列表连续拖动：列表不重建、位置不跳回顶部，重排后靠边仍向下自动滚动');
  const large=await browser.newPage({viewport:{width:360,height:800},timezoneId:'Asia/Shanghai'});await large.route('https://**',r=>r.abort());large.on('pageerror',e=>errors.push(e.message));
  await large.addInitScript(()=>localStorage.setItem('ui_settings_v1',JSON.stringify({fontScale:'xlarge'})));
  await large.goto(`${origin}/habits`);await large.getByTestId('habit-check-__period__').waitFor();
  await expect(large.getByTestId('habits-multi')).toHaveCount(0);assert.ok((await large.getByTestId('habits-today').boundingBox()).x+(await large.getByTestId('habits-today').boundingBox()).width<=360);
  await large.getByTestId('habit-create').click();await large.getByTestId('habit-name').fill('大字号习惯');await large.getByTestId('habit-save').click();await expect(large.getByTestId('habit-editor')).toHaveCount(0);await large.close();
  console.log('✓ 特大字号与360px小屏可新增保存，主要控件未溢出');
+ const layout=await browser.newPage({viewport:{width:360,height:800},hasTouch:true,isMobile:true,timezoneId:'Asia/Shanghai'});await layout.clock.install({time:new Date('2026-11-12T12:00:00+08:00')});await layout.route('https://**',r=>r.abort());layout.on('pageerror',e=>errors.push(e.message));
+ await layout.addInitScript(()=>{
+   const cards=[{id:'mwf',name:'星期习惯',time_of_day:'day'},...['first','second','third'].map(id=>({id,name:`每天 ${id}`,time_of_day:'day'}))].map(c=>({...c,type:'habit',display_type:'habit',archived:false,created_at:'2026-10-01T00:00:00Z'}));
+   const actions=cards.map(c=>({id:`a-${c.id}`,card_id:c.id,is_primary:true,frequency_type:c.id==='mwf'?'fixed_day':'interval',fixed_days:c.id==='mwf'?[1,3,5]:null,interval_days:1}));
+   for(const [name,rows] of Object.entries({cards,actions,settings:[{key:'habit_period_hidden',value:true}]})){localStorage.setItem(`ldb_v1_${name}_meta`,JSON.stringify({chunks:1}));localStorage.setItem(`ldb_v1_${name}_0`,JSON.stringify(rows));}
+ });
+ await layout.goto(`${origin}/habits`);await layout.getByTestId('habit-day-date-2026-11-11').click();await expect(layout.getByTestId('habit-frequency-mwf')).toHaveText('每周一、三、五');
+ const onlyDayHandle=await layout.getByTestId('habit-drag-second').boundingBox(),onlyDayHead=await layout.getByTestId('header-day').boundingBox();
+ await layout.mouse.move(onlyDayHandle.x+onlyDayHandle.width/2,onlyDayHandle.y+onlyDayHandle.height/2);await layout.mouse.down();await layout.waitForTimeout(350);await layout.mouse.move(onlyDayHandle.x+onlyDayHandle.width/2,onlyDayHead.y+2,{steps:18});await layout.waitForTimeout(200);await layout.mouse.up();
+ await expect.poll(()=>layout.evaluate(()=>JSON.parse(localStorage.getItem('ldb_v1_settings_0')).find(r=>r.key==='habit_order_v3')?.value?.[0])).toBe('second');
+ assert.equal(await layout.evaluate(()=>JSON.parse(localStorage.getItem('ldb_v1_cards_0')).find(r=>r.id==='second').time_of_day),'day');
+ await layout.getByTestId('habits-week').click();await expect(layout.getByTestId('habit-frequency-mwf')).toHaveText('每周一、三、五');await expect(layout.getByTestId('habit-frequency-group-interval')).toHaveCount(0);await expect(layout.getByTestId('habit-frequency-group-manual')).toHaveCount(0);
+ await layout.getByTestId('habits-month').click();await expect(layout.getByTestId('habit-frequency-mwf')).toHaveText('每周一、三、五');
+ const three=await layout.locator('[data-testid^="habit-month-card-"]').evaluateAll(ns=>ns.slice(0,3).map(n=>n.getBoundingClientRect().bottom));const layoutNav=await layout.getByRole('tab',{name:/习惯/}).evaluate(n=>n.parentElement.getBoundingClientRect().top);assert.ok(three[2]<=layoutNav,JSON.stringify({three,layoutNav}));
+ await layout.screenshot({path:resolve(shots,'month-three-on-small-screen.png')});await layout.close();
+ console.log('✓ 每周一三五在三视图显示一致；360×800一屏三张月卡，空频率栏隐藏');
  await page.goto(`${origin}/os-connect`);await page.getByTestId('cloud-back-today').waitFor();assert.equal(await page.getByTestId('cloud-email').count(),0);
  assert.deepEqual(errors,[]);console.log('✓ 灵位于其他、记录删除须在弹窗内、无需邮箱登录、无页面异常');console.log(`Screenshots: ${shots}`);
 }catch(e){if(page){console.error((await page.locator('body').innerText()).slice(-3200));await page.screenshot({path:resolve(shots,'failure.png')});console.error(shots);}throw e;}

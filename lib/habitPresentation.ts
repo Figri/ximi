@@ -32,3 +32,27 @@ export function habitTones(cards:Pick<Card,'id'|'created_at'>[]):Record<string,H
   return result;
 }
 export const FALLBACK_TONE:HabitTone={solid:PALETTE[0],wash:'#287C7515',border:'#287C7580'};
+
+export const FREQUENCY_SECTIONS = [
+  {key:'daily',label:'每天'}, {key:'weekly',label:'每周'},
+  {key:'interval',label:'间隔'}, {key:'manual',label:'不定期'},
+] as const;
+export function habitFrequencyGroup(it:Habit): typeof FREQUENCY_SECTIONS[number]['key'] {
+  if(it.period||it.action.frequency_type==='manual')return 'manual';
+  if(it.action.frequency_type==='fixed_day')return new Set((it.action.fixed_days??[]).filter(d=>d>=1&&d<=7)).size===7?'daily':'weekly';
+  return (it.action.suggested_interval??it.action.interval_days??1)<=1?'daily':'interval';
+}
+export function habitFrequencyLabel(it:Habit):string {
+  if(it.period)return '按需记录';
+  if(it.action.frequency_type==='manual')return '不定期';
+  if(it.action.frequency_type==='fixed_day'){
+    const days=[...new Set(it.action.fixed_days??[])].filter(d=>d>=1&&d<=7).sort((a,b)=>a-b);
+    if(days.length===7)return '每天';
+    return `每周${days.map(d=>['一','二','三','四','五','六','日'][d-1]).join('、')}`;
+  }
+  const n=Math.max(1,it.action.suggested_interval??it.action.interval_days??1);
+  return n<=1?'每天':`每 ${n} 天`;
+}
+export function habitFrequencyGroups<T extends Habit>(items:T[]){
+  return FREQUENCY_SECTIONS.map(group=>({...group,items:items.filter(it=>habitFrequencyGroup(it)===group.key)})).filter(group=>group.items.length>0);
+}

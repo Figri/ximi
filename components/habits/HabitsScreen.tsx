@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import type { FlatList } from 'react-native-gesture-handler';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +9,7 @@ import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 import { timeHeaderStyles as h } from '../../constants/timeHeader';
 import { WeekDateStrip } from '../timetab/WeekDateStrip';
 import { CaptureFab } from '../capture/CaptureFab';
-import { FALLBACK_TONE, habitTones, orderHabits, type HabitTone } from '../../lib/habitPresentation';
+import { FALLBACK_TONE, habitTones, habitFrequencyGroups, habitFrequencyLabel, orderHabits, type HabitTone } from '../../lib/habitPresentation';
 import { habitSchedule } from '../../lib/habitSchedule';
 import { db } from '../../lib/localdb';
 import { archiveCard, createCard, updateAction, updateCard } from '../../lib/cards';
@@ -43,6 +44,9 @@ export default function HabitsScreen(){
   const [tones,setTones]=useState<Record<string,HabitTone>>({});
   const reorderQueue=useRef<Promise<void>>(Promise.resolve()),pendingReorders=useRef(0),reorderRevision=useRef(0);
   const listRef=useRef<FlatList<Row>>(null),scrollOffset=useRef(0);
+  const pendingSlots=useRef(new Map<string,TimeOfDay>());
+  // 抵消拖动开始时尚未同步的滚动基准；拖动中冻结补偿，保留靠边自动滚动。
+  const dragging=useRef(false),scrollCompensation=useSharedValue(0);
 
   const [edit,setEdit]=useState<{item:HabitItem|'new';day:string}|null>(null);
   const [history,setHistory]=useState<HabitItem|null>(null);
@@ -88,7 +92,10 @@ export default function HabitsScreen(){
   const scheduled=useMemo(()=>habitSchedule(records,hour),[records,hour]);
   const due=(it:HabitItem,day:string)=>it.period||scheduled(it,day);
   const dayItems=items.filter(it=>due(it,date));
-  const rows:Row[]=dayItems.map(item=>({key:item.card.id,slot:habitSlot(item.card),item}));
+  const rows:Row[]=SLOTS.filter(slot=>dayItems.some(it=>habitSlot(it.card)===slot.key)).flatMap(slot=>[
+    {key:`header-${slot.key}`,slot:slot.key},
+    ...dayItems.filter(it=>habitSlot(it.card)===slot.key).map(item=>({key:item.card.id,slot:slot.key,item})),
+  ]);
   const countOn=(day:string)=>{const planned=items.filter(it=>due(it,day));return `${planned.filter(it=>checked(it,day)).length}/${planned.length}`;};
   async function run(fn:()=>Promise<void>,propagate=false){
     if(working.current){if(propagate)throw new Error('正在保存，请稍后');return;}
@@ -142,34 +149,46 @@ export default function HabitsScreen(){
   async function reorder(data:Row[],from:number,to:number){
     if(from===to||from<0||to<0||!data[to]?.item)return;
     const offset=scrollOffset.current;
+    const moved=data[to].item!;let slot:TimeOfDay=data.find(r=>!r.item)?.slot??habitSlot(moved.card);
+    for(let i=0;i<=to;i++)if(!data[i].item)slot=data[i].slot;
     const visible=data.flatMap(r=>r.item?[r.item.card.id]:[]),ids=new Set(visible);
     let at=0;const next=items.map(it=>ids.has(it.card.id)?visible[at++]:it.card.id);
     const revision=++reorderRevision.current;
     pendingReorders.current++;
     setOrder(next);setError('');
+    if(habitSlot(moved.card)!==slot){
+      pendingSlots.current.set(moved.card.id,slot);
+      if(moved.period)setPeriodSlot(slot);
+      else useCardStore.setState(st=>({cards:st.cards.map(c=>c.id===moved.card.id?{...c,time_of_day:slot}:c)}));
+    }
     requestAnimationFrame(()=>requestAnimationFrame(()=>listRef.current?.scrollToOffset({offset,animated:false})));
     // 原列表原地更新；保存串行进行，不置忙、不重读整页、不重建列表。
     reorderQueue.current=reorderQueue.current.catch(()=>{}).then(async()=>{
+      for(const [id,value] of [...pendingSlots.current]){
+        if(id===PERIOD_ID)await setting('habit_period_slot',value);else await updateCard(id,{time_of_day:value});
+        if(pendingSlots.current.get(id)===value)pendingSlots.current.delete(id);
+      }
       await setting('habit_order_v3',next);
     }).catch(async e=>{
       setError(`顺序未保存：${e instanceof Error?e.message:String(e)}`);
       if(revision===reorderRevision.current&&pendingReorders.current===1){
-        pendingReorders.current=0;await load().catch(()=>{});await fetchAll();
+        pendingReorders.current=0;pendingSlots.current.clear();await load().catch(()=>{});await fetchAll();
       }
     }).finally(()=>{pendingReorders.current=Math.max(0,pendingReorders.current-1);});
     await reorderQueue.current;
   }
   function open(it:HabitItem,day=date){if(!busy)setEdit({item:it,day});}
   function renderDay({item:r,drag,isActive}:RenderItemParams<Row>){
-    if(!r.item)return <Text style={s.group} testID={r.key}>{SLOTS.find(v=>v.key===r.slot)?.label}</Text>;
+    if(!r.item)return <View style={s.sectionHead} testID={r.key}><View style={[s.sectionDot,{backgroundColor:r.slot==='morning'?'#B9894B':r.slot==='day'?'#488B86':colors.purpleDark}]}/><Text style={s.sectionTitle}>{SLOTS.find(v=>v.key===r.slot)?.label}</Text><View style={s.sectionLine}/><Text style={s.sectionCount}>{dayItems.filter(it=>habitSlot(it.card)===r.slot).length}</Text></View>;
     const it=r.item,done=checked(it,date),description=note(it,date);
     return <ScaleDecorator><View style={[s.dayRow,{borderLeftColor:(tones[it.card.id]??FALLBACK_TONE).solid},isActive&&s.active]} testID={`habit-row-${it.card.id}`}>
       <Check tone={tones[it.card.id]??FALLBACK_TONE} checked={done} disabled={busy||date>today} onPress={()=>toggle(it,date)} onLongPress={()=>open(it)} id={`habit-check-${it.card.id}`} label={it.card.name} emoji={it.card.emoji??'⭐'}/>
       <Pressable style={s.dayContent} testID={`habit-edit-${it.card.id}`} onLongPress={()=>open(it)} delayLongPress={400}>
-        <View style={s.nameRow}><Text style={[s.name,s.grow,done&&s.nameDone]}>{it.card.name}</Text><Text style={s.slotBadge}>{SLOTS.find(t=>t.key===habitSlot(it.card))?.label}</Text></View>
+        <Text style={[s.name,done&&s.nameDone]}>{it.card.name}</Text>
+        <Text testID={`habit-frequency-${it.card.id}`} style={s.frequency}>{habitFrequencyLabel(it)}</Text>
         {description?<Text style={s.description} numberOfLines={3}>{description}</Text>:null}
       </Pressable>
-      <Pressable testID={`habit-drag-${it.card.id}`} disabled={busy} onLongPress={drag} delayLongPress={150} accessibilityRole="button" accessibilityLabel={`调整${it.card.name}顺序`} hitSlop={5} style={[s.handle,Platform.OS==='web'&&({touchAction:'none',userSelect:'none'} as any)]}><Text style={s.handleText}>⠿</Text></Pressable>
+      <Pressable testID={`habit-drag-${it.card.id}`} disabled={busy} onLongPress={()=>{dragging.current=true;scrollCompensation.value=-scrollOffset.current;drag();}} delayLongPress={150} accessibilityRole="button" accessibilityLabel={`调整${it.card.name}顺序`} hitSlop={5} style={[s.handle,Platform.OS==='web'&&({touchAction:'none',userSelect:'none'} as any)]}><Text style={s.handleText}>⠿</Text></Pressable>
     </View></ScaleDecorator>;
   }
   const days=weekDays(date),month=date.slice(0,7),calendar=monthDays(month);
@@ -192,23 +211,36 @@ export default function HabitsScreen(){
     {mode==='day'?<WeekDateStrip date={dateOf(date)} today={dateOf(today)} hideDateRow onDateChange={d=>setSelected(dateKey(d))} testIDPrefix="habit-day-date" refreshKey={version+records.length+items.length+periods.length} fetchCounts={async dates=>Object.fromEntries(dates.map(d=>[dateKey(d),countOn(dateKey(d))]))}/>:null}
     {error?<Text testID="habit-error" style={s.error}>{error}</Text>:null}
     {mode==='day'?(ready?<DraggableFlatList
-      ref={listRef} testID="habit-day-list" onScrollOffsetChange={offset=>{scrollOffset.current=offset;}}
-      data={rows} keyExtractor={r=>r.key} renderItem={renderDay} onDragEnd={({data,from,to})=>reorder(data,from,to)}
+      ref={listRef} testID="habit-day-list" outerScrollOffset={scrollCompensation} onScrollOffsetChange={offset=>{scrollOffset.current=offset;if(!dragging.current)scrollCompensation.value=-offset;}}
+      onRelease={()=>{dragging.current=false;}} initialNumToRender={Math.min(80,rows.length)} maxToRenderPerBatch={40} data={rows} keyExtractor={r=>r.key} renderItem={renderDay} onDragEnd={({data,from,to})=>{dragging.current=false;reorder(data,from,to);}}
       containerStyle={[s.flex,Platform.OS==='web'&&({overflowAnchor:'none'} as any)]} style={Platform.OS==='web'?({overflowAnchor:'none'} as any):undefined} contentContainerStyle={s.list} activationDistance={8}
       dragItemOverflow={false} autoscrollThreshold={60} windowSize={7}
-    />:<View style={s.flex}/>):<ScrollView testID="habit-overview-list" style={s.flex} contentContainerStyle={s.list}>
-      {mode==='week'?<View style={s.weekHeader}><View style={s.weekName}/>{days.map((d,i)=><Pressable key={d} style={s.weekCell} onPress={()=>setSelected(d)} testID={`habit-week-date-${d}`}><Text style={s.weekday}>{WEEK_EN[i]}</Text><View style={[s.weekDateCircle,d===date&&s.weekDateSelected]}><Text style={[s.weekNumber,d===date&&s.white]}>{Number(d.slice(-2))}</Text></View><Text testID={`habit-week-count-${d}`} style={s.weekCount}>{countOn(d)}</Text></Pressable>)}</View>:null}
-      {items.map(it=>{
-        return mode==='week'?<View key={it.card.id} style={s.weekRow} testID={`habit-week-row-${it.card.id}`}>
-          <Pressable style={s.weekName} onLongPress={()=>open(it)} delayLongPress={400} testID={`habit-edit-${it.card.id}`}><Text style={[s.weekHabit,{color:(tones[it.card.id]??FALLBACK_TONE).solid}]}>{it.card.name}</Text></Pressable>
-          {days.map(d=><View key={d} style={s.weekCell}><Check tone={tones[it.card.id]??FALLBACK_TONE} compact checked={checked(it,d)} disabled={busy||d>today||!due(it,d)} onPress={()=>toggle(it,d)} onLongPress={()=>open(it,d)} id={`habit-week-${it.card.id}-${d}`} label={`${it.card.name} ${d}`}/></View>)}
-        </View>:<Pressable key={it.card.id} style={[s.monthCard,{borderTopColor:(tones[it.card.id]??FALLBACK_TONE).solid}]} onLongPress={()=>open(it)} delayLongPress={400} testID={`habit-month-card-${it.card.id}`}>
-          <View style={s.cardHead}><Text style={[s.name,{color:(tones[it.card.id]??FALLBACK_TONE).solid}]}>{it.card.emoji} {it.card.name}</Text><Text style={s.total}>{calendar.filter(d=>d&&checked(it,d)).length} 天</Text></View>
-          <View style={s.calendar}>{WEEK.map(w=><Text key={w} style={s.calendarWeek}>{w}</Text>)}
-            {calendar.map((d,i)=>d?<View key={d} style={s.calendarCell}><Check tone={tones[it.card.id]??FALLBACK_TONE} monthDay={Number(d.slice(-2))} checked={checked(it,d)} disabled={busy||d>today||!due(it,d)} onPress={()=>toggle(it,d)} onLongPress={()=>open(it,d)} id={`habit-month-${it.card.id}-${d}`} label={`${it.card.name} ${d}`} isToday={d===today}/></View>:<View key={`blank-${i}`} style={s.calendarCell}/>)}
-          </View>
-        </Pressable>;
-      })}
+    />:<View style={s.flex}/>):<ScrollView testID="habit-overview-list" stickyHeaderIndices={mode==='week'?[0]:undefined} style={s.flex} contentContainerStyle={s.list}>
+      {mode==='week'?<View style={s.weekHeader}><View style={s.weekName}/>{days.map((d,i)=><Pressable key={d} accessibilityRole="button" aria-current={d===today?'date':undefined} style={[s.weekCell,s.weekHeaderCell,d===today&&s.weekTodayHeader]} onPress={()=>setSelected(d)} testID={`habit-week-date-${d}`}>
+        <Text style={[s.weekday,d===today&&s.todayText]}>{d===today?'今天':WEEK_EN[i]}</Text>
+        <View style={[s.weekDateCircle,d===date&&s.weekDateSelected,d===today&&s.weekDateToday]}><Text style={[s.weekNumber,d===today&&s.white]}>{Number(d.slice(-2))}</Text></View>
+        <Text testID={`habit-week-count-${d}`} style={[s.weekCount,d===today&&s.todayText]}>{countOn(d)}</Text>
+      </Pressable>)}</View>:null}
+      {mode==='week'?habitFrequencyGroups(items).map(group=><View key={group.key} testID={`habit-frequency-group-${group.key}`}>
+        <View style={s.frequencySection}><Text style={s.sectionTitle}>{group.label}</Text><Text style={s.sectionCount}>{group.items.length}</Text></View>
+        {group.items.map(it=><View key={it.card.id} style={s.weekRow} testID={`habit-week-row-${it.card.id}`}>
+          <Pressable style={[s.weekName,s.weekNameContent]} onLongPress={()=>open(it)} delayLongPress={400} testID={`habit-edit-${it.card.id}`}>
+            <Text style={[s.weekHabit,{color:(tones[it.card.id]??FALLBACK_TONE).solid}]}>{it.card.name}</Text>
+            <Text testID={`habit-frequency-${it.card.id}`} style={s.weekFrequency}>{habitFrequencyLabel(it)}</Text>
+          </Pressable>
+          {days.map(d=><View key={d} testID={`habit-week-column-${it.card.id}-${d}`} style={[s.weekCell,s.weekBodyCell,d===today&&s.weekTodayColumn]}><Check tone={tones[it.card.id]??FALLBACK_TONE} compact checked={checked(it,d)} disabled={busy||d>today||!due(it,d)} onPress={()=>toggle(it,d)} onLongPress={()=>open(it,d)} id={`habit-week-${it.card.id}-${d}`} label={`${it.card.name} ${d}`}/></View>)}
+        </View>)}
+      </View>):items.map(it=><Pressable key={it.card.id} style={s.monthCard} onLongPress={()=>open(it)} delayLongPress={400} testID={`habit-month-card-${it.card.id}`}>
+        <View style={s.cardHead}><View style={s.monthHeading}><View style={[s.monthColorDot,{backgroundColor:(tones[it.card.id]??FALLBACK_TONE).solid}]}/><View style={s.grow}>
+          <Text style={s.name} numberOfLines={2}>{it.card.name}</Text><Text testID={`habit-frequency-${it.card.id}`} style={s.frequency}>{habitFrequencyLabel(it)}</Text>
+        </View></View><Text style={s.total}>{calendar.filter(d=>d&&checked(it,d)).length} 天</Text></View>
+        <View style={s.monthContent}><View style={s.calendar}>{WEEK.map(w=><Text key={w} style={s.calendarWeek}>{w}</Text>)}
+          {calendar.map((d,i)=>d?<View key={d} style={s.calendarCell}><Check tone={tones[it.card.id]??FALLBACK_TONE} monthDay={Number(d.slice(-2))} checked={checked(it,d)} disabled={busy||d>today||!due(it,d)} onPress={()=>toggle(it,d)} onLongPress={()=>open(it,d)} id={`habit-month-${it.card.id}-${d}`} label={`${it.card.name} ${d}`} isToday={d===today}/></View>:<View key={`blank-${i}`} style={s.calendarCell}/>)}
+        </View><View style={s.monthQuick}>
+          <Check tone={tones[it.card.id]??FALLBACK_TONE} checked={checked(it,date)} disabled={busy||date>today||!due(it,date)} onPress={()=>toggle(it,date)} onLongPress={()=>open(it,date)} id={`habit-month-quick-${it.card.id}`} label={`${it.card.name} ${date}`} emoji={it.card.emoji??'✓'}/>
+          <Text style={s.quickDate}>{date===today?'今天':`${Number(date.slice(5,7))}/${Number(date.slice(-2))}`}</Text>
+        </View></View>
+      </Pressable>)}
     </ScrollView>}
     <CaptureFab testID="habit-create" onPress={()=>{if(!busy)setEdit({item:'new',day:date});}}/>
     <HabitEditorModal target={edit?.item??null} day={edit?.day??date} checked={!!editItem&&checked(editItem,edit?.day??date)} note={editItem?note(editItem,edit?.day??date):''}
@@ -227,8 +259,8 @@ function Check({tone,checked,disabled,onPress,onLongPress,id,label,emoji,compact
   // 未来日期禁用打卡，习惯名称仍可长按编辑。
   return <Pressable disabled={disabled} testID={id} accessibilityRole="checkbox" accessibilityLabel={label} aria-checked={checked} aria-disabled={disabled} accessibilityState={{checked,disabled}}
     onPress={()=>!disabled&&onPress()} onLongPress={onLongPress} delayLongPress={400} style={[s.checkHit,compact&&s.compactHit,monthDay!==undefined&&s.monthHit]}>
-    <Animated.View style={[s.circle,compact&&s.compact,monthDay!==undefined&&s.monthCircle,{backgroundColor:checked?tone.solid:tone.wash,borderColor:checked?tone.solid:tone.border},isToday&&!checked&&{borderColor:tone.solid,borderWidth:2},disabled&&!checked&&s.future,{transform:[{scale}]}]}>
-      <Text style={[s.checkText,{color:tone.solid},compact&&s.compactText,monthDay!==undefined&&s.monthText,checked&&s.white]}>{monthDay!==undefined?monthDay:checked?'✓':compact?'':emoji}</Text>
+    <Animated.View style={[s.circle,compact&&s.compact,monthDay!==undefined&&s.monthCircle,{backgroundColor:checked?tone.solid:monthDay!==undefined?'#F3F2F5':tone.wash,borderColor:checked?tone.solid:monthDay!==undefined?'transparent':tone.border},isToday&&!checked&&{borderColor:tone.solid,borderWidth:monthDay!==undefined?1:2},disabled&&!checked&&s.future,{transform:[{scale}]}]}>
+      <Text style={[s.checkText,{color:tone.solid},compact&&s.compactText,monthDay!==undefined&&[s.monthText,!checked&&{color:'#9C96A5'}],checked&&s.white]}>{monthDay!==undefined?monthDay:checked?'✓':compact?'':emoji}</Text>
     </Animated.View>
   </Pressable>;
 }
@@ -237,7 +269,10 @@ const s=StyleSheet.create({
   list:{paddingHorizontal:spacing.lg,paddingBottom:100},group:{fontSize:fontSize.secondary,color:colors.textSecondary,fontWeight:'600',paddingTop:12,paddingBottom:8,paddingHorizontal:2},
   dayRow:{flexDirection:'row',alignItems:'center',backgroundColor:colors.card,borderRadius:radius.widget,borderLeftWidth:3,paddingVertical:7,paddingHorizontal:10,marginBottom:6,minHeight:58,gap:10},active:{backgroundColor:'#F0EDF5'},dayContent:{flex:1,paddingVertical:3,gap:3},nameRow:{flexDirection:'row',alignItems:'center',gap:8},grow:{flex:1},slotBadge:{fontSize:fontSize.tiny,color:colors.textSecondary,backgroundColor:colors.background,borderRadius:6,paddingHorizontal:6,paddingVertical:3},name:{fontSize:fontSize.body,fontWeight:'500',color:colors.textPrimary,lineHeight:lh(22)},nameDone:{color:colors.textSecondary},description:{fontSize:fontSize.secondary,color:colors.textSecondary,lineHeight:lh(19)},handle:{paddingVertical:10,paddingHorizontal:6},handleText:{fontSize:20,color:colors.textMuted},
   checkHit:{alignItems:'center',justifyContent:'center',minWidth:40,minHeight:40},circle:{width:36,height:36,borderRadius:18,borderWidth:1,alignItems:'center',justifyContent:'center'},checkText:{fontSize:20},white:{color:'#fff'},compactHit:{minWidth:0,width:'100%',minHeight:36},compact:{width:28,height:28,borderRadius:14},compactText:{fontSize:17},future:{opacity:0.55},
-  weekDateCircle:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center'},weekDateSelected:{backgroundColor:colors.purpleDark},weekCount:{fontSize:fontSize.tiny,color:colors.blueDark},
-  weekHeader:{flexDirection:'row',paddingVertical:10,borderBottomWidth:1,borderBottomColor:colors.purpleLight},weekRow:{flexDirection:'row',alignItems:'center',paddingVertical:10},weekName:{width:'28%',paddingRight:6,justifyContent:'center'},weekCell:{width:'10.2857%',alignItems:'center',justifyContent:'center',gap:5},weekday:{fontSize:11,color:colors.textSecondary},weekNumber:{fontSize:16,fontWeight:'600',color:colors.textPrimary},weekHabit:{fontSize:fontSize.body,lineHeight:lh(21)},
-  monthCard:{backgroundColor:colors.card,borderRadius:radius.card,borderTopWidth:3,padding:12,marginBottom:10,gap:10},cardHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},total:{fontSize:fontSize.secondary,color:colors.textSecondary},calendar:{flexDirection:'row',flexWrap:'wrap'},calendarWeek:{width:'14.2857%',textAlign:'center',fontSize:11,color:colors.textSecondary,paddingBottom:6},calendarCell:{width:'14.2857%',height:34,alignItems:'center',justifyContent:'center'},monthHit:{minWidth:0,minHeight:34,height:34,width:'100%'},monthCircle:{width:28,height:28,borderRadius:8},monthText:{fontSize:12},error:{fontSize:fontSize.secondary,color:colors.redDark,paddingHorizontal:spacing.lg},
+  weekDateCircle:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center'},weekDateSelected:{borderWidth:1,borderColor:colors.purpleDark},weekCount:{fontSize:fontSize.tiny,color:colors.blueDark},
+  weekHeader:{flexDirection:'row',backgroundColor:colors.background,paddingVertical:0,borderBottomWidth:1,borderBottomColor:colors.purpleLight},weekRow:{flexDirection:'row',alignItems:'stretch'},weekName:{width:'28%',paddingRight:6,justifyContent:'center'},weekCell:{width:'10.2857%',alignItems:'center',justifyContent:'center',gap:5},weekday:{fontSize:11,color:colors.textSecondary},weekNumber:{fontSize:16,fontWeight:'600',color:colors.textPrimary},weekHabit:{fontSize:fontSize.body,lineHeight:lh(21)},
+  frequency:{fontSize:fontSize.secondary,color:colors.textSecondary,lineHeight:lh(17)},sectionHead:{flexDirection:'row',alignItems:'center',gap:8,paddingTop:16,paddingBottom:9},sectionDot:{width:6,height:6,borderRadius:3},sectionTitle:{fontSize:fontSize.secondary,fontWeight:'600',color:colors.textPrimary},sectionLine:{height:1,backgroundColor:'#E8E5ED',flex:1},sectionCount:{fontSize:fontSize.tiny,color:colors.textMuted},frequencySection:{flexDirection:'row',alignItems:'center',gap:8,paddingTop:15,paddingBottom:7},
+  weekHeaderCell:{paddingVertical:6},weekNameContent:{paddingVertical:10,gap:3},weekBodyCell:{paddingVertical:10},weekFrequency:{fontSize:fontSize.secondary,color:colors.textSecondary,lineHeight:lh(17)},weekTodayHeader:{backgroundColor:'#EAE3F3',borderTopLeftRadius:12,borderTopRightRadius:12},weekTodayColumn:{backgroundColor:'#EEE8F780',borderLeftWidth:1,borderRightWidth:1,borderColor:'#E4DBF0'},weekDateToday:{backgroundColor:colors.purpleDark,borderColor:colors.purpleDark},todayText:{color:colors.purpleDark,fontWeight:'700'},
+  monthHeading:{flex:1,flexDirection:'row',alignItems:'flex-start',gap:8},monthColorDot:{width:6,height:6,borderRadius:3,marginTop:8},monthContent:{flexDirection:'row',alignItems:'center',gap:12},monthQuick:{width:52,alignItems:'center',justifyContent:'center',gap:5},quickDate:{fontSize:fontSize.tiny,color:colors.textSecondary},
+  monthCard:{backgroundColor:colors.card,borderRadius:radius.card,padding:10,marginBottom:8,gap:6},cardHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},total:{fontSize:fontSize.secondary,color:colors.textSecondary},calendar:{flex:1,flexDirection:'row',flexWrap:'wrap'},calendarWeek:{width:'14.2857%',textAlign:'center',fontSize:11,color:colors.textMuted,paddingBottom:2},calendarCell:{width:'14.2857%',height:20,alignItems:'center',justifyContent:'center'},monthHit:{minWidth:0,minHeight:20,height:20,width:'100%'},monthCircle:{width:16,height:16,borderRadius:3,borderWidth:0},monthText:{fontSize:9},error:{fontSize:fontSize.secondary,color:colors.redDark,paddingHorizontal:spacing.lg},
 });
