@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
-import { colors } from '../../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
+import { colors, fixedFontSize } from '../../constants/theme';
 import { FEATURES, FEATURE_BY_KEY } from '../../lib/features';
 import { useLayoutStore } from '../../lib/layoutStore';
 import { CaptureSheet } from '../../components/capture/CaptureSheet';
 
 // 底栏固定为今日、习惯、时间、其他。其余页面保留路由，由其他页进入。
+const TAB_GLYPHS:Record<string,string>={today:'☼',habits:'✓',time:'◷',other:'⋯'};
 export default function TabsLayout() {
+  const insets=useSafeAreaInsets();
   const { topKeys, load } = useLayoutStore();
 
   useEffect(() => {
@@ -32,13 +35,19 @@ export default function TabsLayout() {
             headerShown: false,
             tabBarActiveTintColor: colors.purpleDark,
             tabBarInactiveTintColor: colors.textMuted,
-            tabBarLabelStyle: { fontSize: 11 },
+            tabBarLabelStyle: { fontSize: fixedFontSize.secondary, marginBottom: 4 },
+            tabBarIconStyle: { width: 56, height: 32 },
+            tabBarItemStyle: { paddingTop: 0 },
             tabBarStyle: {
+              height: 64 + insets.bottom,
+              paddingBottom: insets.bottom,
+              paddingTop: 4,
               backgroundColor: colors.card,
               borderTopWidth: 0,
               elevation: 8,
             },
-            tabBarIcon: () => <Text style={{ fontSize: 18 }}>{feature?.icon ?? ''}</Text>,
+            tabBarIcon: ({ focused, color }) => <View testID={`nav-icon-${feature?.key ?? route.name}`} style={{width:52,height:30,borderRadius:15,backgroundColor:focused?colors.purpleDark:'transparent',alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:22,lineHeight:26,color:focused?'#fff':color,fontWeight:focused?'700':'400'}}>{TAB_GLYPHS[feature?.key??route.name]??feature?.icon??''}</Text></View>,
+            tabBarLabel: ({ focused, color }) => <Text style={{fontSize:fixedFontSize.secondary,lineHeight:18,color,fontWeight:focused?'700':'400',marginBottom:3}}>{feature?.label??'其他'}</Text>,
           };
         }}
       >

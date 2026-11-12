@@ -79,3 +79,23 @@ assert.equal(schedule([...done,{action_id:'gap',record_date:'2026-11-20',complet
 assert.equal(schedule([])(interval,'2026-11-12'),true);
 assert.equal(schedule([])({...habit,action:{id:'manual',frequency_type:'manual'}},'2026-11-12'),true);
 console.log('✓ 当天安排：仅周日、间隔周期、凌晨日界、补记、改周期后旧完成和撤销、未来完成不影响过去');
+
+const P=load('lib/habitPresentation.ts');
+const presentationItems=[
+ {card:{id:'weekly',time_of_day:'morning'},action:{frequency_type:'fixed_day',fixed_days:[7]}},
+ {card:{id:'daily',time_of_day:'morning'},action:{frequency_type:'interval',interval_days:1}},
+ {card:{id:'twice',time_of_day:'morning'},action:{frequency_type:'fixed_day',fixed_days:[1,5]}},
+ {card:{id:'afternoon',time_of_day:'day'},action:{frequency_type:'interval',interval_days:1}},
+];
+assert.deepEqual(P.orderHabits(presentationItems,[]).map(i=>i.card.id),['daily','afternoon','twice','weekly']);
+assert.deepEqual(P.orderHabits(presentationItems,['weekly','daily','twice','afternoon']).map(i=>i.card.id),['weekly','daily','twice','afternoon']);
+assert.deepEqual(presentationItems.map(i=>i.card.id),['weekly','daily','twice','afternoon']);
+const colorCards=Array.from({length:24},(_,i)=>({id:`color-${i}`,created_at:`2026-11-${String(i+1).padStart(2,'0')}T08:00:00Z`}));
+const tones=P.habitTones(colorCards),reverse=P.habitTones([...colorCards].reverse());
+assert.equal(new Set(Object.values(tones).map(t=>t.solid)).size,25);
+for(const c of colorCards)assert.deepEqual(tones[c.id],reverse[c.id]);
+const expanded=P.habitTones([...colorCards,{id:'new',created_at:'2026-12-01T08:00:00Z'}]);
+for(const c of colorCards)assert.deepEqual(tones[c.id],expanded[c.id]);
+function contrastWhite(hex){const rgb=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=0.04045?x/12.92:((x+0.055)/1.055)**2.4);return 1.05/(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]+0.05);}
+for(const t of Object.values(tones).filter(t=>t.solid.startsWith('#')))assert.ok(contrastWhite(t.solid)>=4.5,t.solid);
+console.log('✓ 三视图共用频率默认顺序与手动排序，24种习惯颜色不重复且稳定，勾选白字对比度合格');

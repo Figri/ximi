@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { RecordEditModal } from '../common/RecordEditModal';
 import { db } from '../../lib/localdb';
 import { useDataBus } from '../../lib/dataBus';
-import { colors, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 
 export function OsReviews({ date }: { date: string }) {
   const version = useDataBus((s) => s.version);
@@ -53,8 +53,8 @@ function Review({ row, onEdit }: { row: any; onEdit: () => void }) {
   </Pressable>;
 }
 const s = StyleSheet.create({
-  card: { padding: spacing.md, marginBottom: spacing.md, borderRadius: radius.card, backgroundColor: colors.card, gap: spacing.sm },
-  title: { color: colors.textPrimary, fontSize: 17, fontWeight: '600' }, text: { color: colors.textPrimary, lineHeight: 24, fontSize: 15 },
-  note: { color: colors.textMuted, fontSize: 13, lineHeight: 20 }, link: { color: colors.purpleDark, fontSize: 14 },
-  record: { gap: spacing.sm, paddingVertical: spacing.sm }, search: { padding: 10, backgroundColor: colors.background, borderRadius: radius.widget, color: colors.textPrimary },
+  card: { padding: spacing.lg, marginBottom: 0, borderRadius: radius.card, backgroundColor: colors.card, gap: spacing.md },
+  title: { color: colors.textPrimary, fontSize: fontSize.cardName, fontWeight: '600' }, text: { color: colors.textPrimary, lineHeight: lh(24), fontSize: fontSize.reading },
+  note: { color: colors.textMuted, fontSize: fontSize.secondary, lineHeight: 20 }, link: { color: colors.purpleDark, fontSize: fontSize.body },
+  record: { gap: spacing.sm, paddingVertical: spacing.sm }, search: { padding: 12, fontSize: fontSize.body, backgroundColor: colors.background, borderRadius: radius.widget, color: colors.textPrimary },
 });

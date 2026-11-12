@@ -1,12 +1,12 @@
 // 西米OS 设计规范
 
 export const colors = {
-  background: '#F6F4F8',
+  background: '#F7F6F9',
   card: '#FFFFFF',
 
-  textPrimary: '#3D3554',
-  textSecondary: '#6B6180',
-  textMuted: '#A49BB8',
+  textPrimary: '#34313F',
+  textSecondary: '#696373',
+  textMuted: '#8D869A',
 
   blue: '#C2D9E8',
   blueLight: '#EAF2F8',
@@ -18,7 +18,7 @@ export const colors = {
 
   purple: '#C4B5D8',
   purpleLight: '#EDE8F4',
-  purpleDark: '#8E73B3',
+  purpleDark: '#79609F',
 
   green: '#8CC9A0',
   greenDark: '#5DA87A',
@@ -45,11 +45,11 @@ export const statusColorDark = {
 // 时间格子、日期条、底栏、月历这些布局卡死的地方用 fixedFontSize，不跟着放大。
 // 写死数字的字号 / 行高，想跟着放大的用 fs() / lh()。
 const BASE_FONT = {
-  pageTitle: 17,
-  cardName: 14,
-  body: 13,
-  secondary: 11,
-  tiny: 10,
+  pageTitle: 20,
+  cardName: 16,
+  body: 15,
+  secondary: 13,
+  tiny: 11,
   /** 随心记这种要读的一段段字 */
   reading: 15,
 };

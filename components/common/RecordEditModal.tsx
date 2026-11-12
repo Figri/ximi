@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 
 /** 记录的统一编辑入口：长按打开，删除只出现在弹窗中。 */
 export function RecordEditModal({ visible, title, text, heading, headingLabel, allowEmpty = false, onClose, onSave, onDelete }: {
@@ -43,8 +43,8 @@ export function RecordEditModal({ visible, title, text, heading, headingLabel, a
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(61,53,84,0.3)', justifyContent: 'center', padding: spacing.lg },
   sheet: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, gap: 16, maxHeight: '85%', width: '100%', maxWidth: 600, alignSelf: 'center' },
-  title: { fontSize: 18, fontWeight: '600', color: colors.textPrimary },
-  input: { padding: 12, backgroundColor: colors.background, borderRadius: radius.widget, fontSize: 16, color: colors.textPrimary, marginBottom: 10 },
-  body: { minHeight: 180, lineHeight: 25 }, buttons: { flexDirection: 'row', alignItems: 'center', gap: 24, paddingVertical: 8 },
-  spacer: { flex: 1 }, error: { color: colors.redDark, fontSize: 15 }, link: { color: colors.purpleDark, fontSize: 15 },
+  title: { fontSize: fontSize.cardName, fontWeight: '600', color: colors.textPrimary },
+  input: { padding: 12, backgroundColor: colors.background, borderRadius: radius.widget, fontSize: fontSize.body, color: colors.textPrimary, marginBottom: 10 },
+  body: { minHeight: 180, lineHeight: lh(24) }, buttons: { flexDirection: 'row', alignItems: 'center', gap: 24, paddingVertical: 8 },
+  spacer: { flex: 1 }, error: { color: colors.redDark, fontSize: fontSize.body }, link: { color: colors.purpleDark, fontSize: fontSize.body },
 });

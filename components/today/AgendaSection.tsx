@@ -153,23 +153,23 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
 
 const BOX = 18;
 /** 输入框一行的行高；最多长到 4 行，再多就在框里滚 */
-const ADD_LINE = lh(19);
-const ADD_PAD = 9;
+const ADD_LINE = lh(22);
+const ADD_PAD = 10;
 /** 网页上的 textarea 不会自己长高，让它按内容长（安卓上 multiline 本来就会） */
 const WEB_GROW = { fieldSizing: 'content' } as any;
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6 },
+  wrap: { gap: 10 },
   empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: lh(19) },
   slot: { flexDirection: 'row', gap: spacing.sm },
-  slotLabel: { width: 34, fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 2 },
-  slotRows: { flex: 1, gap: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
+  slotLabel: { width: 40, fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 2 },
+  slotRows: { flex: 1, gap: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },
   square: { width: BOX, height: BOX, borderRadius: 4, borderWidth: 1.5, borderColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   circle: { width: BOX, height: BOX, borderRadius: BOX / 2, borderWidth: 1.5, borderColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   boxDone: { backgroundColor: colors.purpleDark, borderColor: colors.purpleDark },
   tick: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: 13 },
-  title: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, lineHeight: lh(18) },
+  title: { flex: 1, fontSize: fontSize.body, color: colors.textPrimary, lineHeight: lh(22) },
   titleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
   titleCarried: { color: colors.textSecondary },
   star: { color: colors.yellowDark, fontSize: fontSize.secondary },

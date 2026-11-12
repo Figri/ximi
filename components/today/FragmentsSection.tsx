@@ -112,7 +112,7 @@ const PAD = 9;
 const WEB_GROW = { fieldSizing: 'content' } as any;
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6 },
+  wrap: { gap: 10 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginBottom: 2 },
   moodBtn: { width: 38, height: 38, marginBottom: (LINE + PAD * 2 - 38) / 2, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, borderWidth: 2, borderColor: 'transparent' },
   moodBtnOn: { backgroundColor: colors.purpleLight, borderColor: colors.purpleDark },
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
   send: { height: LINE + PAD * 2, justifyContent: 'center', backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 14 },
   sendOff: { opacity: 0.4 },
   sendText: { color: '#fff', fontSize: fontSize.body, fontWeight: '700' },
-  row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },
+  row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 6 },
   time: { width: lh(40), fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 3 },
   text: { flex: 1, fontSize: fontSize.reading, color: colors.textPrimary, lineHeight: lh(22) },
   more: { fontSize: fontSize.secondary, color: colors.purpleDark },

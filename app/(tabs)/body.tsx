@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   body: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.md, gap: spacing.sm },
-  cardTitle: { fontSize: fontSize.secondary, fontWeight: '700', color: colors.textSecondary },
+  cardTitle: { fontSize: fontSize.cardName, fontWeight: '700', color: colors.textSecondary },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   input: { flex: 1, minWidth: 120, backgroundColor: colors.background, borderRadius: radius.widget, paddingHorizontal: 10, paddingVertical: 8, fontSize: fontSize.body, color: colors.textPrimary },
   btn: { backgroundColor: colors.purpleDark, borderRadius: radius.widget, paddingHorizontal: 14, paddingVertical: 8 },

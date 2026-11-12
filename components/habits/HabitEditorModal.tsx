@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Action, Card, TimeOfDay } from '../../types';
 
@@ -98,6 +98,6 @@ export function HabitEditorModal({ target, day, checked, note, onClose, onSave, 
 }
 const s=StyleSheet.create({
   backdrop:{flex:1,justifyContent:'center',backgroundColor:'rgba(61,53,84,0.3)',padding:spacing.lg},sheet:{backgroundColor:colors.card,borderRadius:radius.card,padding:20,gap:20,maxHeight:'88%',width:'100%',maxWidth:600,alignSelf:'center'},
-  title:{fontSize:18,fontWeight:'600',color:colors.textPrimary},form:{gap:14},label:{fontSize:14,color:colors.textSecondary},row:{flexDirection:'row',alignItems:'center',gap:10},wrap:{flexWrap:'wrap'},between:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12},flex:{flex:1},
-  input:{padding:12,borderRadius:radius.widget,backgroundColor:colors.background,color:colors.textPrimary,fontSize:16},emoji:{width:60,textAlign:'center'},note:{minHeight:100,lineHeight:24},chip:{paddingVertical:8,paddingHorizontal:12,borderRadius:18,backgroundColor:colors.background},day:{width:34,height:34,borderRadius:17,alignItems:'center',justifyContent:'center',backgroundColor:colors.background},on:{backgroundColor:colors.purpleDark},white:{color:'#fff'},link:{color:colors.purpleDark,fontSize:15},error:{color:colors.redDark,fontSize:13},deleteActions:{gap:12,flexShrink:1},
+  title:{fontSize:fontSize.cardName,fontWeight:'600',color:colors.textPrimary},form:{gap:14},label:{fontSize:fontSize.secondary,color:colors.textSecondary},row:{flexDirection:'row',alignItems:'center',gap:10},wrap:{flexWrap:'wrap'},between:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12},flex:{flex:1},
+  input:{padding:12,borderRadius:radius.widget,backgroundColor:colors.background,color:colors.textPrimary,fontSize:fontSize.body},emoji:{width:60,textAlign:'center'},note:{minHeight:100,lineHeight:lh(24)},chip:{paddingVertical:8,paddingHorizontal:12,borderRadius:18,backgroundColor:colors.background},day:{width:34,height:34,borderRadius:17,alignItems:'center',justifyContent:'center',backgroundColor:colors.background},on:{backgroundColor:colors.purpleDark},white:{color:'#fff'},link:{color:colors.purpleDark,fontSize:fontSize.body},error:{color:colors.redDark,fontSize:fontSize.secondary},deleteActions:{gap:12,flexShrink:1},
 });

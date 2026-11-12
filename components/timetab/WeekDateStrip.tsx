@@ -164,5 +164,5 @@ const styles = StyleSheet.create({
   dayCircleSelected: { backgroundColor: colors.purpleDark },
   dayNumber: { fontSize: fontSize.body, color: colors.textPrimary, fontWeight: '600' },
   dayNumberSelected: { color: '#fff' },
-  dayCount: { fontSize: 9, color: colors.blueDark, marginTop: 1, includeFontPadding: false },
+  dayCount: { fontSize: fontSize.tiny, color: colors.blueDark, marginTop: 1, includeFontPadding: false },
 });

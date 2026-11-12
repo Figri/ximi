@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fontSize, radius, spacing } from '../../constants/theme';
+import { colors, fontSize, lh, radius, spacing } from '../../constants/theme';
 import { buildWeek, shiftWeek, type WeekSummary } from '../../lib/week';
 import { formatMinutes } from '../../lib/dayDigest';
 import { lingDayKey, useLingSettings } from '../../lib/ling/settings';
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   range: { fontSize: fontSize.body, color: colors.textSecondary, minWidth: 96, textAlign: 'center' },
   body: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl * 2 },
   card: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.md, gap: spacing.sm },
-  cardTitle: { fontSize: fontSize.secondary, fontWeight: '700', color: colors.textSecondary },
+  cardTitle: { fontSize: fontSize.cardName, fontWeight: '700', color: colors.textSecondary },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   barName: { width: 56, fontSize: fontSize.body, color: colors.textPrimary },
   barTrack: { flex: 1, height: 10, borderRadius: 5, backgroundColor: colors.background, overflow: 'hidden' },
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
   foot: { fontSize: fontSize.secondary, color: colors.textMuted, textAlign: 'center' },
   dayBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 96 },
   dayCol: { flex: 1, alignItems: 'center', gap: 3 },
-  dayNum: { fontSize: fontSize.tiny, color: colors.textSecondary, height: 12 },
+  dayNum: { fontSize: fontSize.tiny, color: colors.textSecondary, height: lh(16) },
   dayTrack: { width: 14, height: 56, borderRadius: 7, backgroundColor: colors.background, justifyContent: 'flex-end', overflow: 'hidden' },
   dayFill: { width: '100%', borderRadius: 7, backgroundColor: colors.purple },
   dayFillToday: { backgroundColor: colors.purpleDark },

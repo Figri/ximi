@@ -7,7 +7,6 @@ import { colors, currentFontScale, FONT_SCALES, fontSize, lh, radius, spacing, t
 import { loadUiSettings, saveUiSettings } from '../../../lib/uiSettings';
 import { ASSIGNABLE_KEYS, FEATURE_BY_KEY, type Feature } from '../../../lib/features';
 import { useLayoutStore } from '../../../lib/layoutStore';
-import { getMigrationState, localLegacyCounts, runLegacyMigration } from '../../../lib/legacyMigration';
 import { CaptureFab } from '../../../components/capture/CaptureFab';
 import { clearCrashes, loadCrashes, markSessionBackground, type CrashEntry } from '../../../lib/crashLog';
 import { loadNotionIds } from '../../../lib/notion/discover';
@@ -45,8 +44,6 @@ export default function OtherScreen() {
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
 
-  const [migrationText, setMigrationText] = useState('读取中……');
-  const [migrating, setMigrating] = useState(false);
   const [crashes, setCrashes] = useState<CrashEntry[]>([]);
   // 字号：选了就存，重启后生效（页面样式是打开时按当时的字号生成的）
   const [fontKey, setFontKey] = useState<FontScaleKey>('standard');
@@ -65,30 +62,6 @@ export default function OtherScreen() {
       loadCrashes().then(setCrashes);
     }, [])
   );
-
-  useEffect(() => {
-    loadMigration();
-  }, []);
-
-  async function loadMigration() {
-    const state = await getMigrationState();
-    const local = await localLegacyCounts();
-    const have = `手机里现在有：习惯卡片 ${local.cards}、打卡记录 ${local.completions}、猫 ${local.cats}、旧聊天 ${local.messages}。`;
-    if (!state) setMigrationText(`还没搬过。${have}`);
-    else if (state.status === 'done') setMigrationText(`${fmtTime(state.at)} 搬完了。${have}旧 Supabase 库可以去控制台删掉了。`);
-    else if (state.status === 'skipped') setMigrationText(`不搬了（${state.error ?? ''}）。${have}`);
-    else setMigrationText(`还没搬成功，下次打开会再试（${state.error ?? '连不上'}）。${have}`);
-  }
-
-  async function handleRemigrate() {
-    setMigrating(true);
-    try {
-      await runLegacyMigration(true);
-      await loadMigration();
-    } finally {
-      setMigrating(false);
-    }
-  }
 
   async function handleCheckUpdate() {
     if (checking) return;
@@ -191,14 +164,6 @@ export default function OtherScreen() {
           <Text style={styles.templateLinkText}>🧠 让灵一直记住的事（本机）</Text>
           <Text style={styles.moreArrow}>›</Text>
         </Pressable>
-
-        <Text style={[styles.settingsSubLabel, { marginTop: spacing.lg }]}>旧数据搬家</Text>
-        <View style={styles.versionCard}>
-          <Text style={styles.versionValue}>{migrationText}</Text>
-          <Pressable style={styles.checkButton} onPress={handleRemigrate} disabled={migrating}>
-            {migrating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.checkButtonText}>再搬一次</Text>}
-          </Pressable>
-        </View>
 
         {crashes.length ? (
           <>
