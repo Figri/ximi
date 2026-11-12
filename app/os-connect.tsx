@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../constants/theme';
 import { osCloud } from '../lib/osCloud';
+import { completeOsLogin, sendOsLoginEmail } from '../lib/osLogin';
 import { enableOsSync, syncOs, syncStatus } from '../lib/osSync';
 
 export default function OsConnect() {
@@ -40,16 +41,17 @@ export default function OsConnect() {
       {account ? <Text style={s.text}>已登录：{account}</Text> : <>
         <Text style={s.note}>首次使用会创建你的云端账号，验证邮箱后才能同步。</Text>
         <TextInput testID="cloud-email" style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="云端账号邮箱" />
-        {button('发送验证码', 'cloud-send-code', async () => {
-          const { error } = await osCloud().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
-          if (error) throw error;
-          setMessage('验证码已发送，请查看邮箱');
+        {button('发送登录邮件', 'cloud-send-code', async () => {
+          await sendOsLoginEmail(osCloud().auth, email);
+          setMessage('登录邮件已发送。邮件只有蓝色按钮时，请复制按钮的链接地址，粘贴到下面。');
         })}
-        <TextInput testID="cloud-code" style={s.input} value={code} onChangeText={setCode} keyboardType="number-pad" placeholder="邮箱验证码" />
+        <Text style={s.note}>邮件链接打不开也可以登录：长按邮件中的蓝色确认或登录按钮，选择「复制链接地址」，回到这里粘贴。电脑上用鼠标右键复制链接。</Text>
+        <TextInput testID="cloud-code" style={[s.input, { minHeight: 80, textAlignVertical: 'top' }]} value={code} onChangeText={setCode} multiline autoCapitalize="none" autoCorrect={false} placeholder="粘贴验证码或邮件里的完整链接" />
+        <Text style={s.note}>如果已经点过邮件按钮、打开的是无法访问的 localhost 页面，也可以复制浏览器地址栏的完整地址到这里。登录链接只粘贴在 App 内。</Text>
         {button('登录', 'cloud-login', async () => {
-          const { error } = await osCloud().auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
-          if (error) throw error;
+          await completeOsLogin(osCloud().auth, email, code, process.env.EXPO_PUBLIC_SUPABASE_URL ?? '');
           setCode('');
+          setMessage('登录成功，可以点「开启同步」');
           if (typeof authorization_id === 'string') router.replace({ pathname: '/os-consent', params: { authorization_id } });
         })}
       </>}

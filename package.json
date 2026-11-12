@@ -45,7 +45,9 @@
     "web": "expo start --web",
     "test": "node tests/logic.test.mjs",
     "test:bridge": "node tests/os-bridge.test.mjs",
-    "test:bridge-ui": "node tests/os-bridge-ui.mjs"
+    "test:bridge-ui": "node tests/os-bridge-ui.mjs",
+    "test:login": "node tests/os-login.test.mjs",
+    "test:login-ui": "node tests/os-login-ui.mjs"
   },
   "private": true
 }
