@@ -284,6 +284,10 @@ export default function OtherScreen() {
           <Text style={styles.templateLinkText}>💜 灵的设定（大脑、频率、提示词、提醒自检）</Text>
           <Text style={styles.moreArrow}>›</Text>
         </Pressable>
+        <Pressable style={styles.templateLinkRow} onPress={() => router.push('/os-connect')} testID="open-os-connect">
+          <Text style={styles.templateLinkText}>西米OS云端连接</Text>
+          <Text style={styles.moreArrow}>›</Text>
+        </Pressable>
         <Pressable style={styles.templateLinkRow} onPress={() => router.push('/notion-connect')}>
           <Text style={styles.templateLinkText}>🗂 Notion 连接、同步、备份与恢复</Text>
           <Text style={styles.moreArrow}>›</Text>

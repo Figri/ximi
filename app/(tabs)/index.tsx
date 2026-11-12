@@ -12,6 +12,7 @@ import { PlaySection } from '../../components/today/PlaySection';
 import { FragmentsSection } from '../../components/today/FragmentsSection';
 import { BodySection } from '../../components/today/BodySection';
 import { WaterSection } from '../../components/today/WaterSection';
+import { OsReviews } from '../../components/today/OsReviews';
 import { WeightSheet } from '../../components/today/WeightSheet';
 import { TodoFormModal } from '../../components/todotab/TodoFormModal';
 import { CaptureFab } from '../../components/capture/CaptureFab';
@@ -685,6 +686,7 @@ export default function TodayScreen() {
           <Keyed key={k}>{renderCard(k)}</Keyed>
         ))}
 
+        <OsReviews date={dayKey} />
         <View style={{ height: 96 }} />
       </ScrollView>
       </KeyboardAvoidingView>

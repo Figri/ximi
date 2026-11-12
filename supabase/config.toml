@@ -1,0 +1,4 @@
+[functions.os-mcp]
+# OAuth discovery needs an unauthenticated response. handler.ts authenticates
+# EVERY other request against Supabase Auth before constructing MCP tools.
+verify_jwt = false

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { canonical } from './osSyncTypes';
 
 // 本地数据库：用法跟 supabase-js 的 from(table).select().eq()... 一样，数据存在手机本地
 // （AsyncStorage）。原来直连 Supabase 的模块只要把 supabase 换成 db，查询代码一行不用改。
@@ -214,7 +215,8 @@ function same(a: any, b: any): boolean {
 function ilike(value: any, pattern: string): boolean {
   if (value == null) return false;
   const esc = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
-  return new RegExp(`^${esc}$`, 'i').test(String(value));
+  // SQL LIKE % also matches line breaks in full review/note bodies.
+  return new RegExp(`^${esc}$`, 'is').test(String(value));
 }
 
 /** 解析 PostgREST 的 or 语法：'title.ilike.%猫%,content.ilike.%猫%' */
@@ -555,6 +557,24 @@ export const db: LocalDb = {
 
 export async function readTable(table: string): Promise<Row[]> {
   return allRows(await loadTable(table)).map((r) => ({ ...r }));
+}
+
+/** Cloud download CAS: compare and mutate without yielding between them. */
+export async function compareAndSetRow(table: string, id: string, expected: Row | null, next: Row | null): Promise<boolean> {
+  const st = await loadTable(table);
+  const hits = locate(st, (r) => r.id === id);
+  const hit = hits[0];
+  const current = hit ? st.chunks[hit.chunk][hit.index] : null;
+  // Replaying an already-applied download after an interrupted checkpoint is safe.
+  if (canonical(current) === canonical(next)) return true;
+  if (canonical(current) !== canonical(expected)) return false;
+  if (hit) {
+    if (next) st.chunks[hit.chunk][hit.index] = { ...next };
+    else st.chunks[hit.chunk].splice(hit.index, 1);
+    st.dirty.add(hit.chunk);
+  } else if (next) appendRow(st, { ...next });
+  await persist(table, st);
+  return true;
 }
 
 /** 按主键合并写入：已有的行用新值覆盖，没有的追加。返回新增+更新的行数 */

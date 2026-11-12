@@ -9,6 +9,7 @@ import { colors, fontSize, radius, spacing } from '../constants/theme';
 import { room } from '../constants/room';
 import { useLingRuntime } from '../lib/ling/useLingRuntime';
 import { flushSync } from '../lib/timelogSync';
+import { syncOsIfEnabled } from '../lib/osSync';
 import { runLegacyMigration } from '../lib/legacyMigration';
 import { useCardStore } from '../lib/store';
 import { applyStoredFontScale, setUiReady } from '../lib/uiSettings';
@@ -118,10 +119,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     flushSync();
+    const sync = () => { syncOsIfEnabled().catch(() => {}); };
+    sync();
+    const interval = setInterval(sync, 30000);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') flushSync();
+      if (state === 'active') { flushSync(); sync(); }
     });
-    return () => sub.remove();
+    return () => { sub.remove(); clearInterval(interval); };
   }, []);
 
   useEffect(() => {
