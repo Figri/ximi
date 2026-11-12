@@ -32,17 +32,18 @@ interface WeekDateStripProps {
   refreshKey: number;
   // 这周7天各自的"有几条"数字，不传就不显示——time模块传time_logs条数，
   // todo模块传当天事项数，让这个组件不跟任何一个模块的数据源绑死
-  fetchCounts: (dates: Date[]) => Promise<Record<string, number>>;
+  fetchCounts: (dates: Date[]) => Promise<Record<string, number | string>>;
   /** 「今」落在哪天。今天页按「一天从 5 点算起」传进来，凌晨还算前一天；不传就是日历上的今天 */
   today?: Date;
   /** 今天页自己的页头已经写了日期，这里就不再显示那一行 */
   hideDateRow?: boolean;
   /** 长按某一天（时间页「对照」：套用 / 存日模板、清空这天的剧本）。不传就没有长按 */
+  testIDPrefix?: string;
   onLongPressDate?: (date: Date) => void;
 }
 
-export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, today: todayProp, hideDateRow, onLongPressDate }: WeekDateStripProps) {
-  const [counts, setCounts] = useState<Record<string, number>>({});
+export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, today: todayProp, hideDateRow, onLongPressDate, testIDPrefix }: WeekDateStripProps) {
+  const [counts, setCounts] = useState<Record<string, number | string>>({});
   const today = todayProp ?? new Date();
   const weekStart = startOfWeek(date);
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -116,6 +117,7 @@ export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, tod
           return (
             <Pressable
               key={d.toISOString()}
+              testID={testIDPrefix ? `${testIDPrefix}-${toDateKey(d)}` : undefined}
               style={styles.dayCol}
               onPress={() => onDateChange(d)}
               onLongPress={onLongPressDate ? () => onLongPressDate(d) : undefined}
@@ -126,7 +128,7 @@ export function WeekDateStrip({ date, onDateChange, refreshKey, fetchCounts, tod
                   {isToday && !isSelected ? '今' : d.getDate()}
                 </Text>
               </View>
-              <Text style={styles.dayCount}>{count > 0 ? count : ''}</Text>
+              <Text style={styles.dayCount}>{typeof count === 'string' || count > 0 ? count : ''}</Text>
             </Pressable>
           );
         })}

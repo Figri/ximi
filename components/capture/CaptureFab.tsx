@@ -4,10 +4,10 @@ import { useCaptureStore } from '../../lib/captureStore';
 
 // 所有主页面右下角同一个 ＋（需求文档 §5.3）。面板本身挂在底栏布局里，全局一个。
 
-export function CaptureFab({ bottom = spacing.lg }: { bottom?: number }) {
+export function CaptureFab({ bottom = spacing.lg, onPress, testID = 'capture-fab' }: { bottom?: number; onPress?: () => void; testID?: string }) {
   const open = useCaptureStore((s) => s.open);
   return (
-    <Pressable style={[styles.fab, { bottom }]} onPress={() => open('any')} testID="capture-fab" hitSlop={6}>
+    <Pressable style={[styles.fab, { bottom }]} onPress={onPress ?? (() => open('any'))} testID={testID} hitSlop={6}>
       <Text style={styles.plus}>＋</Text>
     </Pressable>
   );

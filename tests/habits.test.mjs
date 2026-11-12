@@ -61,3 +61,21 @@ console.log('✓ 生理期直接勾选、取消和描述保存，原有周期记
 assert.deepEqual(D.weekDays('2026-01-01'), ['2025-12-29','2025-12-30','2025-12-31','2026-01-01','2026-01-02','2026-01-03','2026-01-04']);
 assert.equal(D.weekDays('2026-11-15')[0], '2026-11-09');
 console.log('✓ 周视图周一开始，周日与跨年仍连续七天');
+
+const schedule=load('lib/habitSchedule.ts').habitSchedule;
+const habit={card:{id:'weekly',created_at:'2026-11-12T08:00:00Z'},action:{id:'weekly',frequency_type:'fixed_day',fixed_days:[7]}};
+assert.equal(schedule([])(habit,'2026-11-12'),false);
+assert.equal(schedule([])(habit,'2026-11-15'),true);
+assert.equal(schedule([])(habit,'2026-11-08'),true); // 仍支持补过去的打卡
+const legacyDone={action_id:'weekly',record_date:'2026-11-12',completed_at:'2026-11-12T08:00:00Z',undone:false};
+assert.equal(schedule([legacyDone])(habit,'2026-11-12'),true);
+assert.equal(schedule([{...legacyDone,undone:true}])(habit,'2026-11-12'),false);
+const interval={card:{id:'gap'},action:{id:'gap',frequency_type:'interval',suggested_interval:3}};
+const done=[{action_id:'gap',completed_at:'2026-11-11T02:00:00+08:00',undone:false}]; // 凌晨归到10日
+assert.equal(schedule(done)(interval,'2026-11-12'),false);
+assert.equal(schedule(done)(interval,'2026-11-13'),true);
+assert.equal(schedule(done)(interval,'2026-11-10'),true);
+assert.equal(schedule([...done,{action_id:'gap',record_date:'2026-11-20',completed_at:'2026-11-20T08:00:00Z',undone:false}])(interval,'2026-11-13'),true);
+assert.equal(schedule([])(interval,'2026-11-12'),true);
+assert.equal(schedule([])({...habit,action:{id:'manual',frequency_type:'manual'}},'2026-11-12'),true);
+console.log('✓ 当天安排：仅周日、间隔周期、凌晨日界、补记、改周期后旧完成和撤销、未来完成不影响过去');
