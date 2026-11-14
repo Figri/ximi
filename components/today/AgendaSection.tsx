@@ -123,8 +123,8 @@ export function AgendaSection({ rows, onToggle, onEdit, onQuickAdd, onPullToToda
       {onQuickAdd ? <QuickAdd onAdd={onQuickAdd} /> : null}
       {!slots.length ? <Text style={styles.empty}>{onQuickAdd ? '还没排什么。' : '今天还没排什么。想到要做的，点右下角 ＋ 说一句就行。'}</Text> : null}
       {slots.map((slot) => (
-        <View key={slot} style={styles.slot}>
-          <Text style={styles.slotLabel}>{SLOT_LABEL[slot]}</Text>
+        <View key={slot} style={[styles.slot,slot==='allday'&&styles.allDay]} testID={`agenda-slot-${slot}`}>
+          <Text style={[styles.slotLabel,slot==='allday'&&styles.allDayLabel]}>{SLOT_LABEL[slot]}</Text>
           <View style={styles.slotRows}>
             {today[slot].map((r) => (
               <Row key={r.key} r={r} onToggle={onToggle} onEdit={onEdit} onStar={onStar} />
@@ -162,6 +162,8 @@ const styles = StyleSheet.create({
   wrap: { gap: 10 },
   empty: { fontSize: fontSize.body, color: colors.textMuted, lineHeight: lh(19) },
   slot: { flexDirection: 'row', gap: spacing.sm },
+  allDay: { flexDirection: 'column', gap: 5 },
+  allDayLabel: { width: '100%' },
   slotLabel: { width: 40, fontSize: fontSize.secondary, color: colors.textMuted, paddingTop: 2 },
   slotRows: { flex: 1, gap: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },

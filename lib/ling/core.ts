@@ -176,3 +176,7 @@ export function overlayMemories(existing:Memory[],updates:Memory[]):Memory[]{con
 export function clipText(text:string,count:number){return Array.from(text).slice(0,Math.max(0,count)).join('');}
 export function brokenUnicode(text:string){return Array.from(text).some(c=>c.length===1&&c.charCodeAt(0)>=0xD800&&c.charCodeAt(0)<=0xDFFF);}
 export function repairGeneratedTitle(row:any){return typeof row?.title==='string'&&brokenUnicode(row.title)?{...row,title:clipText(String(row.text??''),28)}:row;}
+
+export function digestStamp(m:Partial<ChatMessage>){return memoryIdentifier(JSON.stringify([m.role,m.content,!!m.liked]));}
+export function messageTime(value:string,timezone='Asia/Shanghai'){const date=new Date(value);if(!Number.isFinite(date.getTime()))return '';return new Intl.DateTimeFormat('sv-SE',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(date);}
+export function timedHistory(messages:ChatMessage[],budget:number,timezone:string){return budgetHistory(messages.map(m=>({...m,content:`[时间：${messageTime(m.created_at,timezone)}]\n${m.content}`})),budget);}

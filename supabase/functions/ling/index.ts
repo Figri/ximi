@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
         }
         if(body.action==='begin_chat'){const r=await db.rpc('ling_begin_chat',{p_device:device.id});if(r.error)throw r.error;return r.data?json({ok:true}):json({error:'正在整理并续页，请稍后重试，输入内容已保留'},409);}
         if(body.action==='end_chat'){await db.from('ling_devices').update({busy_until:null}).eq('id',device.id);return json({ok:true});}
-        if(body.action==='active_thread'){const {data:row}=await db.from('ling_records').select('payload').eq('device_id',device.id).eq('kind','ling_threads').eq('id',body.thread_id).maybeSingle();if(row&&!row.payload.archived)await db.from('ling_devices').update({active_thread:body.thread_id}).eq('id',device.id);return json({ok:true});}
+        if(body.action==='active_thread'){const {data:row}=await db.from('ling_records').select('payload').eq('device_id',device.id).eq('kind','ling_threads').eq('id',body.thread_id).maybeSingle();if(row&&!row.payload.deleted)await db.from('ling_devices').update({active_thread:body.thread_id}).eq('id',device.id);return json({ok:true});}
         if (body.action === 'push') {
             if (!Array.isArray(body.records) || body.records.length > 100)
                 return json({ error: '请分批同步' }, 400);

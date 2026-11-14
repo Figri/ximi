@@ -31,7 +31,7 @@ export async function requestCompanion(model: AIModel, key: string, c: Companion
     const timeout = setTimeout(abort, 120000);
     let text = '', usage: Usage = {},complete=false,truncated=false;
     try {
-        const res = await streamFetch('https://api.deepseek.com/chat/completions', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify({ model: c.modelName, thinking: { type: c.thinking ? 'enabled' : 'disabled' }, max_tokens: c.maxOutput, stream: true, stream_options: { include_usage: true }, messages: [{ role: 'system', content: system }, ...messages] }) });
+        const res = await streamFetch('https://api.deepseek.com/chat/completions', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify({ model: c.modelName, thinking: { type: 'enabled' }, max_tokens: c.maxOutput, stream: true, stream_options: { include_usage: true }, messages: [{ role: 'system', content: system }, ...messages] }) });
         if (!res.ok)
             throw new Error(`DeepSeek请求失败（${res.status}），请检查模型和密钥`);
         const reader = res.body?.getReader();

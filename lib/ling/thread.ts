@@ -41,7 +41,7 @@ const TABLE = 'ling_messages';
 
 export async function loadAllMessages(): Promise<LingMessage[]> {
   const { data } = await db.from(TABLE).select('*').order('created_at', { ascending: true });
-  return (data ?? []) as LingMessage[];
+  return (data ?? []).filter((m:any)=>!m.deleted) as LingMessage[];
 }
 
 export async function appendMessage(m: Partial<LingMessage> & Pick<LingMessage, 'role' | 'content'>): Promise<LingMessage> {
