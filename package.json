@@ -51,7 +51,7 @@
     "test:habits-ui": "node tests/habits-ui.mjs",
     "postinstall": "node scripts/fix-draggable-scroll.cjs",
     "test:ling": "node tests/ling.test.mjs && node tests/ling-backend.test.mjs",
-    "test:ling-ui": "node tests/ling-ui.mjs"
+    "test:ling-ui": "node tests/ling-ui.mjs && node tests/ling-sync-ui.mjs"
   },
   "private": true
 }

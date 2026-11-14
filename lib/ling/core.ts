@@ -158,31 +158,21 @@ export function lexicalSources(sources: Source[], query: string, limit = 4) {
     const terms = queryTerms(query);
     return list.map(s => ({ s, score: terms.reduce((n, t) => n + (s.title.toLowerCase().includes(t) ? 4 : 0) + (s.text.toLowerCase().includes(t) ? 1 : 0), 0) + (s.liked ? .1 : 0) })).filter(x => x.score >= 1).sort((a, b) => b.score - a.score).slice(0, limit).map(x => x.s);
 }
-export function snippets(sources: Source[], query: string, budget = 800) { let left = budget; const terms = queryTerms(query); return sources.flatMap(s => { const paragraphs = s.text.split(/\n\s*\n/).flatMap(p => Array.from({ length: Math.ceil(p.length / 700) }, (_, i) => p.slice(i * 700, (i + 1) * 700))); const ranked = paragraphs.map((text, i) => ({ text, i, score: terms.filter(t => text.includes(t)).length })).sort((a, b) => b.score - a.score || a.i - b.i); let text = ''; for (const p of ranked) {
+export function snippets(sources: Source[], query: string, budget = 800) { let left = budget; const terms = queryTerms(query); return sources.flatMap(s => { const paragraphs = chunks(s.text,700); const ranked = paragraphs.map((text, i) => ({ text, i, score: terms.filter(t => text.includes(t)).length })).sort((a, b) => b.score - a.score || a.i - b.i); let text = ''; for (const p of ranked) {
     if (left <= 0)
         break;
-    const part = p.text.slice(0, Math.max(0, Math.floor(left)));
+    const part = clipText(p.text,Math.max(0,Math.floor(left)));
     text += part + '\n';
     left -= textTokens(part);
 } return text ? [{ id: s.id, title: s.title, text: text.trim(), notion_url: s.notion_url }] : []; }); }
-export function chunks(text: string, size = 700) { const parts: string[] = []; let current = ''; for (const p of text.split('\n')) {
-    if (current && current.length + p.length > size) {
-        parts.push(current);
-        current = '';
-    }
-    for (let i = 0; i < p.length; i += size) {
-        const bit = p.slice(i, i + size);
-        if (current.length + bit.length > size) {
-            parts.push(current);
-            current = '';
-        }
-        current += (current ? '\n' : '') + bit;
-    }
-} if (current)
-    parts.push(current); return parts; }
+export function chunks(text:string,size=700){const chars=Array.from(text),parts:string[]=[];for(let i=0;i<chars.length;i+=size)parts.push(chars.slice(i,i+size).join(''));return parts;}
 export function sourceId(m: ChatMessage) { return `reply:${m.turn_id ?? m.id}`; }
-export function memoryIdentifier(text:string){let a=2166136261,b=2246822519;for(const c of text){a=Math.imul(a^c.charCodeAt(0),16777619);b=Math.imul(b^c.charCodeAt(0),3266489917);}return `memory:${(a>>>0).toString(16)}${(b>>>0).toString(16)}`;}
+export function memoryIdentifier(text:string){let a=2166136261,b=2246822519;for(let i=0;i<text.length;i++){const code=text.charCodeAt(i);a=Math.imul(a^code,16777619);b=Math.imul(b^code,3266489917);}return `memory:${(a>>>0).toString(16)}${(b>>>0).toString(16)}`;}
 export function planMemories(items:any[],existing:Memory[],sources:ChatMessage[]):Memory[]{const blocked=new Set(existing.filter(m=>m.status==='forgotten').flatMap(m=>m.source_ids));const allowed=new Map(sources.filter(m=>!m.deleted&&!blocked.has(m.id)).map(m=>[m.id,m]));const result:Memory[]=[];for(const item of items.slice(0,40)){if(!item)continue;const target=typeof item.id==='string'?existing.find(m=>m.id===item.id):undefined;const text=typeof item.text==='string'?item.text.trim():target?.text;const kind=item.kind??target?.kind;if(!text||!['core','episode','agreement','state'].includes(kind))continue;const ids=(Array.isArray(item.source_ids)?item.source_ids:sources.slice(-2).map(m=>m.id)).filter((id:string)=>allowed.has(id));if(!ids.length)continue;const explicit=item.authority!=='inferred'&&ids.some((id:string)=>allowed.get(id)?.role==='user');const old=target??existing.find(m=>m.text===text);if(old?.status==='forgotten')continue;if(old?.pinned&&(old.text!==text||ids.every((id:string)=>Date.parse(allowed.get(id)!.created_at)<Date.parse(old.updated_at))))continue;if(old?.authority==='explicit'&&!explicit)continue;const status=['done','cancelled'].includes(item.status)&&explicit?item.status:old?.status??'active';const row:Memory={...old,id:old?.id??memoryIdentifier(kind+text),text,kind,source_ids:[...new Set<string>([...(old?.source_ids??[]),...ids])],pinned:old?.pinned??false,authority:explicit?'explicit':'inferred',status,date:/^\d{4}-\d{2}-\d{2}$/.test(item.date??'')?item.date:old?.date,updated_at:new Date().toISOString()};const same=result.findIndex(m=>m.id===row.id);if(same<0)result.push(row);else result[same]=row;}return result;}
 
 export function retrievalSources(sources:Source[],favorites:any[],forgotten:string[]=[]):Source[]{const snapshots=favorites.filter(f=>!f.deleted).map(f=>({...f,favorite:true}));const blocked=new Set(forgotten);return [...snapshots,...sources.filter(s=>!snapshots.some(f=>f.source_id===s.id&&f.text===s.text))].filter(s=>!(s.message_ids??[]).some((id:string)=>blocked.has(id)));}
 export function overlayMemories(existing:Memory[],updates:Memory[]):Memory[]{const byId=new Map(existing.map(m=>[m.id,m]));for(const m of updates)byId.set(m.id,m);return [...byId.values()];}
+
+export function clipText(text:string,count:number){return Array.from(text).slice(0,Math.max(0,count)).join('');}
+export function brokenUnicode(text:string){return Array.from(text).some(c=>c.length===1&&c.charCodeAt(0)>=0xD800&&c.charCodeAt(0)<=0xDFFF);}
+export function repairGeneratedTitle(row:any){return typeof row?.title==='string'&&brokenUnicode(row.title)?{...row,title:clipText(String(row.text??''),28)}:row;}

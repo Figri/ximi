@@ -1,6 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0';
-import { dayInZone, retrievalSources, lexicalSources, chunks, type Source } from './core.ts';
+import { dayInZone, repairGeneratedTitle,retrievalSources, lexicalSources, chunks, type Source } from './core.ts';
 import { sha, records, write, stamp, runDaily, sendPush } from './worker.ts';
 import { archiveNotion } from './archive.ts';
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
         if (body.action === 'push') {
             if (!Array.isArray(body.records) || body.records.length > 100)
                 return json({ error: '请分批同步' }, 400);
-            const { data, error } = await db.rpc('ling_write_records', { p_device: device.id, p_records: body.records });
+            const { data, error } = await db.rpc('ling_write_records', { p_device: device.id, p_records: body.records.map((r:any)=>['ling_sources','ling_favorites'].includes(r.kind)?{...r,payload:repairGeneratedTitle(r.payload)}:r) });
             if (error)
                 throw error;
             return json(data);
@@ -148,6 +148,6 @@ Deno.serve(async (req: Request) => {
     catch (e) {
         if (e instanceof Error && e.message === 'auth')
             return json({ error: '手机后台凭证无效，请保留本机数据并重新连接' }, 401);
-        return json({ error: e instanceof Error ? e.message : '后台处理失败' }, 500);
+        const detail=typeof (e as any)?.message==='string'?(e as any).message:'后台暂时无法处理请求';const code=typeof (e as any)?.code==='string'?(e as any).code:undefined;console.error(JSON.stringify({action:'request_failed',code,message:detail}));return json({error:code==='22P02'?'一条旧记录的字符格式需要修复，请检查更新后再同步':detail,code},500);
     }
 });

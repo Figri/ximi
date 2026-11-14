@@ -1,3 +1,4 @@
+import {clipText} from './core.ts';
 import { sha, records, stamp, write } from './worker.ts';
 async function attachLink(db:any,device:any,kind:string,id:string,url:string,expectedText:string){const {data:row,error}=await db.from('ling_records').select('*').eq('device_id',device.id).eq('kind',kind).eq('id',id).maybeSingle();if(error)throw error;if(!row||row.payload.text!==expectedText||row.payload.notion_url===url)return;const r=await db.rpc('ling_write_records',{p_device:device.id,p_records:[{kind,id,expected:row.version,payload:{...row.payload,notion_url:url,updated_at:stamp()}}]});if(r.error)throw r.error;}
 export async function archiveNotion(db: any, device: any, fetcher = fetch) {
@@ -21,7 +22,7 @@ export async function archiveNotion(db: any, device: any, fetcher = fetch) {
     for(const row of changed.data??[]){let source:any=null;const p=row.payload;
       if(row.kind==='ling_favorites'&&!p.deleted)source={...p,archive_id:p.id};
       if(row.kind==='ling_sources'&&!p.deleted&&['letter','script'].includes(p.type)){const f=await get('ling_favorites','favorite:'+p.id);if(!f||f.payload.deleted||f.payload.text!==p.text)source={...p,archive_id:p.id};}
-      if(row.kind==='ling_memories'&&p.status!=='forgotten')source={...p,archive_id:'memory:'+p.id,title:'记忆 · '+p.text.slice(0,30),text:`${p.text}\n\n类型：${p.kind}\n状态：${p.status}${p.date?'\n日期：'+p.date:''}`};
+      if(row.kind==='ling_memories'&&p.status!=='forgotten')source={...p,archive_id:'memory:'+p.id,title:'记忆 · '+clipText(p.text,30),text:`${p.text}\n\n类型：${p.kind}\n状态：${p.status}${p.date?'\n日期：'+p.date:''}`};
       if(row.kind==='ling_threads'||row.kind==='ling_messages'){const thread=row.kind==='ling_threads'?row:await get('ling_threads',p.thread_id);if(thread?.payload.archived){const t=thread.payload;const messages:any[]=[];for(let offset=0;offset<100000;offset+=300){const result=await db.from('ling_records').select('payload').eq('device_id',device.id).eq('kind','ling_messages').eq('payload->>thread_id',t.id).order('id').range(offset,offset+299);if(result.error)throw result.error;messages.push(...result.data.map(r=>r.payload));if(result.data.length<300)break;}source={id:t.id,archive_id:'thread:'+t.id,title:t.title,text:messages.filter(m=>!m.deleted).sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(m=>`${m.role==='user'?'我':'灵'} · ${m.created_at}\n${m.content}`).join('\n\n')};}}
       if(source){candidates.push({...source,revision:row.revision});break;}await advance(row.revision);
     }
@@ -31,7 +32,7 @@ export async function archiveNotion(db: any, device: any, fetcher = fetch) {
         if(!entry&&source.source_id){const original=await db.from('ling_notions').select('*').eq('device_id',device.id).eq('source_id',source.source_id).maybeSingle();if(original.data?.content_hash===hash&&!original.data.error){entry={...original.data,source_id:source.archive_id};await db.from('ling_notions').upsert(entry);}}
         if(entry?.content_hash===hash&&!entry.error){if(!source.archive_id.startsWith('thread:')&&!source.archive_id.startsWith('memory:')){const kind=source.archive_id.startsWith('favorite:')?'ling_favorites':'ling_sources';await attachLink(db,device,kind,source.id,`https://www.notion.so/${entry.page_id.replace(/-/g,'')}`,source.text);}await advance(source.revision);continue;}
         // 已发布的旧版本保持可读；内容真的改变时使用带内容指纹的新页，重试按唯一标题定位。
-        const title = `${source.title.slice(0, 60)} · ${(await sha(device.id + source.archive_id + hash)).slice(0, 16)}`;
+        const title = `${clipText(source.title,60)} · ${(await sha(device.id + source.archive_id + hash)).slice(0, 16)}`;
         let page = entry?.content_hash === hash ? entry.page_id : null;
         let done = entry?.content_hash === hash ? entry.blocks_done : 0;
         try {

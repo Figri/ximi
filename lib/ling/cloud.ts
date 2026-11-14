@@ -18,6 +18,7 @@ const endpoint = () => { const url = process.env.EXPO_PUBLIC_SUPABASE_URL; if (!
     throw new Error('手机更新包未配置云端地址'); return url + '/functions/v1/ling'; };
 let running: Promise<void> | null = null;let again=false;
 export async function cloudStatus() { const s = await AsyncStorage.getItem('ling_cloud_status_v1'); return s ? JSON.parse(s) : { connected: false, error: '等待首次连接' }; }
+async function reportProgress(progress:string){const state=await cloudStatus();await AsyncStorage.setItem('ling_cloud_status_v1',JSON.stringify({...state,progress,error:''}));}
 let registering: Promise<any> | null = null;
 async function deviceAuth() { const stored = await secureStore.get(AUTH); if (stored)
     return JSON.parse(stored); if (!registering)
@@ -54,7 +55,7 @@ async function sync() {
     try {
         if (await AsyncStorage.getItem('ling_cloud_restore_paused_v1'))
             throw new Error('备份已导入，本地保留；请在设定中确认恢复后再同步');
-        await loadLingSettings();
+        await reportProgress('正在连接后台…');await loadLingSettings();
         const model = useLingSettings.getState().model, key = await getApiKey(model);
         if (!key)
             throw new Error('后台早报等待模型密钥：灵 → 设定 → 模型');
@@ -64,7 +65,7 @@ async function sync() {
             try {
                 await ensureLingChannels();
                 if (await ensureNotificationPermission('once'))
-                    push = (await Notifications.getExpoPushTokenAsync({ projectId: 'a5f8fc28-1dac-428f-b632-5b4ddaa6c85b' })).data;
+                    {let timer:ReturnType<typeof setTimeout>|undefined;try{push=(await Promise.race([Notifications.getExpoPushTokenAsync({projectId:'a5f8fc28-1dac-428f-b632-5b4ddaa6c85b'}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('推送凭证检查超时')),6000);})])).data;}finally{clearTimeout(timer);}}
                 else
                     pushError = '未开启通知权限，早报会保存在聊天中';
             }
@@ -78,7 +79,7 @@ async function sync() {
 
         const meta = JSON.parse(await AsyncStorage.getItem(META) ?? '{"base":{},"cursor":0}');
         meta.base ??= {};
-        await pull(meta);config=await loadCompanionConfig();
+        await reportProgress('正在读取后台的新记录…');await pull(meta);config=await loadCompanionConfig();
         await backend('configure', { config, active_thread: (await currentThread()).id, provider: model, model_option: model === 'doubao' ? await getModelOption('doubao') : undefined, api_key: key, push_token: push, notion_token: notion, notion_parent: ids.chatArchivePage ?? undefined });
         const records: any[] = [];
         for (const table of LING_TABLES)
@@ -87,7 +88,7 @@ async function sync() {
         records.push({ kind: 'config', id: 'current', payload: config });
         const dirty = records.filter(r => meta.base[`${r.kind}:${r.id}`]?.hash !== JSON.stringify(r.payload));
         for (let i = 0; i < dirty.length; i += 40) {
-            const batch = dirty.slice(i, i + 40);
+            await reportProgress(`正在上传聊天与记忆 ${i}/${dirty.length}…`);const batch = dirty.slice(i, i + 40);
             const response = await backend('push', { records: batch.map(r => ({ ...r, expected: meta.base[`${r.kind}:${r.id}`]?.version ?? 0 })) });
             if (response.conflicts?.length) {
                 await AsyncStorage.setItem('ling_cloud_conflicts_v1', JSON.stringify(response.conflicts));
@@ -99,15 +100,15 @@ async function sync() {
             }
             await AsyncStorage.setItem(META, JSON.stringify(meta));
         }
-        await pull(meta);
+        await reportProgress('上传完成，正在核对记录…');await pull(meta);
         await backend('active_thread',{thread_id:(await currentThread()).id});
         const state = await backend('status');
-        await AsyncStorage.setItem('ling_cloud_status_v1', JSON.stringify({ ...state, connected: true, lastSync: new Date().toISOString(), pushError, error: '' }));
+        await AsyncStorage.setItem('ling_cloud_status_v1', JSON.stringify({ ...state, connected: true, lastSync: new Date().toISOString(), pushError,progress:'', error: '' }));
         useCompanionEvents.getState().bump();
     }
     catch (e) {
         const old = await cloudStatus();
-        await AsyncStorage.setItem('ling_cloud_status_v1', JSON.stringify({ ...old, error: e instanceof Error ? e.message : String(e) }));
+        await AsyncStorage.setItem('ling_cloud_status_v1', JSON.stringify({ ...old, progress:'',error: e instanceof Error ? e.message : String(e) }));
         throw e;
     }
 }

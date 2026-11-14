@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCompanionEvents } from './events';
 import { db, readTable, uuid, mergeRows, replaceTable } from '../localdb';
-import { dayInZone, carryRounds, sourceId, logicalMessages, planMemories, type ChatMessage, type Memory, type Source } from './core';
+import { dayInZone, carryRounds,clipText,repairGeneratedTitle, sourceId, logicalMessages, planMemories, type ChatMessage, type Memory, type Source } from './core';
 import { loadCompanionConfig, sanitizeConfig, CONFIG_KEY } from './config';
 export interface Thread {
     id: string;
@@ -24,14 +24,23 @@ export async function put(table: string, row: any) {if(table==='ling_memories'){
 let initializing: Promise<void> | undefined;
 export async function initializeCompanion() { if (!initializing)
     initializing = (async () => { const all = await readTable('ling_threads'); if (all.length) {
-        await indexLegacy();
+        await indexLegacy();await migrateLegacyLayers();await repairLegacyTitles();
         return;
     } const c = await loadCompanionConfig(); const messages = await readTable('ling_messages'); const id = 'legacy'; const now = new Date().toISOString(); await put('ling_threads', { id, title: messages.length ? '原来的对话' : '和灵聊天', created_at: messages[0]?.created_at ?? now, archived: false, carry: [], day: dayInZone(new Date(), c.timezone) }); if (messages.length) {
         await replaceTable('ling_messages', messages.map(m => ({ ...m, thread_id: m.thread_id ?? id, turn_id: m.turn_id ?? m.id, updated_at: m.updated_at ?? m.created_at })));
     } await AsyncStorage.setItem('ling_active_thread_v1', id); await indexLegacy(); const mem = await db.from('settings').select('value').eq('key', 'ai_memory').maybeSingle(); if (mem.data?.value)
-        await put('ling_memories', { id: 'legacy-memory', text: String(mem.data.value), kind: 'core', source_ids: [], pinned: true, authority: 'explicit', status: 'active' }); })().catch(e => { initializing = undefined; throw e; }); return initializing; }
+        await put('ling_memories', { id: 'legacy-memory', text: String(mem.data.value), kind: 'core', source_ids: [], pinned: true, authority: 'explicit', status: 'active' });await migrateLegacyLayers();await repairLegacyTitles(); })().catch(e => { initializing = undefined; throw e; }); return initializing; }
+async function migrateLegacyLayers(){
+ const flag='ling_legacy_memory_layers_v1';if(await AsyncStorage.getItem(flag))return;
+ const layers=JSON.parse(await AsyncStorage.getItem('ling_layers_v1')??'{}');const prior=new Set((await readTable('ling_memories')).map(m=>m.id));
+ for(const key of ['archive','recent']){const layer=layers[key],text=typeof layer?.text==='string'?layer.text.trim():'';if(!text)continue;const id='legacy-layer:'+key,title=key==='archive'?'旧版长期档案':'旧版近况',at=Number.isFinite(Date.parse(layer.updatedAt))?layer.updatedAt:new Date().toISOString();
+ if(!(await readTable('ling_sources')).some(s=>s.id===id))await put('ling_sources',{id,title,text,type:'chat',created_at:at,message_ids:[id],origin:'legacy_notion'});
+ const chars=Array.from(text);for(let i=0;i<chars.length;i+=400){const memoryId=id+':'+i;if(prior.has(memoryId))continue;await put('ling_memories',{id:memoryId,text:chars.slice(i,i+400).join(''),kind:key==='archive'?'core':'episode',source_ids:[id],pinned:false,authority:'explicit',status:'active',source_label:title,original_updated_at:at});}
+ }await AsyncStorage.setItem(flag,'1');
+}
+async function repairLegacyTitles(){if(await AsyncStorage.getItem('ling_unicode_titles_v1'))return;for(const table of ['ling_sources','ling_favorites'])for(const row of await readTable(table)){const next=repairGeneratedTitle(row);if(next!==row)await put(table,next);}await AsyncStorage.setItem('ling_unicode_titles_v1','1');}
 async function indexLegacy() { if (await AsyncStorage.getItem('ling_sources_migrated_v1'))
-    return; const messages = await readTable('ling_messages'); const existing = new Set((await readTable('ling_sources')).map(s => s.id)); const sources = messages.filter(m => m.role === 'assistant' && !m.deleted && !existing.has(sourceId(m as ChatMessage))).map(m => ({ id: sourceId(m as ChatMessage), text: m.content, title: m.content.slice(0, 28), type: /亲爱的.*[：:]|写给.*的信|此致|一封信/.test(m.content) ? 'letter' : /剧本|第[一二三四五六七八九十\d]+幕/.test(m.content) ? 'script' : 'chat', created_at: m.created_at, updated_at: m.created_at, message_ids: [m.id], liked: !!m.liked, favorite: !!m.favorite })); if (sources.length)
+    return; const messages = await readTable('ling_messages'); const existing = new Set((await readTable('ling_sources')).map(s => s.id)); const sources = messages.filter(m => m.role === 'assistant' && !m.deleted && !existing.has(sourceId(m as ChatMessage))).map(m => ({ id: sourceId(m as ChatMessage), text: m.content, title: clipText(m.content,28), type: /亲爱的.*[：:]|写给.*的信|此致|一封信/.test(m.content) ? 'letter' : /剧本|第[一二三四五六七八九十\d]+幕/.test(m.content) ? 'script' : 'chat', created_at: m.created_at, updated_at: m.created_at, message_ids: [m.id], liked: !!m.liked, favorite: !!m.favorite })); if (sources.length)
     await mergeRows('ling_sources', sources); await AsyncStorage.setItem('ling_sources_migrated_v1', '1'); }
 export async function currentThread(): Promise<Thread> { await initializeCompanion(); const id = await AsyncStorage.getItem('ling_active_thread_v1'); const all = await readTable('ling_threads'); return (all.find(t => t.id === id && !t.archived) ?? all.find(t => !t.archived) ?? all[all.length - 1]) as Thread; }
 export async function newThread(title = '和灵聊天', carry: ChatMessage[] = [], parent?: Thread, day?: string): Promise<Thread> { const now = new Date().toISOString(); const t = await put('ling_threads', { id: uuid(), title, carry, parent_id: parent?.id, day, created_at: now, archived: false }); await AsyncStorage.setItem('ling_active_thread_v1', t.id); return t; }
@@ -50,7 +59,7 @@ export async function indexReply(m: ChatMessage, artifact?: {
     type?: string;
     title?: string;
 }) { if (m.role !== 'assistant' || !m.content.trim())
-    return; const id = sourceId(m); const prior = (await readTable('ling_sources')).find(s => s.id === id); const siblings = (await readTable('ling_messages')).filter(r => r.role === 'assistant' && !r.deleted && (r.turn_id ?? r.id) === (m.turn_id ?? m.id)); const text = siblings.length ? siblings.map(s => s.content).join('\n\n') : m.content; const kind = ['letter', 'script'].includes(artifact?.type ?? '') ? artifact!.type : prior?.type ?? (/亲爱的.*[：:]|写给.*的信|此致|一封信/.test(text) ? 'letter' : /剧本|第[一二三四五六七八九十\d]+幕|场景[一二三\d：:]/.test(text) ? 'script' : 'chat'); return put('ling_sources', { ...prior, id, text, title: artifact?.title?.trim() || prior?.title || text.slice(0, 28), type: kind, created_at: prior?.created_at ?? m.created_at, message_ids: siblings.length ? siblings.map(s => s.id) : [m.id], liked: prior?.liked ?? false, favorite: prior?.favorite ?? false, deleted: false }); }
+    return; const id = sourceId(m); const prior = (await readTable('ling_sources')).find(s => s.id === id); const siblings = (await readTable('ling_messages')).filter(r => r.role === 'assistant' && !r.deleted && (r.turn_id ?? r.id) === (m.turn_id ?? m.id)); const text = siblings.length ? siblings.map(s => s.content).join('\n\n') : m.content; const kind = ['letter', 'script'].includes(artifact?.type ?? '') ? artifact!.type : prior?.type ?? (/亲爱的.*[：:]|写给.*的信|此致|一封信/.test(text) ? 'letter' : /剧本|第[一二三四五六七八九十\d]+幕|场景[一二三\d：:]/.test(text) ? 'script' : 'chat'); return put('ling_sources', { ...prior, id, text, title: artifact?.title?.trim() || prior?.title || clipText(text,28), type: kind, created_at: prior?.created_at ?? m.created_at, message_ids: siblings.length ? siblings.map(s => s.id) : [m.id], liked: prior?.liked ?? false, favorite: prior?.favorite ?? false, deleted: false }); }
 export async function toggleReply(id: string, flag: 'liked' | 'favorite') { return serial(async () => { const all = await readTable('ling_messages'); const m = all.find(r => r.id === id) as ChatMessage | undefined; if (!m)
     throw new Error('记录不存在'); const sid = sourceId(m); let s = (await readTable('ling_sources')).find(r => r.id === sid) as Source | undefined; if (!s)
     s = await indexReply(m) as Source; const value = !s[flag]; await put('ling_sources', { ...s, [flag]: value }); for (const r of all.filter(r => (r.turn_id ?? r.id) === (m.turn_id ?? m.id)))
