@@ -10,9 +10,10 @@ import { syncAll } from '../notion/sync';
 import { useLingLock } from './lock';
 import { turnOffOldRemindersOnce } from '../reminderReset';
 import { uiReady } from '../uiSettings';
+import {syncCompanion} from './cloud';
 
 const K_LEGACY_CANCELLED = 'ling_legacy_cancelled_v1';
-const DRAFT_REFRESH_MS = 3 * 3600 * 1000;
+const DRAFT_REFRESH_MS = 60 * 1000;
 /** App 开着时隔一阵按「现在」重排一次，「想你了」就永远落在她最后一次在的 3 小时以后 */
 const HEARTBEAT_MS = 30 * 60 * 1000;
 
@@ -20,9 +21,7 @@ const HEARTBEAT_MS = 30 * 60 * 1000;
 async function onActive() {
   await deliverDue().catch(() => 0);
   await rescheduleAll().catch(() => []);
-  refreshDrafts()
-    .then(() => rescheduleAll())
-    .catch(() => {});
+  await syncCompanion().catch(()=>{});
   syncAll().catch(() => {});
 }
 
@@ -59,7 +58,7 @@ export function useLingRuntime() {
     });
 
     const timer = setInterval(() => {
-      refreshDrafts().catch(() => {});
+      syncCompanion().catch(() => {});
     }, DRAFT_REFRESH_MS);
     const heartbeat = setInterval(() => {
       if (AppState.currentState === 'active') rescheduleAll().catch(() => {});
@@ -70,6 +69,7 @@ export function useLingRuntime() {
       Platform.OS === 'web'
         ? null
         : Notifications.addNotificationReceivedListener((n) => {
+            if ((n.request.content.data as any)?.kind==='ling_morning') {syncCompanion().catch(()=>{});return;}
             if (!isLingNotification(n.request.identifier)) return;
             const data = n.request.content.data as { kind?: string; lingOutboxId?: string } | undefined;
             if (data?.kind === 'miss_you' && data.lingOutboxId) {
@@ -86,6 +86,7 @@ export function useLingRuntime() {
       Platform.OS === 'web'
         ? null
         : Notifications.addNotificationResponseReceivedListener((resp) => {
+            if ((resp.notification.request.content.data as any)?.kind==='ling_morning') {const target=(resp.notification.request.content.data as any)?.thread_id;if(target)AsyncStorage.setItem('ling_notification_thread_v1',target).catch(()=>{});syncCompanion().catch(()=>{}).finally(()=>uiReady.then(()=>router.push('/chat')));return;}
             if (isLingNotification(resp.notification.request.identifier)) {
               deliverDue()
                 .catch(() => 0)
@@ -96,7 +97,7 @@ export function useLingRuntime() {
     if (Platform.OS !== 'web') {
       Notifications.getLastNotificationResponseAsync()
         .then((resp) => {
-          if (resp && isLingNotification(resp.notification.request.identifier)) uiReady.then(() => router.push('/chat'));
+          if (resp && ((resp.notification.request.content.data as any)?.kind==='ling_morning'||isLingNotification(resp.notification.request.identifier))){const target=(resp.notification.request.content.data as any)?.thread_id;if(target)AsyncStorage.setItem('ling_notification_thread_v1',target).catch(()=>{});syncCompanion().catch(()=>{}).finally(()=>uiReady.then(()=>router.push('/chat')));}
         })
         .catch(() => {});
     }

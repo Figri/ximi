@@ -7,8 +7,8 @@ import { FEATURES, FEATURE_BY_KEY } from '../../lib/features';
 import { useLayoutStore } from '../../lib/layoutStore';
 import { CaptureSheet } from '../../components/capture/CaptureSheet';
 
-// 底栏固定为今日、习惯、时间、其他。其余页面保留路由，由其他页进入。
-const TAB_GLYPHS:Record<string,string>={today:'☼',habits:'✓',time:'◷',other:'⋯'};
+// 底栏固定为今日、习惯、时间、灵、其他。其余页面保留路由，由其他页进入。
+const TAB_GLYPHS:Record<string,string>={today:'☼',habits:'✓',time:'◷',chat:'♡',other:'⋯'};
 export default function TabsLayout() {
   const insets=useSafeAreaInsets();
   const { topKeys, load } = useLayoutStore();
@@ -18,7 +18,7 @@ export default function TabsLayout() {
   }, []);
 
   const topSet = new Set(topKeys);
-  // 渲染顺序 = 底栏从左到右的顺序：先摆三个固定入口，
+  // 渲染顺序 = 底栏从左到右的顺序：先摆四个固定入口，
   // 再摆其余不展示的（href:null，顺序无所谓，反正不出现在底栏上），
   // "其他"固定摆最后。
   const orderedKeys = [

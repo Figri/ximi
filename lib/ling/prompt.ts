@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {loadCompanionConfig,composePrompt} from './config';
 
 // 灵每次开口读到的提示词由 6 层拼起来（需求文档 §6.6）：
 // 1 灵·人设  2 系统规则  3 灵·在西米OS  4 长期档案 + 近况  5 今天的 OS 数据  6 最近对话 + 昨天聊到的
@@ -138,21 +139,6 @@ export interface PromptContext {
 
 /** 拼出完整的系统提示词 */
 export async function buildLingSystemPrompt(ctx: PromptContext): Promise<string> {
-  const layers = await loadLayers();
-  const persona = layers.persona?.text?.trim() || DEFAULT_PERSONA;
-  const rules = layers.rules?.text?.trim() || DEFAULT_RULES;
-  const inOs = ctx.inOsOverride?.trim() || (await getInOsText()).text;
-  const archive = [layers.archive?.text?.trim(), layers.recent?.text?.trim(), ctx.localMemory.trim()].filter(Boolean).join('\n\n');
-
-  const parts = [
-    `# 你是谁\n${persona}`,
-    `# 规矩\n${rules}`,
-    `# 在西米OS 里怎么说话（这部分优先于上面的说话方式）\n${inOs}`,
-    archive ? `# 你记得的她\n${archive}` : '',
-    `# 今天的情况\n${ctx.todayData}`,
-    ctx.yesterday ? `# 昨天聊到\n${ctx.yesterday}` : '',
-    ctx.feedback.length ? `# 她最近对你的回复不满意的地方（别再这样）\n${ctx.feedback.map((f) => `- ${f}`).join('\n')}` : '',
-    ctx.omitReplyFormat ? '' : `# 回复格式\n- 回复用 1 到 3 条短消息，每条之间空一行。\n- 不要用 markdown，不要用列表符号。\n${ACTIONS_SPEC}`,
-  ];
-  return parts.filter(Boolean).join('\n\n');
+  const config=await loadCompanionConfig();
+  return composePrompt(config,ctx.localMemory);
 }

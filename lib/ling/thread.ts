@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import { db } from '../localdb';
+import {currentThread} from './repository';
 import type { AIAction } from '../../types';
 
 // 和灵的一条不断的对话线。存本地 ling_messages 表（跟旧聊天的 messages 表分开，旧聊天不并进来）。
 
 export type LingKind =
+  | 'morning'
   | 'chat' // 普通聊天
   | 'miss_you' // 想你了
   | 'mention' // 顺口一提
@@ -16,6 +18,10 @@ export type LingKind =
 
 export interface LingMessage {
   id: string;
+  thread_id?: string;
+  turn_id?: string;
+  liked?: boolean;
+  favorite?: boolean;
   role: 'user' | 'assistant' | 'system';
   content: string;
   kind: LingKind;
@@ -41,6 +47,8 @@ export async function loadAllMessages(): Promise<LingMessage[]> {
 export async function appendMessage(m: Partial<LingMessage> & Pick<LingMessage, 'role' | 'content'>): Promise<LingMessage> {
   const row: Omit<LingMessage, 'id'> & { id?: string } = {
     id: m.id,
+    thread_id: m.thread_id??(await currentThread()).id,
+    turn_id: m.turn_id,
     role: m.role,
     content: m.content,
     kind: m.kind ?? 'chat',

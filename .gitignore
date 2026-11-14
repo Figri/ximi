@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local build verification and CLI cache
+dist-android/
+supabase/.temp/

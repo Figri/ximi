@@ -35,7 +35,7 @@ try{
  const save=async()=>{await page.getByTestId('habit-save').click();await page.getByTestId('habit-editor').waitFor({state:'detached'});};
  await page.goto(origin);await page.getByTestId('os-reviews').waitFor();
  const tabs=page.getByRole('tab');
- assert.deepEqual((await tabs.allTextContents()).map(t=>t.match(/[\u4e00-\u9fff]+/g)?.join('')),['今日','习惯','时间','其他']);
+ assert.deepEqual((await tabs.allTextContents()).map(t=>t.match(/[\u4e00-\u9fff]+/g)?.join('')),['今日','习惯','时间','灵','其他']);
  await expect(page.getByText('历史事项 1 件')).toBeVisible();await expect(page.getByTestId('agenda-旧事项')).toBeVisible();
  await expect(page.getByTestId('habits-screen')).toHaveCount(0);
  await expect(page.getByTestId('today-line')).toHaveCount(0);
@@ -50,7 +50,7 @@ try{
  await longPress('fragment-f1');await page.getByTestId('record-cancel').click();await expect(page.getByTestId('fragment-f1')).toBeVisible();
  await longPress('review-body-r1');await page.getByTestId('record-edit-text').fill('完整复盘已修改\n保留第二行');await page.getByTestId('record-save').click();
  await expect(page.getByTestId('review-body-r1')).toHaveText('完整复盘已修改\n保留第二行');
- console.log('✓ 固定四个底栏、今日仅三模块、无操作提示；随心记/复盘长按编辑且不会直接删除');
+ console.log('✓ 固定五个底栏、今日仅三模块、无操作提示；随心记/复盘长按编辑且不会直接删除');
  await page.getByRole('tab',{name:/习惯/}).click();await page.getByTestId('habits-screen').waitFor();
  await expect(page.getByTestId('habits-day')).toHaveAttribute('aria-selected','true');
  await expect(page.getByTestId('habit-row-c4')).toHaveCount(0);await expect(page.getByTestId('habit-row-c5')).toHaveCount(0);await expect(page.getByTestId('habit-row-c6')).toHaveCount(0);
@@ -140,8 +140,8 @@ try{
  await longPress(`habit-check-${newCard.id}`);await page.getByTestId('habit-delete').click();await expect(page.getByTestId(`habit-row-${newCard.id}`)).toHaveCount(0);
  assert.equal(await page.evaluate(id=>JSON.parse(localStorage.getItem('ldb_v1_cards_0')).find(r=>r.id===id).archived,newCard.id),true);
  console.log('✓ 生理期与描述、新增默认每天、时段与周期编辑，删除只在弹窗且保留底层记录');
- await page.getByRole('tab',{name:/其他/}).click();await expect(page.getByText('旧数据搬家',{exact:true})).toHaveCount(0);await expect(page.getByText('再搬一次',{exact:true})).toHaveCount(0);await page.getByText('灵',{exact:true}).click();
- await expect(page.getByRole('tab',{name:/其他/})).toHaveAttribute('aria-selected','true');
+ await page.getByRole('tab',{name:/其他/}).click();await expect(page.getByText('旧数据搬家',{exact:true})).toHaveCount(0);await expect(page.getByText('再搬一次',{exact:true})).toHaveCount(0);await page.getByRole('tab',{name:/灵/}).click();
+ await expect(page.getByRole('tab',{name:/灵/})).toHaveAttribute('aria-selected','true');
  await page.getByRole('tab',{name:/今日/}).click();await longPress('fragment-f1');await page.getByTestId('record-delete').click();await expect(page.getByTestId('fragment-f1')).toHaveCount(0);
  await longPress('review-body-r1');await page.getByTestId('record-delete').click();await expect(page.getByTestId('review-r1')).toHaveCount(0);
  await page.goto(`${origin}/other/body`);await page.getByTestId('body-weight-weight1').waitFor();
@@ -200,13 +200,13 @@ try{
  await empty.addInitScript(()=>{localStorage.setItem('ldb_v1_settings_meta',JSON.stringify({chunks:1}));localStorage.setItem('ldb_v1_settings_0',JSON.stringify([{key:'habit_period_hidden',value:true}]));});
  await empty.goto(`${origin}/habits`);await expect(empty.getByTestId('habits-select-all')).toHaveCount(0);await empty.getByTestId('habits-week').click();await expect(empty.getByTestId('habit-week-count-2026-11-12')).toHaveText('0/0');await expect(empty.locator('[data-testid^="habit-frequency-group-"]')).toHaveCount(0);await expect(empty.getByTestId('header-morning')).toHaveCount(0);await empty.getByTestId('habit-create').click();await expect(empty.getByTestId('habit-paste')).toBeDisabled();await empty.close();
  console.log('✓ 空习惯显示0/0且无批量入口，没有已复制设置时粘贴禁用');
- for(const [key,label] of [['today','今日'],['habits','习惯'],['time','时间'],['other','其他']]){
+ for(const [key,label] of [['today','今日'],['habits','习惯'],['time','时间'],['chat','灵'],['other','其他']]){
    await page.getByRole('tab',{name:new RegExp(label)}).click();
    await expect(page.getByRole('tab',{name:new RegExp(label)})).toHaveAttribute('aria-selected','true');
    const activeColors=await page.getByTestId(`nav-icon-${key}`).evaluateAll(ns=>ns.filter(n=>{let opacity=1;for(let p=n;p;p=p.parentElement)opacity*=Number(getComputedStyle(p).opacity);return opacity>0.5;}).map(n=>getComputedStyle(n).backgroundColor));assert.ok(activeColors.some(c=>c!=='rgba(0, 0, 0, 0)'));
  }
  await page.screenshot({path:resolve(shots,'other-clean.png')});
- console.log('✓ 四个底栏有明确选中效果，今日标题/间距统一，其他已移除旧数据搬家');
+ console.log('✓ 五个底栏有明确选中效果，今日标题/间距统一，其他已移除旧数据搬家');
  const scrolling=await browser.newPage({viewport:{width:412,height:915},hasTouch:true,isMobile:true,timezoneId:'Asia/Shanghai'});scrolling.setDefaultTimeout(12000);
  await scrolling.clock.install({time:new Date('2026-11-12T12:00:00+08:00')});await scrolling.route('https://**',r=>r.abort());scrolling.on('pageerror',e=>errors.push(e.message));
  await scrolling.addInitScript(()=>{
@@ -260,6 +260,6 @@ try{
  await layout.screenshot({path:resolve(shots,'month-three-on-small-screen.png')});await layout.close();
  console.log('✓ 每周一三五在三视图显示一致；360×800一屏三张月卡，空频率栏隐藏');
  await page.goto(`${origin}/os-connect`);await page.getByTestId('cloud-back-today').waitFor();assert.equal(await page.getByTestId('cloud-email').count(),0);
- assert.deepEqual(errors,[]);console.log('✓ 灵位于其他、记录删除须在弹窗内、无需邮箱登录、无页面异常');console.log(`Screenshots: ${shots}`);
+ assert.deepEqual(errors,[]);console.log('✓ 灵为独立Tab、记录删除须在弹窗内、无需邮箱登录、无页面异常');console.log(`Screenshots: ${shots}`);
 }catch(e){if(page){console.error((await page.locator('body').innerText()).slice(-3200));await page.screenshot({path:resolve(shots,'failure.png')});console.error(shots);}throw e;}
 finally{await browser.close();server.close();}

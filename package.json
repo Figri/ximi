@@ -49,7 +49,9 @@
     "test:login": "node tests/os-login.test.mjs",
     "test:habits": "node tests/habits.test.mjs",
     "test:habits-ui": "node tests/habits-ui.mjs",
-    "postinstall": "node scripts/fix-draggable-scroll.cjs"
+    "postinstall": "node scripts/fix-draggable-scroll.cjs",
+    "test:ling": "node tests/ling.test.mjs && node tests/ling-backend.test.mjs",
+    "test:ling-ui": "node tests/ling-ui.mjs"
   },
   "private": true
 }

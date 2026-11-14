@@ -7,7 +7,7 @@ interface LayoutStoreState {
   load: () => Promise<void>;
   save: (topKeys: string[]) => Promise<void>;
 }
-// 四个固定 Tab；旧的自定义布局保留在存储中，不改动任何功能数据。
+// 五个固定 Tab；旧的自定义布局保留在存储中，不改动任何功能数据。
 export const useLayoutStore = create<LayoutStoreState>((set) => ({
   topKeys: [...DEFAULT_LAYOUT], loaded: false,
   load: async () => { set({ topKeys: [...DEFAULT_LAYOUT], loaded: true }); },

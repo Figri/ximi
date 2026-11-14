@@ -39,8 +39,8 @@ export const FEATURES: Feature[] = [
 
 export const FEATURE_BY_KEY: Record<string, Feature> = Object.fromEntries(FEATURES.map((f) => [f.key, f]));
 
-/** 底栏固定为 今日 / 习惯 / 时间，加上最右侧的其他 */
-export const DEFAULT_LAYOUT: string[] = ['today', 'habits', 'time'];
+/** 底栏固定为 今日 / 习惯 / 时间 / 灵，加上最右侧的其他 */
+export const DEFAULT_LAYOUT: string[] = ['today', 'habits', 'time', 'chat'];
 
 /** 除"其他"外，用于其他页功能列表的全部 key */
 export const ASSIGNABLE_KEYS: string[] = FEATURES.filter((f) => !f.fixed).map((f) => f.key);
