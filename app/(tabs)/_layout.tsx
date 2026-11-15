@@ -33,6 +33,7 @@ export default function TabsLayout() {
           const feature = FEATURES.find((f) => f.screenName === route.name);
           return {
             headerShown: false,
+            tabBarHideOnKeyboard: route.name==='chat',
             tabBarActiveTintColor: colors.purpleDark,
             tabBarInactiveTintColor: colors.textMuted,
             tabBarLabelStyle: { fontSize: fixedFontSize.secondary, marginBottom: 4 },

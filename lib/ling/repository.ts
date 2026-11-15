@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCompanionEvents } from './events';
 import { db, readTable, uuid, mergeRows, replaceTable } from '../localdb';
 import { dayInZone, carryRounds,clipText,repairGeneratedTitle, sourceId, digestStamp, logicalMessages, planMemories, type ChatMessage, type Memory, type Source } from './core';
+import {planMemoryDocument} from './memoryDocuments';
 import { loadCompanionConfig, sanitizeConfig, CONFIG_KEY } from './config';
 export interface Thread {
     id: string;
@@ -81,6 +82,7 @@ export async function memories() { return (await readTable('ling_memories')).fil
 function hash(s: string) { let h = 2166136261; for (const ch of s)
     h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0).toString(16); }
 export async function acceptMemories(items:any[],sources:ChatMessage[]){for(const row of planMemories(items,await memoriesIncludingForgotten(),sources))await put('ling_memories',row);}
+export async function saveMemoryDocument(kind:import('./core').MemoryKind,snapshot:Memory[],text:string){return serial(async()=>{const current=await memories();for(const old of snapshot){const now=current.find(m=>m.id===old.id);if(!now||JSON.stringify(now)!==JSON.stringify(old))throw new Error('这类记忆已在其他地方更新，你的输入已保留。请先重新载入再修改。');}const updates=planMemoryDocument(kind,snapshot,text,uuid);if(updates.length){const r=await db.from('ling_memories').upsert(updates);if(r.error)throw new Error(r.error.message);useCompanionEvents.getState().bump();}return (await memories()).filter(m=>m.kind===kind);});}
 async function memoriesIncludingForgotten(){return await readTable('ling_memories') as Memory[];}
 export async function modelMessages(thread: Thread, budget = 60) { const current = await threadMessages(thread.id, budget); const erased=new Set((await readTable('ling_messages')).filter(m=>m.deleted).map(m=>m.id));return [...thread.carry.filter(m=>!m.deleted&&!erased.has(m.id)), ...current]; }
 export async function rotateLocal(day: string, body: string, items: any[], sourceMessages: ChatMessage[]) { return serial(async () => { const id = `morning:${day}`; const jobs = await readTable('ling_daily_jobs'); if (jobs.some(j => j.id === id && j.status === 'done'))

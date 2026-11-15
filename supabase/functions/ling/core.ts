@@ -120,7 +120,7 @@ export function parseCompanionReply(raw: string) {
         }
         catch { }
     }
-    const text = raw.replace(/<ling-memory>[\s\S]*?(?:<\/ling-memory>|$)/g, '').trim();
+    const text = stripReplyClock(raw.replace(/<ling-memory>[\s\S]*?(?:<\/ling-memory>|$)/g, '').trim());
     return { text, items: Array.isArray(meta.items) ? meta.items : [], artifact: meta.artifact };
 }
 export function parseDigest(raw: string) { try {
@@ -179,4 +179,7 @@ export function repairGeneratedTitle(row:any){return typeof row?.title==='string
 
 export function digestStamp(m:Partial<ChatMessage>){return memoryIdentifier(JSON.stringify([m.role,m.content,!!m.liked]));}
 export function messageTime(value:string,timezone='Asia/Shanghai'){const date=new Date(value);if(!Number.isFinite(date.getTime()))return '';return new Intl.DateTimeFormat('sv-SE',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(date);}
-export function timedHistory(messages:ChatMessage[],budget:number,timezone:string){return budgetHistory(messages.map(m=>({...m,content:`[时间：${messageTime(m.created_at,timezone)}]\n${m.content}`})),budget);}
+export function timedHistory(messages:ChatMessage[],budget:number,_timezone:string){return budgetHistory(messages.map(m=>m.role==='assistant'?{...m,content:stripReplyClock(m.content)}:m),budget);}
+export function historyClocks(messages:ChatMessage[],budget:number,timezone:string){const history=timedHistory(messages,budget,timezone);return logicalMessages(messages).slice(-history.length).map((m,i)=>({message:i+1,speaker:m.role==='user'?'对方':'你',at:messageTime(m.created_at,timezone)}));}
+export function replyInstructions(mode='chat'){return mode==='digest'?'':('时间与记录元数据只供理解上下文，界面会单独显示时间。消息正文不要添加时间戳或[时间：…]标签。'+(mode==='morning'?'这次是你在约定时间主动发起联系，对方没有发送新问题。自然地延续相处、表达想念或提起今天的约定，不要说收到、好的、按你的要求或汇报执行了定时任务。只输出你主动发给对方的消息。':''));}
+export function stripReplyClock(raw:string){let text=raw;const complete=/^\s*[\[【]时间\s*[:：]\s*\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\s*[\]】]\s*/;while(complete.test(text))text=text.replace(complete,'');if(/^\s*[\[【]时间\s*[:：]/.test(text)&&!/[\]】]/.test(text)&&text.length<60)return '';return text;}

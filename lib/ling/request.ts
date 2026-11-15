@@ -1,6 +1,6 @@
 import { fetch as streamFetch } from 'expo/fetch';
 import { callModel, type AIModel } from '../ai';
-import type { CompanionConfig } from './core';
+import {stripReplyClock,type CompanionConfig } from './core';
 export interface Usage {
     prompt_tokens?: number;
     completion_tokens?: number;
@@ -20,7 +20,7 @@ export async function requestCompanion(model: AIModel, key: string, c: Companion
         const text = await callModel(model, messages, system, key, c.maxOutput);
         if (options.signal?.aborted)
             throw new Error('已停止');
-        options.onText?.(text);
+        options.onText?.(stripReplyClock(text));
         return { text, usage: {} as Usage };
     }
     const controller = new AbortController();
@@ -38,7 +38,7 @@ export async function requestCompanion(model: AIModel, key: string, c: Companion
         if (!reader) {
             const data = await res.json();
             text = data.choices?.[0]?.message?.content ?? '';
-            options.onText?.(text);
+            options.onText?.(stripReplyClock(text));
             return { text, usage: data.usage ?? {} };
         }
         const decoder = new TextDecoder();
@@ -53,7 +53,7 @@ export async function requestCompanion(model: AIModel, key: string, c: Companion
             throw new Error('模型生成失败，请重试'); if (data.usage)
             usage = data.usage;if(data.choices?.[0]?.finish_reason){complete=true;truncated=data.choices[0].finish_reason==='length';} const part = data.choices?.[0]?.delta?.content; if (part) {
             text += part;
-            options.onText?.(text.split('<ling-')[0]);
+            options.onText?.(stripReplyClock(text.split('<ling-')[0]));
         } };
         while (true) {
             const result = await reader.read();

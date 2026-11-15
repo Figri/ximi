@@ -3,22 +3,21 @@ import { readTable } from '../localdb';
 import { getApiKey } from '../aiSettings';
 import { loadLingSettings, useLingSettings } from './settings';
 import { loadCompanionConfig, composePrompt } from './config';
-import { budgetHistory,timedHistory,messageTime,digestStamp, dayInZone, lexicalSources, memoryContext, snippets, parseCompanionReply, parseDigest, type ChatMessage, retrievalSources, type Source } from './core';
+import { budgetHistory,timedHistory,historyClocks,messageTime,digestStamp, dayInZone, lexicalSources, memoryContext, snippets, parseCompanionReply, parseDigest, type ChatMessage, retrievalSources, type Source } from './core';
 import { acceptMemories, addChatMessage, indexReply, memories, modelMessages, put, rotateLocal, currentThread, archiveDigestedThreads,isGenerating,editChatMessage,type Thread } from './repository';
 import { requestCompanion } from './request';
 import { backend } from './cloud';
-export async function prepareChat(thread: Thread, search?: string, override?: import('./core').CompanionConfig) { const config = override ?? await loadCompanionConfig(); const forgotten=new Set((await readTable('ling_memories')).filter(m=>m.status==='forgotten').flatMap(m=>m.source_ids??[]));const all = (await modelMessages(thread, 200)).filter(m=>!forgotten.has(m.id)); const query = search ?? [...all].reverse().find(m => m.role === 'user')?.content ?? ''; const sources = retrievalSources(await readTable('ling_sources') as Source[],await readTable('ling_favorites'),[...forgotten] as string[]);  let hits = /记得|以前|信|剧本|第一|之前|那次|收藏|约定|上次|当时|原文/.test(query) ? lexicalSources(sources, query) : []; if (config.background && /记得|以前|信|剧本|第一|之前|那次|收藏|上次|原文/.test(query)) {
+export async function prepareChat(thread: Thread, search?: string, override?: import('./core').CompanionConfig,untilId?:string) { const config = override ?? await loadCompanionConfig(); const forgotten=new Set((await readTable('ling_memories')).filter(m=>m.status==='forgotten').flatMap(m=>m.source_ids??[]));let all = (await modelMessages(thread, 200)).filter(m=>!forgotten.has(m.id));if(untilId){const index=all.findIndex(m=>m.id===untilId);if(index>=0)all=all.slice(0,index);} const query = search ?? [...all].reverse().find(m => m.role === 'user')?.content ?? ''; const sources = retrievalSources(await readTable('ling_sources') as Source[],await readTable('ling_favorites'),[...forgotten] as string[]);  let hits = /记得|以前|信|剧本|第一|之前|那次|收藏|约定|上次|当时|原文/.test(query) ? lexicalSources(sources, query) : []; if (config.background && /记得|以前|信|剧本|第一|之前|那次|收藏|上次|原文/.test(query)) {
     try {
         const result = await backend('search', { query }, 10000);
         if (result.results?.length)
             hits = result.results;
     }
     catch { }
-} const relevant = snippets(hits, query, 800); const fullSource = /原文|全文|整封|整篇|重读/.test(query) && !/改写|重写|润色|续写/.test(query) && (hits.length === 1 || (/第一|最早/.test(query))) ? hits[0] : undefined; const memory = memoryContext(await memories(), dayInZone(new Date(), config.timezone,0)); return { config, all, fullSource, hits: relevant, system: composePrompt(config, ['当前时间：'+messageTime(new Date().toISOString(),config.timezone)+'；时区：'+config.timezone,memory, relevant.length ? '相关原文片段：\n' + JSON.stringify(relevant) : ''].filter(Boolean).join('\n')), history: timedHistory(all, config.contextBudget,config.timezone) }; }
+} const relevant = snippets(hits, query, 800); const fullSource = /原文|全文|整封|整篇|重读/.test(query) && !/改写|重写|润色|续写/.test(query) && (hits.length === 1 || (/第一|最早/.test(query))) ? hits[0] : undefined; const memory = memoryContext(await memories(), dayInZone(new Date(), config.timezone,0)); return { config, all, fullSource, hits: relevant, system: composePrompt(config, ['当前时间：'+messageTime(new Date().toISOString(),config.timezone)+'；时区：'+config.timezone,'消息时间元数据（不属于消息正文）：'+JSON.stringify(historyClocks(all,config.contextBudget,config.timezone)),memory, relevant.length ? '相关原文片段：\n' + JSON.stringify(relevant) : ''].filter(Boolean).join('\n')), history: timedHistory(all, config.contextBudget,config.timezone) }; }
 export async function sendToLing(thread:Thread,options:{signal?:AbortSignal;onText?:(s:string)=>void;assistantId:string;replaceId?:string}){
  await loadLingSettings();const model=useLingSettings.getState().model,key=await getApiKey(model);if(!key)throw new Error('请先在灵的设定中填写模型密钥');
- const p=await prepareChat(thread);let history=p.all;
- if(options.replaceId){const i=history.findIndex(m=>m.id===options.replaceId);if(i<0)throw new Error('这条消息已删除，请刷新对话');history=history.slice(0,i);}
+ const p=await prepareChat(thread,undefined,undefined,options.replaceId);const history=p.all;
  const result=p.fullSource?{text:p.fullSource.text,usage:{},stopped:false,truncated:false}:await requestCompanion(model,key,p.config,timedHistory(history,p.config.contextBudget,p.config.timezone),p.system,options);
  const parsed=parseCompanionReply(result.text);if(!parsed.text.trim())throw new Error('没有收到正文，可重试');
  const latest=(await readTable('ling_threads')).find(t=>t.id===thread.id);if(latest?.deleted)throw new Error('该对话已删除');
