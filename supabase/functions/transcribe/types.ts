@@ -8,3 +8,5 @@ export function mediaLink(text:string):{url:string;platform:'bilibili'|'xiaoyuzh
  }
  throw new Error('请粘贴B站视频或小宇宙单集的分享链接，暂不支持主页和合集。');
 }
+export interface SourceHint {title?:string;audio_url?:string;caption_url?:string;}
+export function sourceHint(value:any):SourceHint|undefined{if(!value||typeof value!=='object')return;const out:SourceHint={};if(typeof value.title==='string')out.title=Array.from(value.title as string).slice(0,500).join('');for(const field of ['audio_url','caption_url'] as const){if(typeof value[field]!=='string')continue;let u:URL;try{u=new URL(value[field]);}catch{continue;}if(u.protocol!=='https:'||u.username||u.password||u.port)continue;const host=u.hostname.toLowerCase();if(['bilivideo.com','bilivideo.cn','hdslb.com'].some(h=>host===h||host.endsWith('.'+h)))out[field]=u.toString();}return out.audio_url||out.caption_url?out:undefined;}

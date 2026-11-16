@@ -1,4 +1,5 @@
 import importlib.util,json,tempfile,unittest,wave,io
+from unittest.mock import patch
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('transcribe',Path('scripts/transcription/worker.py'));W=importlib.util.module_from_spec(spec);spec.loader.exec_module(W)
 class WorkerTests(unittest.TestCase):
@@ -27,6 +28,12 @@ class WorkerTests(unittest.TestCase):
    def transport(req,timeout):
     self.assertEqual(req.full_url,'https://api.deepseek.com/v1/tools/asr');self.assertIn(b'name="file"',req.data);self.assertIn('multipart/form-data',req.headers['Content-type']);return io.BytesIO(json.dumps({'text':'语音识别原文'}).encode())
    self.assertEqual(W.asr(p,'fixture',transport),'语音识别原文')
+ def test_assisted_caption(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   with patch.object(W,'public_url',side_effect=lambda u:u),patch.object(W,'read_public',return_value=b'{"body":[{"content":"actual caption"}]}'):
+    title,text,audio=W.hinted_extract({'title':'sample','caption_url':'https://aisubtitle.hdslb.com/test.json'},Path(tmp),lambda data:None)
+    self.assertEqual(text,'actual caption');self.assertIsNone(audio)
+   with self.assertRaises(W.MediaError):W.hinted_extract({'audio_url':'https://evil.test/private'},Path(tmp),lambda data:None)
  def test_private_links_rejected(self):
   for url in ['http://127.0.0.1/x','https://127.0.0.1/x','https://a@api.deepseek.com/x']:
    with self.assertRaises(W.MediaError):W.public_url(url)

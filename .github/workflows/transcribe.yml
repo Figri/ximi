@@ -39,6 +39,6 @@ jobs:
           command -v ffprobe
       - name: 处理等待中的文字稿
         env:
-          XIMI_TRANSCRIBE_PROBE_URL: ${{ inputs.sample_url || (github.event_name == 'push' && 'https://www.bilibili.com/video/BV17x411w7KC') || '' }}
+          XIMI_TRANSCRIBE_PROBE_URL: ${{ inputs.sample_url || (github.event_name == 'push' && 'https://www.xiaoyuzhoufm.com/episode/6aabefff051af796b9e9c5fc') || '' }}
           XIMI_TRANSCRIBE_ENDPOINT: https://xrnqpwwomyzekjfhjixl.supabase.co/functions/v1/transcribe
         run: python scripts/transcription/worker.py

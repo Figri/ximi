@@ -117,6 +117,20 @@ def extract(url,platform,folder,tick):
         if not files:raise MediaError('未能读取视频音频，来源可能需要登录或限制了后台访问')
         return title,None,max(files,key=lambda p:p.stat().st_size)
 
+def hinted_extract(hint,folder,tick):
+    def checked(url):
+        host=urlparse(url).hostname or ''
+        if not any(host==h or host.endswith('.'+h) for h in ['bilivideo.com','bilivideo.cn','hdslb.com']):raise MediaError('公开媒体地址校验未通过')
+        return public_url(url)
+    title=hint.get('title') or 'B站文字稿';tick({'title':title,'stage':'正在读取公开媒体'})
+    if hint.get('caption_url'):
+        try:
+            text=subtitle_text(read_public(checked(hint['caption_url'])).decode('utf-8'))
+            if text:return title,text,None
+        except (HTTPError,URLError,MediaError):pass
+    if not hint.get('audio_url'):raise MediaError('字幕地址已失效，可点重试重新解析链接')
+    audio=folder/'audio.m4a';download(checked(hint['audio_url']),audio);return title,None,audio
+
 def run_tool(args):
     r=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=240)
     if r.returncode:raise MediaError('音频格式无法解码，未生成文字稿')
@@ -145,7 +159,10 @@ def process(job,checkpoint,extractor=extract,recognizer=asr):
     def tick(data):checkpoint(job['id'],job['lease_token'],data)
     with tempfile.TemporaryDirectory(prefix='ximi-transcribe-') as work:
         folder=Path(work)
-        title,caption,audio=extractor(job['url'],job['platform'],folder,tick)
+        if job.get('source_hint') and job['platform']=='bilibili':
+            try:title,caption,audio=hinted_extract(job['source_hint'],folder,tick)
+            except (HTTPError,URLError,MediaError):title,caption,audio=extractor(job['url'],job['platform'],folder,tick)
+        else:title,caption,audio=extractor(job['url'],job['platform'],folder,tick)
         if caption:
             tick({'action':'done','method':'captions','text':caption});return
         duration=float(run_tool(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(audio)]))
@@ -211,7 +228,9 @@ def main():
             try:
                 _,text,audio=extract(probe,platform,Path(work),lambda data:None)
                 print(json.dumps({'public_source_verified':True,'captions_available':bool(text),'audio_readable':bool(audio)},ensure_ascii=False))
-            except Exception:
+            except Exception as error:
+                codes=re.findall(r'HTTP Error (\d{3})',str(error))
+                print(json.dumps({'public_source_error':type(error).__name__,'http_codes':codes}))
                 print('Public source unavailable from this runner; no transcription was fabricated.')
                 raise SystemExit(1)
 if __name__=='__main__':main()
