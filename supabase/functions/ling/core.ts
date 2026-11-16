@@ -1,5 +1,7 @@
 // 手机与后台共用的纯逻辑；不依赖平台或第三方SDK。
-export type MemoryKind = 'core' | 'episode' | 'agreement' | 'state';
+export type MemoryKind = string;
+export interface MemoryCategory {id:string;name:string;instructions:string;}
+export const DEFAULT_MEMORY_CATEGORIES:MemoryCategory[]=[{id:'core',name:'核心',instructions:'记录稳定的关系事实、长期偏好、重要称呼与相处边界。只依据明确表达，不把剧情或推测当成事实。'},{id:'episode',name:'经历',instructions:'记录值得记住的共同经历与重要时刻，保留发生背景和来源，避免重复。'},{id:'agreement',name:'约定',instructions:'记录真实约定、日期与下一次想一起做的事；已完成或取消时更新状态，不继续当作待兑现约定。'},{id:'state',name:'近期状态',instructions:'记录最近的身体、情绪与生活状态；优先保留明确纠正后的最新情况，不把短期状态写成长期性格。'}];
 export interface Memory {
     id: string;
     text: string;
@@ -30,7 +32,7 @@ export interface Source {
     id: string;
     text: string;
     title: string;
-    type: 'chat' | 'letter' | 'script';
+    type: 'chat' | 'letter' | 'script' | 'material';
     created_at: string;
     liked?: boolean;
     favorite?: boolean;
@@ -50,6 +52,8 @@ export interface CompanionConfig {
     modelName: string;
     timezone: string;
     background: boolean;
+    memoryCategories:MemoryCategory[];
+    materialInstructions:string;
 }
 export const DEFAULT_MEMORY_INSTRUCTIONS = '发现值得长期记住的明确事实、偏好、约定时，可在自然回复末尾附 <ling-memory>{"items":[{"text":"简短事实","kind":"core或episode或agreement或state","date":"约定日期YYYY-MM-DD，可省略","authority":"explicit或inferred"}],"artifact":{"type":"chat或letter或script","title":"本次内容标题"}}</ling-memory>。无新信息可省略。只记录有来源的内容，剧情不当现实，推断用inferred。更新已知记忆时可传id（records里的记忆ID），约定完成或取消时传status=done或cancelled，禁止把已完成/取消的约定继续当有效。不要在自然回复中复述这些格式说明。';
 export const DEFAULT_DIGEST_INSTRUCTIONS = '整理本次新增聊天与喜欢标记，提取有来源的关系事实、偏好、共同经历、近期状态和约定。喜欢的优先检查，但不把喜欢等同认可所有内容。原文不改写。仅输出JSON：{"items":[{"text":"记忆","kind":"core或episode或agreement或state","date":"约定日期，可省略","source_ids":["原消息ID"],"authority":"explicit或inferred"}]}。更新已有记忆使用其id，约定完成/取消用status=done/cancelled；没有新事实可返回空数组。不编造，不把剧本当真实经历，不改写用户人设。';
@@ -132,7 +136,7 @@ catch {
     throw new Error('记忆整理格式不正确，原文已保留，可重试');
 } }
 export function memoryContext(memories: Memory[], day: string, budget = 900) {
-    const picked = memories.filter(m => m.status === 'active' && m.authority === 'explicit' && (m.pinned || m.kind === 'core' || m.kind === 'state' || (m.kind === 'agreement' && m.date === day))).sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.kind === 'agreement') - Number(a.kind === 'agreement'));
+    const picked = memories.filter(m => m.status === 'active' && m.authority === 'explicit' && (m.pinned || !['episode','agreement','core','state'].includes(m.kind) || m.kind === 'core' || m.kind === 'state' || (m.kind === 'agreement' && m.date === day))).sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.kind === 'agreement') - Number(a.kind === 'agreement'));
     let out = '';
     for (const m of picked) {
         const line = `[${m.kind} id=${m.id}${m.date ? ' ' + m.date : ''}] ${m.text}\n`;
@@ -168,7 +172,7 @@ export function snippets(sources: Source[], query: string, budget = 800) { let l
 export function chunks(text:string,size=700){const chars=Array.from(text),parts:string[]=[];for(let i=0;i<chars.length;i+=size)parts.push(chars.slice(i,i+size).join(''));return parts;}
 export function sourceId(m: ChatMessage) { return `reply:${m.turn_id ?? m.id}`; }
 export function memoryIdentifier(text:string){let a=2166136261,b=2246822519;for(let i=0;i<text.length;i++){const code=text.charCodeAt(i);a=Math.imul(a^code,16777619);b=Math.imul(b^code,3266489917);}return `memory:${(a>>>0).toString(16)}${(b>>>0).toString(16)}`;}
-export function planMemories(items:any[],existing:Memory[],sources:ChatMessage[]):Memory[]{const blocked=new Set(existing.filter(m=>m.status==='forgotten').flatMap(m=>m.source_ids));const allowed=new Map(sources.filter(m=>!m.deleted&&!blocked.has(m.id)).map(m=>[m.id,m]));const result:Memory[]=[];for(const item of items.slice(0,40)){if(!item)continue;const target=typeof item.id==='string'?existing.find(m=>m.id===item.id):undefined;const text=typeof item.text==='string'?item.text.trim():target?.text;const kind=item.kind??target?.kind;if(!text||!['core','episode','agreement','state'].includes(kind))continue;const ids=(Array.isArray(item.source_ids)?item.source_ids:sources.slice(-2).map(m=>m.id)).filter((id:string)=>allowed.has(id));if(!ids.length)continue;const explicit=item.authority!=='inferred'&&ids.some((id:string)=>allowed.get(id)?.role==='user');const old=target??existing.find(m=>m.text===text);if(old?.status==='forgotten')continue;if(old?.pinned&&(old.text!==text||ids.every((id:string)=>Date.parse(allowed.get(id)!.created_at)<Date.parse(old.updated_at))))continue;if(old?.authority==='explicit'&&!explicit)continue;const status=['done','cancelled'].includes(item.status)&&explicit?item.status:old?.status??'active';const row:Memory={...old,id:old?.id??memoryIdentifier(kind+text),text,kind,source_ids:[...new Set<string>([...(old?.source_ids??[]),...ids])],pinned:old?.pinned??false,authority:explicit?'explicit':'inferred',status,date:/^\d{4}-\d{2}-\d{2}$/.test(item.date??'')?item.date:old?.date,updated_at:new Date().toISOString()};const same=result.findIndex(m=>m.id===row.id);if(same<0)result.push(row);else result[same]=row;}return result;}
+export function planMemories(items:any[],existing:Memory[],sources:ChatMessage[],kinds:string[]=['core','episode','agreement','state']):Memory[]{const blocked=new Set(existing.filter(m=>m.status==='forgotten').flatMap(m=>m.source_ids));const allowed=new Map(sources.filter(m=>!m.deleted&&!blocked.has(m.id)).map(m=>[m.id,m]));const result:Memory[]=[];for(const item of items.slice(0,40)){if(!item)continue;const target=typeof item.id==='string'?existing.find(m=>m.id===item.id):undefined;const text=typeof item.text==='string'?item.text.trim():target?.text;const kind=item.kind??target?.kind;if(!text||!kinds.includes(kind))continue;const ids=(Array.isArray(item.source_ids)?item.source_ids:sources.slice(-2).map(m=>m.id)).filter((id:string)=>allowed.has(id));if(!ids.length)continue;const explicit=item.authority!=='inferred'&&ids.some((id:string)=>allowed.get(id)?.role==='user');const old=target??existing.find(m=>m.text===text);if(old?.status==='forgotten')continue;if(old?.pinned&&(old.text!==text||ids.every((id:string)=>Date.parse(allowed.get(id)!.created_at)<Date.parse(old.updated_at))))continue;if(old?.authority==='explicit'&&!explicit)continue;const status=['done','cancelled'].includes(item.status)&&explicit?item.status:old?.status??'active';const row:Memory={...old,id:old?.id??memoryIdentifier(kind+text),text,kind,source_ids:[...new Set<string>([...(old?.source_ids??[]),...ids])],pinned:old?.pinned??false,authority:explicit?'explicit':'inferred',status,date:/^\d{4}-\d{2}-\d{2}$/.test(item.date??'')?item.date:old?.date,updated_at:new Date().toISOString()};const same=result.findIndex(m=>m.id===row.id);if(same<0)result.push(row);else result[same]=row;}return result;}
 
 export function retrievalSources(sources:Source[],favorites:any[],forgotten:string[]=[]):Source[]{const snapshots=favorites.filter(f=>!f.deleted).map(f=>({...f,favorite:true}));const blocked=new Set(forgotten);return [...snapshots,...sources.filter(s=>!snapshots.some(f=>f.source_id===s.id&&f.text===s.text))].filter(s=>!(s.message_ids??[]).some((id:string)=>blocked.has(id)));}
 export function overlayMemories(existing:Memory[],updates:Memory[]):Memory[]{const byId=new Map(existing.map(m=>[m.id,m]));for(const m of updates)byId.set(m.id,m);return [...byId.values()];}

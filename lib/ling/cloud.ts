@@ -20,7 +20,7 @@ let running: Promise<void> | null = null;let again=false;
 export async function cloudStatus() { const s = await AsyncStorage.getItem('ling_cloud_status_v1'); return s ? JSON.parse(s) : { connected: false, error: '等待首次连接' }; }
 async function reportProgress(progress:string){const state=await cloudStatus();await AsyncStorage.setItem('ling_cloud_status_v1',JSON.stringify({...state,progress,error:''}));}
 let registering: Promise<any> | null = null;
-async function deviceAuth() { const stored = await secureStore.get(AUTH); if (stored)
+export async function deviceAuth() { const stored = await secureStore.get(AUTH); if (stored)
     return JSON.parse(stored); if (!registering)
     registering = (async () => { const auth = await raw('register', {}); await secureStore.set(AUTH, JSON.stringify(auth)); return auth; })().finally(() => { registering = null; }); return registering; }
 export async function backend(action: string, body: any = {}, timeout = 30000) { if (action === 'register')

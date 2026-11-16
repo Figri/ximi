@@ -44,3 +44,7 @@ yarn-error.*
 # Local build verification and CLI cache
 dist-android/
 supabase/.temp/
+
+# Background audio worker verification
+__pycache__/
+*.py[cod]

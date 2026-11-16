@@ -31,6 +31,7 @@ export const FEATURES: Feature[] = [
   // 2.0 第四期：本周（取代「数据」）、猫咪、身体。
   // 2.0 整理：打卡、事项、笔记、记录、数据这几页删了——打卡和事项并进今天页，笔记在 Notion 里记，数据并进本周。
   // 老布局里存着这些 key 也没关系，layoutStore 读的时候会跳过找不到的 key。
+  { key:'transcribe',label:'转文字',icon:'▤',screenName:'transcribe',route:'/transcribe',otherRoute:'/other/transcribe',fixed:false },
   { key: 'review', label: '本周', icon: '📅', screenName: 'review', route: '/review', otherRoute: '/other/review', fixed: false },
   { key: 'cats', label: '猫咪', icon: '🐱', screenName: 'cats', route: '/cats', otherRoute: '/other/cats', fixed: false },
   { key: 'body', label: '身体', icon: '🌙', screenName: 'body', route: '/body', otherRoute: '/other/body', fixed: false },

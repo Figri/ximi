@@ -22,6 +22,7 @@ export default function OtherLayout() {
       <Stack.Screen name="today" options={{ title: '今天' }} />
       <Stack.Screen name="time" options={{ title: '时间' }} />
       <Stack.Screen name="chat" options={{ headerShown: false }} />
+      <Stack.Screen name="transcribe" options={{ headerShown: false }} />
       <Stack.Screen name="schedule" options={{ title: '日程' }} />
       {/* 这三页自己带标题和返回（components/common/PageTitle），不用系统标题栏 */}
       <Stack.Screen name="review" options={{ headerShown: false }} />

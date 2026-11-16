@@ -51,7 +51,9 @@
     "test:habits-ui": "node tests/habits-ui.mjs",
     "postinstall": "node scripts/fix-draggable-scroll.cjs",
     "test:ling": "node tests/ling.test.mjs && node tests/ling-backend.test.mjs",
-    "test:ling-ui": "node tests/ling-ui.mjs && node tests/ling-sync-ui.mjs"
+    "test:ling-ui": "node tests/ling-ui.mjs && node tests/ling-sync-ui.mjs",
+    "test:transcription": "node tests/transcription.test.mjs && python tests/transcription-worker.test.py",
+    "test:transcription-ui": "node tests/transcription-ui.mjs"
   },
   "private": true
 }

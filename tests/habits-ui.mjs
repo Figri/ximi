@@ -96,10 +96,10 @@ try{
  assert.ok(weekOrder.indexOf('c2')<weekOrder.indexOf('c4'));assert.ok(weekOrder.indexOf('c4')<weekOrder.indexOf('c6'));
  await expect(page.getByTestId('habit-frequency-group-daily')).toBeVisible();await expect(page.getByTestId('habit-frequency-group-weekly')).toBeVisible();await expect(page.getByTestId('habit-frequency-group-interval')).toBeVisible();await expect(page.getByTestId('habit-frequency-c4')).toHaveText('每周日');await expect(page.getByTestId('habit-frequency-c5')).toHaveText('每 3 天');
  await expect(page.getByTestId('habit-week-date-2026-11-12')).toHaveAttribute('aria-current','date');
- const todayBg=await page.getByTestId('habit-week-column-c1-2026-11-12').evaluate(n=>getComputedStyle(n).backgroundColor);const otherBg=await page.getByTestId('habit-week-column-c1-2026-11-11').evaluate(n=>getComputedStyle(n).backgroundColor);assert.notEqual(todayBg,otherBg);
+ const gridBoxes=await page.locator('[data-testid^="habit-week-column-c1-"]').evaluateAll(ns=>ns.map(n=>n.getBoundingClientRect().width));assert.equal(gridBoxes.length,7);assert.ok(gridBoxes.every(w=>w>25));const todayBg=await page.getByTestId('habit-week-column-c1-2026-11-12').evaluate(n=>getComputedStyle(n).backgroundColor);const otherBg=await page.getByTestId('habit-week-column-c1-2026-11-11').evaluate(n=>getComputedStyle(n).backgroundColor);assert.notEqual(todayBg,otherBg);
  await page.getByTestId('habit-week-date-2026-11-11').click();await expect(page.getByTestId('habit-week-date-2026-11-12')).toHaveAttribute('aria-current','date');await page.getByTestId('habit-week-date-2026-11-12').click();
  await expect(page.getByText('上午',{exact:true})).toHaveCount(0);await expect(page.getByText('下午',{exact:true})).toHaveCount(0);await expect(page.getByText('晚上',{exact:true})).toHaveCount(0);
- await expect(page.getByTestId('habit-week-row-c6')).toBeVisible();await expect(page.getByTestId('habit-week-c6-2026-11-12')).toHaveAttribute('aria-disabled','true');
+ await expect(page.getByTestId('habit-week-row-c6')).toBeVisible();await expect(page.getByTestId('habit-week-c6-2026-11-12')).not.toHaveAttribute('aria-disabled','true');
  await expect(page.getByTestId('habit-week-count-2026-11-12')).toHaveText('0/4');
  await expect(page.getByTestId('habit-week-count-2026-11-11')).toHaveText('3/5');
  assert.equal(await page.locator('[data-testid^="habit-week-c1-"]').count(),7);
@@ -126,7 +126,7 @@ try{
  await page.getByTestId('habits-prev').click();await page.getByTestId('habit-month-c2-2026-10-31').tap();await checked('habit-month-c2-2026-10-31',true);await checked('habit-month-c2-2026-10-30',false);
  await longPress('habit-month-c2-2026-10-31');await page.getByTestId('habit-history').click();await expect(page.getByTestId('history-row').filter({hasText:'10/31'})).toContainText('补记');await page.getByTestId('history-close').click();
  await page.getByTestId('habits-next').click();await checked('habit-month-c2-2026-11-09',true);
- await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);await page.getByTestId('habit-month-card-c1').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(shots,'month.png')});
+ await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);await page.getByTestId('habit-month-card-c2').scrollIntoViewIfNeeded();await page.getByTestId('habit-month-c2-2026-11-10').click();await checked('habit-month-c2-2026-11-10',true);await page.getByTestId('habit-month-c2-2026-11-10').click();await checked('habit-month-c2-2026-11-10',false);console.log('✓ 月视图非计划日期可直接补打卡及取消，周视图七列可见');await page.getByTestId('habit-month-card-c1').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(shots,'month.png')});
  console.log('✓ 每个习惯独立月表、跨月补打卡、旧记录与实际补记时间保留');
  await page.getByTestId('habits-today').click();await page.getByTestId('habits-day').click();
  await page.getByTestId('habit-check-__period__').click();await checked('habit-check-__period__',true);
